@@ -189,28 +189,34 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 ## 建議導入優先序（可直接拆實作）
 
-1. **P0-A Coverage Contract + 既有能力盤點**
+1. **P0-A Coverage Contract + 既有能力盤點**（**MVP 已實作 2026-10-07**：`apps/scans/coverage.py`、`ScanJob.coverage`（migration 0028）；
+   檢查級狀態 completed／partial／failed／blocked／skipped、維度級 completed／partial／not_tested，約束計分、
+   專案問題比較（resolved／not_observed／not_tested／blocked／inconclusive）與報告「已解決」。尚未做：rule／resource 級
+   覆蓋細分、`scoring_version`、stage status 流入 billing）
    - 先定義 stage/rule/resource coverage 與 finding lifecycle。
    - 修正現況盤點：confidence、history diff、link 去重/並發皆是「已有但語義/coverage 不足」，不是全新功能。
    - 驗收：工具 BLOCKED/FAILED 時不加分；前次 finding 只有在相同偵測能力完整重跑時才可標 RESOLVED。
 
-2. **P0-B 小範圍 Shared Evidence MVP（AEO + Security）**
+2. **P0-B 小範圍 Shared Evidence MVP（AEO + Security）**（**MVP 已實作 2026-10-07**：`apps/scans/evidence/contacts.py`；資安個資檢查與 AEO 聯絡題共用格式與擷取，AEO 以共用證據核對並說明情境差異；`tests_shared_evidence.py`）
    - 只先共享 email / phone，帶完整 context contract。
    - 驗收：已知「Security 找到 Email、AEO 說找不到」案例（第二輪已以 `aeo/content.py` 的 `_is_body_text` 修正）納入回歸測試並保持通過；Email／電話改由同一份 evidence 產生、不再各模組各自解析；不同 viewport/auth/DOM context 不被誤判成矛盾。
 
-3. **P0-C AEO Answer Validation + Gold Dataset**
+3. **P0-C AEO Answer Validation + Gold Dataset**（**已實作 2026-10-07**：`aeo/gold_dataset.py` 38 個網站、60 題人工標註
+   （含 17 題保留集、13 題「語意相近但不是答案」），`manage.py aeo_benchmark` 輸出指標；門檻 accuracy／precision／recall ≥ 0.95、
+   false positive rate ≤ 0.05，由 `tests_aeo_benchmark.py` 鎖定。首次量測：全體 accuracy 0.983、precision 1.0、recall 1.0、
+   FPR 0；保留集 16／17（唯一不一致是內容太少時 AEO 不評估，屬設計行為）。平均每站 < 1 ms。尚未做：semantic／LLM 判定的成本比較）
    - 建立 50–100 組 answerable / insufficient / conflict / missing / semantic-near-but-not-answer regression case。
    - 驗收至少追蹤 precision、recall、false-positive rate、平均判定成本與耗時；門檻先在實作票/ADR 明定後再上線。
 
-4. **P1 Coverage-aware scoring + comparable history**
+4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。尚未做：評分可解釋化（逐維度扣分來源）、外部 benchmark）
    - 加 `scoring_version` / `ruleset_version`；歷史 diff 升級成 RESOLVED / NOT_OBSERVED / BLOCKED / INCONCLUSIVE。
    - 外部 benchmark 只驗證可對應子指標，不把 Argus 總分校準成 Lighthouse/CrUX。
 
-5. **P1 axe-core（UX/無障礙）** — 接成熟規則，但同樣走 coverage/evidence 契約。
+5. **P1 axe-core（UX/無障礙）** — 接成熟規則，但同樣走 coverage/evidence 契約。（**已實作 2026-10-07**：`apps/scans/accessibility.py`＋`vendor/axe/`（axe-core 4.14.0，MPL-2.0），勾 UX 時爬蟲每頁注入；覆蓋檢查 `axe`；規則 `axe-<id>`）
 
-6. **P1 Lighthouse + CrUX** — Lighthouse=Lab、CrUX=Field、GSC=Search impact，保留樣本/裝置/期間/URL-or-origin 範圍與缺資料原因。
+6. **P1 Lighthouse + CrUX** — Lighthouse=Lab、CrUX=Field、GSC=Search impact，保留樣本/裝置/期間/URL-or-origin 範圍與缺資料原因。（**已實作 2026-10-07**：`apps/scans/pagespeed.py` 走 PageSpeed Insights API（行動版、只測首頁、需 `ARGUS_PAGESPEED_API_KEY`），結果存 `ScanJob.performance_report`，掃描「效能」分頁與報告並列呈現、不計入 Argus 分數；覆蓋檢查 `pagespeed`）
 
-7. **P1 Smart Scan Phase 1（只記錄 signal/fingerprint）** — 先修正 stage dependency 與 strategy/testing matrix，再做真實站準確率 benchmark。
+7. **P1 Smart Scan Phase 1（只記錄 signal/fingerprint）** — 先修正 stage dependency 與 strategy/testing matrix，再做真實站準確率 benchmark。（**已實作 2026-10-07**：`apps/scans/fingerprint.py`＋`stage_fingerprint`（緊接 `enter_scanning`，只吃爬取當下已有的訊號，沒有反向依賴後續 stage）、`ScanJob.fingerprint`（migration 0031）；資料集 28 站（含誤判誘餌與保留集）precision／recall 1.0、0 次連線。strategy／testing 二維語義已在 ADR-0004 定案，`scan_strategy` 欄位留待階段 2。尚未做：以真實掃描結果人工核對的準確率評估）
 
 8. **P1/P2 OWASP ZAP controlled integration** — 先 Passive Analysis；Spider/AJAX Spider 視為 discovery traffic；最後才開受控 Active Scan。
 

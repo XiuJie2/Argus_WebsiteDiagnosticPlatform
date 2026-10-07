@@ -23,11 +23,23 @@ from apps.billing.services import (
 )
 from apps.scans.aeo.evaluate import SitePage, evaluate_site
 from apps.scans.cancellation import ScanCancelled, is_cancelled, raise_if_cancelled
+from apps.scans.coverage import (
+    COMPLETED,
+    FAILED,
+    PARTIAL,
+    SKIPPED,
+    ScanCoverage,
+    category_status,
+)
 from apps.scans.crawler import crawl_site
 from apps.scans.favicon import needs_refresh, refresh_project_favicon
+from apps.scans.fingerprint import fingerprint_snapshot
 from apps.scans.katana_scanner import run_katana
 from apps.scans.models import Finding, Page, ScanJob
 from apps.scans.nuclei_scanner import run_nuclei
+from apps.scans.pagespeed import PageSpeedError
+from apps.scans.pagespeed import enabled as pagespeed_enabled
+from apps.scans.pagespeed import fetch as fetch_pagespeed
 from apps.scans.scan_logger import append_log
 from apps.scans.scan_plan import ScanExecutionPlan, build_scan_execution_plan
 from apps.scans.scanners import (
@@ -57,6 +69,7 @@ from apps.scans.seo.collect import build_link_report
 from apps.scans.seo.site_findings import seo_site_findings
 from apps.scans.services import assert_public_http_url
 from apps.scans.site_profile import build_site_profile
+from apps.scans.versions import RULESET_VERSION, SCORING_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +124,8 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
         steps.append("geo_site")
     if "seo" in cats:
         steps.append("seo_links")
+    if "ux" in cats and pagespeed_enabled():
+        steps.append("pagespeed")
     if settings.ARGUS_AGENT_ENABLED and (execution_plan.run_agent or execution_plan.run_agent_ux):
         steps.append("agent")
     steps.append("scoring")
@@ -385,6 +400,8 @@ class ScanRunContext:
     agent_result: object | None = None
     # 目前執行到哪一段（失敗時寫進 log）
     runtime_stage: str = "target_validation"
+    # 覆蓋紀錄（coverage.py）：各項檢查是否完整跑完、產生了哪些問題
+    coverage: ScanCoverage = field(default_factory=ScanCoverage)
 
     @property
     def scan_job_id(self) -> int:
@@ -395,11 +412,15 @@ class ScanRunContext:
         """分析之後的資安補充階段用延伸的 done/total，讓進度條持續往前走。"""
         return self.scanning_total + 4
 
-    def record(self, findings: list[dict], *, page: Page | None = None) -> None:
-        """寫入 Finding 並納入計分清單。"""
+    def record(
+        self, findings: list[dict], *, page: Page | None = None, check: str | None = None
+    ) -> None:
+        """寫入 Finding 並納入計分清單；check＝產生這批 finding 的檢查（覆蓋紀錄用）。"""
         for finding in findings:
             Finding.objects.create(scan_job=self.scan_job, page=page, **finding)
         self.all_findings.extend(findings)
+        if check:
+            self.coverage.add_findings(check, findings)
 
     def scanning_progress(self, done: int, step: str) -> None:
         """分析之後各資安補充步驟的進度（phase 固定 scanning）。"""
@@ -497,6 +518,7 @@ def stage_crawl(ctx: ScanRunContext) -> None:
             max_pages=scan_job.max_pages,
             respect_robots=scan_job.respect_robots,
             progress_callback=_crawl_progress,
+            run_accessibility=_runs_accessibility(scan_job),
         )
     )
     ctx.crawled_pages = crawled_pages
@@ -510,11 +532,45 @@ def stage_crawl(ctx: ScanRunContext) -> None:
         )
     append_log(scan_job_id, f"爬取完成，共 {len(crawled_pages)} 頁")
     _ensure_usable_pages(crawled_pages, warnings)
+    # robots／範圍限制略過的頁面是使用者設定，不算不完整；擷取失敗才是
+    failed = warnings.get("failed_urls") or []
+    ctx.coverage.mark(
+        "crawl", PARTIAL if failed else COMPLETED,
+        f"{len(failed)} 個頁面擷取失敗" if failed else "",
+    )
+    _mark_axe_coverage(ctx)
     if discovered_endpoints:
         append_log(
             scan_job_id,
             f"爬取期間觀察到 {len(discovered_endpoints)} 個 same-origin API 端點"
             "（XHR/fetch 被動攔截，供主動工具作為攻擊面輸入）",
+        )
+
+
+def _runs_accessibility(scan_job: ScanJob) -> bool:
+    """axe-core 只在勾了 UX 時跑（每頁約 1 秒，沒勾就不花這個時間）。"""
+    return bool(settings.ARGUS_AXE_ENABLED) and "ux" in scan_job.effective_categories
+
+
+def _mark_axe_coverage(ctx: ScanRunContext) -> None:
+    """axe-core 檢查了幾頁：全部可分析頁面都跑完＝completed，部分＝partial，全失敗＝failed。"""
+    if "ux" not in ctx.scan_job.effective_categories:
+        return
+    if not settings.ARGUS_AXE_ENABLED:
+        ctx.coverage.mark("axe", SKIPPED, "已停用")
+        return
+    usable = [p for p in ctx.crawled_pages if not p.get("blocked_reason")]
+    audited = [p for p in usable if (p.get("a11y") or {}).get("violations") is not None]
+    if not usable:
+        return
+    if len(audited) == len(usable):
+        ctx.coverage.mark("axe", COMPLETED)
+    elif not audited:
+        ctx.coverage.mark("axe", FAILED, "每一頁都檢查失敗")
+    else:
+        ctx.coverage.mark(
+            "axe", PARTIAL,
+            f"{len(usable) - len(audited)} 頁未檢查（逾時、失敗或超過頁數上限）",
         )
 
 
@@ -578,6 +634,41 @@ def stage_enter_scanning(ctx: ScanRunContext) -> None:
     _persist_pages(ctx)
 
 
+def stage_fingerprint(ctx: ScanRunContext) -> None:
+    """網站特徵（Smart Scan 階段 1）：只用爬取已有的訊號，不發請求、不改任何掃描決策。
+
+    失敗只記 log，不影響掃描；結果寫 ScanJob.fingerprint，供之後的準確率評估與動態加掃使用。
+    """
+    scan_job = ctx.scan_job
+    failed = (ctx.warnings or {}).get("failed_urls") or []
+    crawl_complete = not failed and len(ctx.crawled_pages) < scan_job.max_pages
+    try:
+        snapshot = fingerprint_snapshot(
+            ctx.crawled_pages, ctx.discovered_endpoints, crawl_complete=crawl_complete
+        )
+    except Exception as exc:
+        logger.exception("網站特徵整理失敗 scan_job_id=%s", ctx.scan_job_id)
+        append_log(ctx.scan_job_id, f"網站特徵整理失敗（{exc.__class__.__name__}）", level="warn")
+        snapshot = {"version": 1, "phase": "pre_scan", "error": exc.__class__.__name__}
+    scan_job.fingerprint = snapshot
+    scan_job.save(update_fields=["fingerprint", "updated_at"])
+    if "error" not in snapshot:
+        found = [
+            label for label, value in (
+                ("CMS " + (snapshot["cms"] or ""), snapshot["cms"]),
+                ("登入頁", snapshot["has_login"]),
+                ("API", snapshot["has_api"]),
+                ("上傳欄位", snapshot["has_upload"]),
+                ("邊緣服務 " + (snapshot["edge"] or ""), snapshot["edge"]),
+            ) if value
+        ]
+        append_log(
+            ctx.scan_job_id,
+            "網站特徵（只記錄，不影響本次掃描）："
+            + ("、".join(found) if found else "沒有明顯特徵"),
+        )
+
+
 def _analyze_one_page(page: Page, page_data: dict, category: str) -> list[dict]:
     """對單一頁面跑單一維度的規則分析（資安維度另含 inline 秘鑰偵測）。"""
     page_findings = analyze_page(
@@ -592,6 +683,7 @@ def _analyze_one_page(page: Page, page_data: dict, category: str) -> list[dict]:
             layout_metrics=page_data.get("layout_metrics") or {},
             ux_signals=page_data.get("ux_signals") or {},
             js_errors=page_data.get("js_errors") or [],
+            a11y=page_data.get("a11y") or {},
         ),
         categories={category},
     )
@@ -622,7 +714,12 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
             # 被阻擋的頁面內容是錯誤頁，不進行分析，僅保留紀錄與警告
             if not page_data["blocked_reason"]:
                 page_findings = _analyze_one_page(page, page_data, category)
-                ctx.record(page_findings, page=page)
+                ctx.record(page_findings, page=page, check=f"page_{category}")
+                if category == "ux":
+                    # axe-core 的 finding 另外歸到 axe 檢查，歷史比較才能對回它
+                    ctx.coverage.add_findings(
+                        "axe", [f for f in page_findings if f["rule_id"].startswith("axe-")]
+                    )
                 page_finding_counts[page_idx] += len(page_findings)
                 category_found += len(page_findings)
             # 每處理一頁就更新 progress；同時當作 cancel 檢查點
@@ -638,6 +735,7 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
                 step_total=page_count,
             )
             raise_if_cancelled(scan_job_id)
+        ctx.coverage.mark(f"page_{category}", COMPLETED)
         append_log(
             scan_job_id,
             f"{CATEGORY_LOG_LABELS[category]} 分析完成：{category_found} 項問題",
@@ -681,7 +779,12 @@ def stage_aeo_answerability(ctx: ScanRunContext) -> None:
     ctx.scanning_progress(ctx.scanning_total, "aeo_answers")
     evaluation = evaluate_site(_aeo_site_pages(ctx))
     ctx.aeo_evaluation = evaluation
-    ctx.record(evaluation.findings)
+    ctx.record(evaluation.findings, check="aeo_answers")
+    ctx.coverage.mark(
+        "aeo_answers",
+        COMPLETED if evaluation.status == "evaluated" else PARTIAL,
+        "" if evaluation.status == "evaluated" else (evaluation.reason or "內容不足"),
+    )
     scan_job.aeo_report = evaluation.summary
     scan_job.save(update_fields=["aeo_report", "updated_at"])
     if evaluation.status == "evaluated":
@@ -707,7 +810,8 @@ def stage_site_security(ctx: ScanRunContext) -> None:
     if "security" not in ctx.scan_job.effective_categories:
         return
     findings = analyze_security_site_level(ctx.crawled_pages)
-    ctx.record(findings)
+    ctx.record(findings, check="site_security")
+    ctx.coverage.mark("site_security", COMPLETED)
     if findings:
         append_log(
             ctx.scan_job_id,
@@ -741,9 +845,11 @@ def _collect_probe_targets(ctx: ScanRunContext) -> list[str]:
     ][:_NUCLEI_MAX_ENDPOINT_URLS]
 
 
-def _log_tool_skipped(scan_job_id: int, tool: str, exc: Exception) -> None:
-    logger.exception("掃描子步驟失敗 scan_job_id=%s", scan_job_id)
-    append_log(scan_job_id, f"{tool} 略過（{exc.__class__.__name__}）", level="warn")
+def _tool_failed(ctx: ScanRunContext, check: str, tool: str, exc: Exception) -> None:
+    """外部工具失敗：記 log 並標記覆蓋紀錄（工具失敗不能被呈現成「0 項問題」）。"""
+    logger.exception("掃描子步驟失敗 scan_job_id=%s", ctx.scan_job_id)
+    append_log(ctx.scan_job_id, f"{tool} 略過（{exc.__class__.__name__}）", level="warn")
+    ctx.coverage.mark(check, FAILED, exc.__class__.__name__)
 
 
 def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[str]) -> None:
@@ -765,10 +871,11 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
                 rate_limit=1,
                 scan_job_id=scan_job_id,
             )
+            ctx.coverage.mark("katana", COMPLETED)
         except ScanCancelled:
             raise
         except Exception as exc:  # noqa: BLE001
-            _log_tool_skipped(scan_job_id, "Katana", exc)
+            _tool_failed(ctx, "katana", "Katana", exc)
         raise_if_cancelled(scan_job_id)
         try:
             ctx.nuclei_findings = run_nuclei(
@@ -778,10 +885,11 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
                 extra_urls=nuclei_urls,
                 rate_limit=1,
             )
+            ctx.coverage.mark("nuclei", COMPLETED)
         except ScanCancelled:
             raise
         except Exception as exc:  # noqa: BLE001
-            _log_tool_skipped(scan_job_id, "Nuclei", exc)
+            _tool_failed(ctx, "nuclei", "Nuclei", exc)
         return
 
     # 預算至少 2 RPS 才並行，兩個 process 的 RPS 合計不得超過總上限。
@@ -804,16 +912,18 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
         )
     try:
         ctx.katana_findings, ctx.katana_tech = f_katana.result()
+        ctx.coverage.mark("katana", COMPLETED)
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001
-        _log_tool_skipped(scan_job_id, "Katana", exc)
+        _tool_failed(ctx, "katana", "Katana", exc)
     try:
         ctx.nuclei_findings = f_nuclei.result()
+        ctx.coverage.mark("nuclei", COMPLETED)
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001
-        _log_tool_skipped(scan_job_id, "Nuclei", exc)
+        _tool_failed(ctx, "nuclei", "Nuclei", exc)
 
 
 def _run_single_page_nuclei(ctx: ScanRunContext, target: str) -> None:
@@ -827,10 +937,11 @@ def _run_single_page_nuclei(ctx: ScanRunContext, target: str) -> None:
             extra_urls=[],
             rate_limit=settings.ARGUS_ACTIVE_MAX_RPS,
         )
+        ctx.coverage.mark("nuclei", COMPLETED)
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001
-        _log_tool_skipped(ctx.scan_job_id, "Nuclei", exc)
+        _tool_failed(ctx, "nuclei", "Nuclei", exc)
 
 
 _WAF_KEYWORDS = {"cloudflare", "fastly", "akamai", "aws waf", "imperva", "sucuri", "f5"}
@@ -903,12 +1014,19 @@ def stage_active_probe(ctx: ScanRunContext) -> None:
         _run_single_page_nuclei(ctx, target)
     else:
         append_log(ctx.scan_job_id, "被動模式：略過 Nuclei、Katana 與其他主動探測工具")
+    if not plan.run_nuclei:
+        ctx.coverage.mark("nuclei", SKIPPED, "未授權主動測試")
+    if not plan.run_katana:
+        ctx.coverage.mark("katana", SKIPPED, "單頁或未授權主動測試")
     ctx.scanning_progress(ctx.scanning_total + 1, "deep_security")
 
     waf_note = _waf_blocked_nuclei_note(ctx)
     if waf_note:
         ctx.nuclei_findings = waf_note
-    ctx.record(ctx.katana_findings + ctx.nuclei_findings)
+        # 0 項發現但流量先經過 WAF／CDN：探測可能被邊緣過濾，不能當成完整結果
+        ctx.coverage.mark("nuclei", PARTIAL, "目標位於 WAF／CDN 之後，探測可能被過濾")
+    ctx.record(ctx.katana_findings, check="katana")
+    ctx.record(ctx.nuclei_findings, check="nuclei")
     # Kali 主動驗證已移到 Agent 之後（Hermes-first fallback）；這裡標示 Nuclei 階段結束、
     # 即將進入深度被動安全掃描。
     ctx.scanning_progress(ctx.scanning_total + 2, "deep_security")
@@ -943,7 +1061,8 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
         findings.append(waf_block_finding)
         append_log(ctx.scan_job_id, "偵測到 WAF／防護機制封鎖跡象，已新增說明 finding")
     findings = [owasp_mapper.tag(f) for f in findings]
-    ctx.record(findings)
+    ctx.record(findings, check="deep_security")
+    ctx.coverage.mark("deep_security", COMPLETED)
     owasp_mapper.backfill(scan_job)
     append_log(ctx.scan_job_id, f"深度被動安全掃描完成：{len(findings)} 項發現")
     ctx.scanning_progress(
@@ -957,10 +1076,14 @@ def stage_exposure(ctx: ScanRunContext) -> None:
     scan_job = ctx.scan_job
     scan_job_id = ctx.scan_job_id
     robots_disallow = ctx.site_signals.get("robots_disallow") or []
-    ctx.record([
-        owasp_mapper.tag(f)
-        for f in exposure_scanner.analyze_robots_disclosure(robots_disallow)
-    ])
+    ctx.record(
+        [
+            owasp_mapper.tag(f)
+            for f in exposure_scanner.analyze_robots_disclosure(robots_disallow)
+        ],
+        check="exposure_robots",
+    )
+    ctx.coverage.mark("exposure_robots", COMPLETED)
 
     if ctx.execution_plan.run_exposure:
         raise_if_cancelled(scan_job_id)
@@ -978,7 +1101,8 @@ def stage_exposure(ctx: ScanRunContext) -> None:
                 owasp_mapper.tag(f)
                 for f in exposure_scanner.analyze_probe_results(probe_results)
             ]
-            ctx.record(exposure_findings)
+            ctx.record(exposure_findings, check="exposure_probe")
+            ctx.coverage.mark("exposure_probe", COMPLETED)
             append_log(
                 scan_job_id,
                 f"敏感檔案外洩探測完成：探測 {len(probe_results)} 路徑，"
@@ -988,13 +1112,16 @@ def stage_exposure(ctx: ScanRunContext) -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — 探測失敗不影響主掃描
             logger.exception("掃描子步驟失敗 scan_job_id=%s", scan_job_id)
+            ctx.coverage.mark("exposure_probe", FAILED, exc.__class__.__name__)
             append_log(
                 scan_job_id,
                 f"敏感檔案外洩探測略過（{exc.__class__.__name__}）",
                 level="warn",
             )
-    elif ctx.execution_plan.active_authorized:
-        append_log(scan_job_id, "單頁範圍：略過整站敏感檔案路徑探測")
+    else:
+        ctx.coverage.mark("exposure_probe", SKIPPED, "單頁或未授權主動測試")
+        if ctx.execution_plan.active_authorized:
+            append_log(scan_job_id, "單頁範圍：略過整站敏感檔案路徑探測")
 
     if ctx.katana_tech:
         updated_warnings = dict(scan_job.warning_summary or {})
@@ -1017,7 +1144,8 @@ def stage_geo_site(ctx: ScanRunContext) -> None:
     if "geo" not in ctx.scan_job.effective_categories:
         return
     findings = analyze_site_signals(ctx.site_signals)
-    ctx.record(findings)
+    ctx.record(findings, check="geo_site")
+    ctx.coverage.mark("geo_site", COMPLETED)
     append_log(ctx.scan_job_id, f"站台訊號分析完成：{len(findings)} 項發現")
 
 
@@ -1043,6 +1171,7 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
     except Exception as exc:  # noqa: BLE001 - 輔助資料，失敗不影響掃描
         logger.warning("SEO 連結檢查失敗 scan_job_id=%s", ctx.scan_job_id, exc_info=True)
         append_log(ctx.scan_job_id, f"SEO 連結檢查失敗：{exc.__class__.__name__}", level="warning")
+        ctx.coverage.mark("seo_links", FAILED, exc.__class__.__name__)
         return
     scan_job.seo_report = report
     scan_job.save(update_fields=["seo_report", "updated_at"])
@@ -1051,13 +1180,52 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
     except Exception:  # noqa: BLE001 - 轉換失敗不影響掃描
         logger.warning("SEO 站台問題轉換失敗 scan_job_id=%s", ctx.scan_job_id, exc_info=True)
         site_findings = []
-    ctx.record(site_findings)
+    ctx.record(site_findings, check="seo_links")
+    unchecked = report.get("unchecked", 0)
+    ctx.coverage.mark(
+        "seo_links", PARTIAL if unchecked else COMPLETED,
+        f"{unchecked} 個連結未檢查（數量或時間上限）" if unchecked else "",
+    )
     links = report.get("links") or {}
     broken = sum(1 for r in links.values() if r["verdict"] == "broken")
     append_log(
         ctx.scan_job_id,
         f"SEO 連結檢查完成：{len(links)} 個連結（失效 {broken}），"
         f"未檢查 {report.get('unchecked', 0)} 個",
+    )
+
+
+def stage_pagespeed(ctx: ScanRunContext) -> None:
+    """Google PageSpeed Insights：首頁的 Lighthouse 實驗室分數＋CrUX 真實使用者資料。
+
+    勾 UX 且有設定金鑰才跑；結果寫 ScanJob.performance_report，不併入 Argus 分數。
+    量測失敗只記 log 與覆蓋紀錄，不影響掃描完成。
+    """
+    scan_job = ctx.scan_job
+    if "ux" not in scan_job.effective_categories or not pagespeed_enabled():
+        return
+    raise_if_cancelled(ctx.scan_job_id)
+    ctx.scanning_progress(ctx.deep_scan_total, "pagespeed")
+    try:
+        report = fetch_pagespeed(scan_job.normalized_url or scan_job.original_url)
+    except PageSpeedError as exc:
+        append_log(ctx.scan_job_id, f"PageSpeed Insights 量測失敗：{exc}", level="warn")
+        ctx.coverage.mark("pagespeed", FAILED, str(exc))
+        return
+    raise_if_cancelled(ctx.scan_job_id)
+    scan_job.performance_report = report
+    scan_job.save(update_fields=["performance_report", "updated_at"])
+    lab = report.get("lab") or {}
+    if lab.get("error"):
+        ctx.coverage.mark("pagespeed", PARTIAL, "Lighthouse 無法完成量測")
+    else:
+        ctx.coverage.mark("pagespeed", COMPLETED)
+    scores = lab.get("scores") or {}
+    field = report.get("field") or {}
+    append_log(
+        ctx.scan_job_id,
+        f"PageSpeed Insights：效能 {scores.get('performance', '—')}；真實使用者資料"
+        + ("有" if field.get("metrics") else "不足"),
     )
 
 
@@ -1156,6 +1324,30 @@ def stage_agent(ctx: ScanRunContext) -> None:
 
     if ctx.agent_result:
         ctx.all_findings.extend(ctx.agent_result.security_findings)
+    _mark_agent_coverage(ctx)
+
+
+def _mark_agent_coverage(ctx: ScanRunContext) -> None:
+    """Agent 的覆蓋狀態：跑完＝completed、步數用完＝partial、出錯＝failed、沒啟動＝skipped。
+
+    agent 的 finding 由 runner 直接落 DB，歷史比較以規則前綴（AGENT_UX_／agent-）對回檢查。
+    """
+    result = ctx.agent_result
+    if ctx.agent_meta.get("status") == "error":
+        status, reason = FAILED, ctx.agent_meta.get("error", "")
+    elif result is None:
+        status, reason = SKIPPED, "沒有可開始測試的頁面"
+    elif result.status == "completed":
+        status, reason = COMPLETED, ""
+    elif str(result.error or "").startswith("max_steps_reached"):
+        status, reason = PARTIAL, "步數上限內未完成"
+    else:
+        status, reason = FAILED, str(result.error or "")[:120]
+    plan = ctx.execution_plan
+    if plan.run_agent:
+        ctx.coverage.mark("agent", status, reason)
+    if plan.run_agent_ux:
+        ctx.coverage.mark("agent_ux", status, reason)
 
 
 def stage_kali(ctx: ScanRunContext) -> None:
@@ -1172,6 +1364,7 @@ def stage_kali(ctx: ScanRunContext) -> None:
         kali_findings = validate_findings_with_kali(
             scan_job_id, ctx.page_urls + ctx.endpoint_urls
         )
+        ctx.coverage.mark("kali", COMPLETED)
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001 — 非 cancel 的基礎設施失敗只 silent-fail
@@ -1181,8 +1374,9 @@ def stage_kali(ctx: ScanRunContext) -> None:
             f"Kali 主動驗證略過（{exc.__class__.__name__}）",
             level="warn",
         )
+        ctx.coverage.mark("kali", FAILED, exc.__class__.__name__)
         kali_findings = []
-    ctx.record(kali_findings)
+    ctx.record(kali_findings, check="kali")
     if kali_findings:
         append_log(scan_job_id, f"Kali 主動驗證確認 {len(kali_findings)} 項可利用漏洞")
 
@@ -1207,7 +1401,23 @@ def tested_categories_for(ctx: ScanRunContext) -> set[str]:
     # AEO 內容不足以出題：未充分評估，不評分（不能因為沒問題可問就給 100 分）
     if ctx.aeo_evaluation is not None and ctx.aeo_evaluation.status != "evaluated":
         tested.discard("aeo")
+    # 覆蓋契約：該維度的檢查全部失敗／被阻擋＝沒有測到，不能以「0 項問題」計分
+    checks = ctx.coverage.to_json(())["checks"]
+    recorded = {entry["category"] for entry in checks.values()}
+    tested = {
+        cat for cat in tested
+        if cat not in recorded or category_status(checks, cat) != "not_tested"
+    }
     return tested & ctx.scan_job.effective_categories
+
+
+def coverage_for(ctx: ScanRunContext, tested_categories: set[str]) -> dict:
+    """寫入 ScanJob.coverage 的內容；沒進計分的勾選維度一律標 not_tested。"""
+    coverage = ctx.coverage.to_json(ctx.scan_job.effective_categories)
+    for category in coverage["categories"]:
+        if category not in tested_categories:
+            coverage["categories"][category] = "not_tested"
+    return coverage
 
 
 def base_scores_for(ctx: ScanRunContext) -> dict[str, int]:
@@ -1288,6 +1498,9 @@ def stage_scoring(ctx: ScanRunContext) -> None:
     scan_job.overall_score = overall_score
     scan_job.category_scores = category_scores
     scan_job.top_actions = top_actions
+    scan_job.coverage = coverage_for(ctx, tested_categories)
+    scan_job.scoring_version = SCORING_VERSION
+    scan_job.ruleset_version = RULESET_VERSION
     if ctx.agent_meta:
         warning_summary = dict(scan_job.warning_summary or {})
         warning_summary["agent"] = ctx.agent_meta
@@ -1306,6 +1519,9 @@ def stage_scoring(ctx: ScanRunContext) -> None:
         category_scores=category_scores,
         top_actions=top_actions,
         warning_summary=scan_job.warning_summary,
+        coverage=scan_job.coverage,
+        scoring_version=SCORING_VERSION,
+        ruleset_version=RULESET_VERSION,
         progress={},
         completed_at=completed_at,
         updated_at=completed_at,
@@ -1364,6 +1580,7 @@ SCAN_PIPELINE: tuple[tuple[str, Callable[[ScanRunContext], None]], ...] = (
     ("target_validation", stage_validate_target),
     ("crawl", stage_crawl),
     ("enter_scanning", stage_enter_scanning),
+    ("fingerprint", stage_fingerprint),
     ("page_analysis", stage_analyze_pages),
     ("aeo_answers", stage_aeo_answerability),
     ("site_security", stage_site_security),
@@ -1372,6 +1589,7 @@ SCAN_PIPELINE: tuple[tuple[str, Callable[[ScanRunContext], None]], ...] = (
     ("exposure", stage_exposure),
     ("geo_site", stage_geo_site),
     ("seo_links", stage_seo_links),
+    ("pagespeed", stage_pagespeed),
     ("favicon", stage_favicon),
     ("agent", stage_agent),
     ("kali", stage_kali),

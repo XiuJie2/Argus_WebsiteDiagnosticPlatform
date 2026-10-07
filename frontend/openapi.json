@@ -9334,6 +9334,20 @@
                     "site_profile": {
                         "readOnly": true
                     },
+                    "coverage": {
+                        "readOnly": true
+                    },
+                    "scoring_version": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "ruleset_version": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "performance_report": {
+                        "readOnly": true
+                    },
                     "progress": {
                         "readOnly": true
                     },
@@ -9384,6 +9398,7 @@
                     "categories",
                     "category_scores",
                     "completed_at",
+                    "coverage",
                     "created_at",
                     "error_message",
                     "findings_count",
@@ -9397,11 +9412,14 @@
                     "original_url",
                     "overall_score",
                     "pages_count",
+                    "performance_report",
                     "progress",
                     "project",
                     "respect_robots",
+                    "ruleset_version",
                     "scan_log",
                     "scan_mode",
+                    "scoring_version",
                     "site_profile",
                     "started_at",
                     "status",

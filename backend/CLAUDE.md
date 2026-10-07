@@ -61,7 +61,15 @@ Claude Code 進 `backend/` 工作時，本檔在專案層 `CLAUDE.md` 之後自�
          seo_report（JSON，SEO 連結狀態與站台網址檢查，勾 SEO 時由 seo_links 階段寫入；migration 0022）、
          site_profile（JSON，網站概況：網域／IP／反解／CDN 邊緣、網站優勢（附依據與可信度）、使用的技術，site_profile 階段寫入；migration 0026）、
          project（所屬網站專案，見下 SiteProject）、
-         is_trial（首次免費完整掃描，預扣／結算皆 0；migration 0027，見 apps/billing/CLAUDE.md）
+         is_trial（首次免費完整掃描，預扣／結算皆 0；migration 0027，見 apps/billing/CLAUDE.md）、
+         coverage（JSON，掃描覆蓋紀錄：各項檢查是否完整跑完、產生哪些問題、各維度覆蓋狀態；
+         migration 0028，見 apps/scans/CLAUDE.md「掃描覆蓋契約」）、
+         scoring_version／ruleset_version（完成時的計分公式與規則集版本，版本相同分數才可比較；
+         migration 0029，見 apps/scans/CLAUDE.md「評分與規則版本」）、
+         performance_report（JSON，Google PageSpeed Insights 首頁 Lighthouse＋CrUX，勾 UX 且有金鑰時寫入、
+         不計入 Argus 分數；migration 0030，見 apps/scans/CLAUDE.md「PageSpeed Insights」）、
+         fingerprint（JSON，網站特徵：CMS、框架、登入頁、API、上傳、邊緣服務；只用爬取已有的訊號、
+         只記錄不影響掃描；migration 0031，見 apps/scans/CLAUDE.md「網站特徵」）
 ```
 
 **SiteProject**（`apps/scans/models.py`，2026-10-02）

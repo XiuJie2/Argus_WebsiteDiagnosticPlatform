@@ -5,14 +5,11 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
+from apps.scans.evidence import contacts
 from apps.scans.models import Finding
 
 # ---------- PII（個人資料）偵測 ----------
-# email 標準 pattern，要求 TLD 至少 2 字元
-EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
-
-# 台灣手機：09 開頭 + 8 位數字，允許中間有 -、空白；前後 lookahead/lookbehind 避免嵌入更長數字串誤判
-TW_MOBILE_PATTERN = re.compile(r"(?<!\d)09\d{2}[\s\-]?\d{3}[\s\-]?\d{3}(?!\d)")
+# Email 與手機的格式由共用證據模組提供（P0-B），AEO 用同一套，避免兩邊解析結果不一致
 
 # 台灣身分證號：第一碼英文 + 1/2 + 8 位數字。需另經 is_valid_tw_national_id 檢查碼驗證
 TW_NATIONAL_ID_PATTERN = re.compile(r"\b[A-Z][12]\d{8}\b")
@@ -175,8 +172,8 @@ def detect_pii_in_text(text: str) -> dict[str, list[str]]:
         m for m in cc_valid if _is_formatted_card(m) or _card_has_context(text, m)
     ]
     return {
-        "email": list(dict.fromkeys(EMAIL_PATTERN.findall(text))),
-        "mobile": list(dict.fromkeys(TW_MOBILE_PATTERN.findall(text))),
+        "email": contacts.find_emails(text),
+        "mobile": contacts.find_mobiles(text),
         "national_id": [
             m for m in dict.fromkeys(TW_NATIONAL_ID_PATTERN.findall(text))
             if is_valid_tw_national_id(m)
@@ -244,6 +241,8 @@ class PageAnalysisInput:
     ux_signals: dict | None = None
     # 本頁 JavaScript 執行期錯誤訊息（首行、去重）。空 list＝無錯誤或未量測。
     js_errors: list | None = None
+    # axe-core 無障礙檢查結果（accessibility.py）。空 dict＝沒跑；含 "error"＝跑失敗。
+    a11y: dict | None = None
 
 
 def _is_large_image(attributes: dict[str, str]) -> bool:
@@ -530,6 +529,7 @@ def analyze_ux(page_input: PageAnalysisInput) -> list[dict]:
     - 行動版水平溢出（破版）：`layout_metrics`
     - 觸控目標過小、表單欄位缺可及標籤：`ux_signals`（行動版視窗量測）
     - JavaScript 執行期錯誤：`js_errors`（頁面實際拋出的未捕捉例外）
+    - WCAG 自動化檢查：`a11y`（axe-core，勾 UX 才跑）
 
     各來源為空一律代表「未量測或無問題」，不會硬湊 finding。
     """
@@ -538,6 +538,7 @@ def analyze_ux(page_input: PageAnalysisInput) -> list[dict]:
     findings.extend(_ux_tap_targets(page_input))
     findings.extend(_ux_unlabeled_fields(page_input))
     findings.extend(_ux_js_errors(page_input))
+    findings.extend(_ux_axe(page_input))
     return findings
 
 
@@ -708,6 +709,105 @@ def _ux_unlabeled_fields(page_input: PageAnalysisInput) -> list[dict]:
             },
         )
     ]
+
+
+# axe-core 的 impact → 嚴重度。critical／serious 會直接擋住部分使用者，moderate／minor 是障礙
+_AXE_SEVERITY = {
+    "critical": Finding.Severity.HIGH,
+    "serious": Finding.Severity.MEDIUM,
+    "moderate": Finding.Severity.LOW,
+    "minor": Finding.Severity.LOW,
+}
+_AXE_PRIORITY = {"critical": 60, "serious": 45, "moderate": 30, "minor": 20}
+# 常見規則的中文標題與修法（其餘以 axe 的英文說明加官方連結呈現）
+_AXE_ZH = {
+    "image-alt": ("圖片缺少替代文字", "為有意義的圖片加上描述內容的 alt；純裝飾圖片用 alt=\"\"。"),
+    "button-name": ("按鈕沒有可辨識的名稱", "按鈕內放文字，或用 aria-label 說明按下去會做什麼。"),
+    "link-name": ("連結沒有可辨識的文字", "連結內放文字；只有圖示時補 aria-label 或圖片 alt。"),
+    "color-contrast": (
+        "文字與背景對比不足",
+        "一般文字對比至少 4.5:1、大字 3:1；調深文字或調淺背景後再用對比檢查工具確認。",
+    ),
+    "html-has-lang": ("網頁沒有宣告語言", "在 <html> 加上 lang，例如 lang=\"zh-Hant\"。"),
+    "html-lang-valid": ("網頁語言代碼無效", "lang 使用有效的語言代碼，例如 zh-Hant、en。"),
+    "document-title": ("網頁沒有標題", "在 <head> 加上描述這一頁內容的 <title>。"),
+    "frame-title": ("內嵌框架沒有標題", "為 <iframe> 加上說明內容的 title。"),
+    "input-image-alt": ("圖片按鈕缺少替代文字", "為 <input type=\"image\"> 加上 alt。"),
+    "aria-required-attr": ("ARIA 角色缺少必要屬性", "依該 role 的規範補上必要的 aria-* 屬性。"),
+    "aria-valid-attr-value": (
+        "ARIA 屬性值無效", "修正 aria-* 屬性值，指向存在的元素或使用允許的值。"
+    ),
+    "aria-hidden-focus": (
+        "被隱藏的區塊內仍有可聚焦元素",
+        "aria-hidden=\"true\" 的區塊內不可有可用 Tab 聚焦的元素，或移除 aria-hidden。",
+    ),
+    "list": ("清單結構不正確", "<ul>／<ol> 底下只放 <li>（或 script／template）。"),
+    "listitem": ("清單項目不在清單內", "把 <li> 放在 <ul> 或 <ol> 裡。"),
+    "duplicate-id-aria": ("被引用的 id 重複", "讓 aria-labelledby 等引用的 id 在頁面上唯一。"),
+    "meta-viewport": (
+        "禁止使用者縮放頁面", "移除 viewport 的 user-scalable=no 與過小的 maximum-scale。"
+    ),
+    "nested-interactive": ("互動元素巢狀", "不要把按鈕或連結放進另一個按鈕或連結裡。"),
+    "role-img-alt": ("role=img 的元素缺少替代文字", "加上 aria-label 或 aria-labelledby。"),
+    "svg-img-alt": (
+        "SVG 圖片缺少替代文字", "為 role=\"img\" 的 <svg> 加上 <title> 或 aria-label。"
+    ),
+}
+
+
+def _ux_axe(page_input: PageAnalysisInput) -> list[dict]:
+    """axe-core（WCAG 2.x A／AA 自動化檢查）的違規，每條規則一項。
+
+    自動化檢查只涵蓋部分 WCAG 準則：沒有違規不等於符合 WCAG，報告不得如此宣稱。
+    """
+    result = page_input.a11y or {}
+    findings = []
+    for violation in result.get("violations") or []:
+        rule = str(violation.get("id") or "")
+        if not rule:
+            continue
+        impact = violation.get("impact") or "moderate"
+        nodes = violation.get("nodes") or []
+        count = int(violation.get("count") or len(nodes))
+        zh_title, zh_fix = _AXE_ZH.get(rule, ("", ""))
+        help_text = str(violation.get("help") or rule)
+        wcag = "、".join(violation.get("tags") or []) or "WCAG"
+        first_box = next((n.get("box") for n in nodes if n.get("box")), None)
+        evidence_lines = [
+            f"{n.get('target', '')}｜{n.get('html', '')}" for n in nodes
+        ]
+        findings.append(
+            make_finding(
+                category=Finding.Category.UX,
+                severity=_AXE_SEVERITY.get(impact, Finding.Severity.LOW),
+                rule_id=f"axe-{rule}",
+                title=zh_title or f"無障礙：{help_text}",
+                description=(
+                    f"axe-core 自動化檢查在這一頁找到 {count} 個元素不符合規則「{help_text}」"
+                    f"（{wcag}）。{violation.get('description') or ''}"
+                ),
+                remediation=(
+                    (zh_fix + " " if zh_fix else "")
+                    + f"規則說明與修正範例：{violation.get('help_url') or 'https://dequeuniversity.com/rules/axe/'}"
+                ),
+                evidence="\n".join(evidence_lines)[:2000],
+                selector=(nodes[0].get("target", "") if nodes else ""),
+                bounding_box=first_box,
+                impact_area="accessibility",
+                priority_score=_AXE_PRIORITY.get(impact, 25),
+                evidence_type="axe",
+                evidence_source=f"axe-core {result.get('version', '')}".strip(),
+                evidence_json={
+                    "axe_rule": rule,
+                    "impact": impact,
+                    "wcag": violation.get("tags") or [],
+                    "help_url": violation.get("help_url") or "",
+                    "count": count,
+                    "nodes": nodes,
+                },
+            )
+        )
+    return findings
 
 
 def _ux_js_errors(page_input: PageAnalysisInput) -> list[dict]:
@@ -1140,7 +1240,7 @@ def _collect_pii(raw_html: str) -> tuple[dict, dict, dict, list[str]]:
     safe_html = _HTML_SVG_ELEMENTS.sub(" ", safe_html)
     safe_html = _HTML_PATH_ATTR.sub(" ", safe_html)
     # 輸入框 placeholder 是填寫範例（例：e.g.0911-222-333），不是任何人的資料（2026-10-06 實測）
-    safe_html = _HTML_PLACEHOLDER_ATTR.sub(" ", safe_html)
+    safe_html = contacts.PLACEHOLDER_ATTR.sub(" ", safe_html)
     pii_main = detect_pii_in_text(safe_html)
 
     # B2: 額外掃 HTML 註解內容（開發者常留測試資料 / TODO / 卡號 / token）
@@ -1180,8 +1280,8 @@ def _classify_pii(
     # 只列為資訊提示請網站主確認，不當成外洩。
     site_domain = _registrable_domain(urlparse(page_url).hostname or "")
     site_label = site_domain.split(".", 1)[0] if site_domain else ""
-    mailto = {m.lower() for m in _MAILTO_PATTERN.findall(raw_html)}
-    tel = {re.sub(r"\D", "", m) for m in _TEL_PATTERN.findall(raw_html)}
+    mailto = contacts.mailto_addresses(raw_html)
+    tel = contacts.tel_numbers(raw_html)
     comment_values = {v for vals in pii_comments.values() for v in (vals or [])}
 
     sensitive: list[str] = []
@@ -1205,7 +1305,7 @@ def _classify_pii(
             personal_emails.append(email)
     personal_mobiles, public_mobiles = [], []
     for mobile in pii["mobile"]:
-        if mobile not in comment_values and re.sub(r"\D", "", mobile) in tel:
+        if mobile not in comment_values and contacts.normalize_phone(mobile) in tel:
             public_mobiles.append(mobile)
         else:
             personal_mobiles.append(mobile)
@@ -1331,15 +1431,12 @@ def analyze_data_exposure(page_input: PageAnalysisInput) -> list[dict]:
     return findings
 
 
-_HTML_PLACEHOLDER_ATTR = re.compile(r"""\bplaceholder\s*=\s*(?:"[^"]*"|'[^']*')""", re.IGNORECASE)
 # 角色信箱：對外服務窗口，不屬於特定個人
 _ROLE_MAILBOXES = {
     "info", "service", "services", "contact", "admin", "support", "help", "office", "hr",
     "sales", "marketing", "webmaster", "privacy", "dpo", "noreply", "no-reply", "news",
     "press", "pr", "media", "secretary", "center", "job", "jobs", "career", "careers",
 }
-_MAILTO_PATTERN = re.compile(r"mailto:([^\"'?>\s]+)", re.IGNORECASE)
-_TEL_PATTERN = re.compile(r"tel:([+\d][\d\s()-]{6,})", re.IGNORECASE)
 _SECOND_LEVEL_LABELS = {
     "com", "edu", "gov", "org", "net", "ac", "co", "idv", "mil", "or", "ne", "go",
 }

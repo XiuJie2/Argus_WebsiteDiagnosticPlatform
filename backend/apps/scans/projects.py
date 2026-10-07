@@ -10,6 +10,13 @@ from html.parser import HTMLParser
 
 from django.db.models import Count, Q
 
+from apps.scans import versions
+from apps.scans.coverage import (
+    ABSENT_STATUS_LABELS,
+    absent_issue_status,
+    incomplete_checks,
+    issue_key,
+)
 from apps.scans.models import ALL_CATEGORIES, Finding, ScanJob, SiteProject
 from apps.scans.services import user_owns_domain
 
@@ -44,10 +51,6 @@ def previous_completed(project: SiteProject, scan: ScanJob) -> ScanJob | None:
     return (
         completed_scans(project).filter(created_at__lt=scan.created_at).exclude(id=scan.id).first()
     )
-
-
-def issue_key(rule_id: str, category: str, title: str) -> str:
-    return rule_id or f"{category}:{title}"
 
 
 def issue_groups(scan: ScanJob) -> dict[str, dict]:
@@ -110,7 +113,9 @@ def issue_groups(scan: ScanJob) -> dict[str, dict]:
 def compare_issues(scan: ScanJob, previous: ScanJob | None) -> tuple[list[dict], list[dict]]:
     """回傳 (本次問題附 status＝new／persisting, 本次未出現的上次問題)。
 
-    「本次未出現」只列本次仍有檢查的分類：沒勾的維度不能算已修好。
+    「本次未出現」只列本次仍有檢查的分類：沒勾的維度不能算已修好。每一項附 status
+    （coverage.absent_issue_status）：只有產生它的檢查本次完整跑完、受影響頁面也有重新分析，
+    才是 resolved；其餘是本次未觀察到／未檢查／被阻擋／無法判定。
     沒有前次掃描時，status 為 None（無從比較）。
     """
     current = issue_groups(scan)
@@ -121,17 +126,41 @@ def compare_issues(scan: ScanJob, previous: ScanJob | None) -> tuple[list[dict],
         else:
             group["status"] = "persisting" if key in previous_groups else "new"
     checked = scan.effective_categories
-    missing = [
-        {k: group[k] for k in ("key", "rule_id", "title", "category", "severity")}
-        for key, group in previous_groups.items()
-        if key not in current and group["category"] in checked
-    ]
+    analysed_urls = _analysed_urls(scan) if previous is not None else set()
+    missing = []
+    for key, group in previous_groups.items():
+        if key in current or group["category"] not in checked:
+            continue
+        status = absent_issue_status(
+            previous_coverage=previous.coverage,
+            current_coverage=scan.coverage,
+            key=key,
+            category=group["category"],
+            urls=group["urls"],
+            analysed_urls=analysed_urls,
+        )
+        missing.append({
+            **{k: group[k] for k in ("key", "rule_id", "title", "category", "severity")},
+            "status": status,
+            "status_label": ABSENT_STATUS_LABELS[status],
+        })
     issues = sorted(
         current.values(),
         key=lambda g: (_SEVERITY_RANK.get(g["severity"], 9), -g["pages"], g["title"]),
     )
     missing.sort(key=lambda g: (_SEVERITY_RANK.get(g["severity"], 9), g["title"]))
     return issues, missing
+
+
+def _analysed_urls(scan: ScanJob) -> set[str]:
+    """本次有完整分析的頁面網址（沒被阻擋、HTTP < 400），含轉址前後兩種寫法。"""
+    urls: set[str] = set()
+    rows = scan.pages.filter(blocked_reason="", status_code__lt=400).values_list(
+        "url", "final_url"
+    )
+    for url, final_url in rows:
+        urls.update(u for u in (url, final_url) if u)
+    return urls
 
 
 def issue_streaks(project: SiteProject, scan: ScanJob, issues: list[dict]) -> None:
@@ -197,6 +226,7 @@ def project_overview(project: SiteProject) -> dict:
                 "new": sum(1 for issue in issues if issue["status"] == "new"),
                 "persisting": sum(1 for issue in issues if issue["status"] == "persisting"),
                 "missing": len(missing),
+                "resolved": sum(1 for item in missing if item["status"] == "resolved"),
             }
         counts = latest.pages.aggregate(
             n=Count("id"), blocked=Count("id", filter=~Q(blocked_reason=""))
@@ -225,6 +255,11 @@ def project_overview(project: SiteProject) -> dict:
                 if action.get("category") in latest.effective_categories
             ][:TOP_ACTIONS_LIMIT],
             "aeo_status": aeo.get("status", ""),
+            # 覆蓋契約：各維度覆蓋狀態與沒有完整跑完的檢查（前端提示「部分評估」）
+            "coverage": {
+                "categories": (latest.coverage or {}).get("categories") or {},
+                "incomplete": incomplete_checks(latest.coverage),
+            },
             # 儀表板用：本次掃描統計、各維度問題數、AEO 問答摘要
             "stats": {
                 "pages": counts["n"],
@@ -251,14 +286,18 @@ def project_overview(project: SiteProject) -> dict:
             if aeo
             else None,
         }
+    trend_scans = list(reversed(list(completed_scans(project)[:TREND_LIMIT])))
     trend = [
         {
             "id": scan.id,
             "completed_at": scan.completed_at,
             "overall_score": scan.overall_score,
             "category_scores": scan.category_scores or {},
+            "version_label": versions.label(scan),
+            # 與前一點的評分或規則版本不同：走勢圖要標示，不能把這段變化當成網站改善
+            "model_changed": index > 0 and not versions.comparable(scan, trend_scans[index - 1]),
         }
-        for scan in reversed(list(completed_scans(project)[:TREND_LIMIT]))
+        for index, scan in enumerate(trend_scans)
     ]
     recent_scans = [
         {**_scan_brief(scan), "scan_mode": scan.scan_mode, "max_pages": scan.max_pages}
@@ -268,6 +307,8 @@ def project_overview(project: SiteProject) -> dict:
         "latest_scan": latest_payload,
         "recent_scans": recent_scans,
         "previous_scan": _scan_brief(previous),
+        # 兩次掃描的評分與規則版本相同，分數變化才可直接解讀成網站變好／變差（versions.py）
+        "score_comparable": versions.comparable(latest, previous),
         "active_scan": (
             {**_scan_brief(running), "progress": running.progress or {}} if running else None
         ),
@@ -403,6 +444,8 @@ def project_summaries(project_ids: list[int]) -> dict[int, dict]:
             "latest_score": None,
             "latest_category_scores": {},
             "previous_score": None,
+            # 最新與前一次完成掃描的版本相同，變化才可直接比較（versions.py）
+            "score_comparable": False,
             "last_completed_at": None,
             "score_history": [],
             "issue_counts": {},
@@ -422,8 +465,11 @@ def project_summaries(project_ids: list[int]) -> dict[int, dict]:
             "categories",
             "created_at",
             "completed_at",
+            "scoring_version",
+            "ruleset_version",
         )
     )
+    latest_versions: dict[int, tuple[str, str]] = {}
     for row in rows:
         summary = summaries[row["project_id"]]
         summary["scans_count"] += 1
@@ -444,8 +490,13 @@ def project_summaries(project_ids: list[int]) -> dict[int, dict]:
             summary["last_completed_at"] = row["completed_at"]
             effective = {c for c in (row["categories"] or []) if c in ALL_CATEGORIES}
             latest_completed[row["project_id"]] = (row["id"], effective or set(ALL_CATEGORIES))
+            latest_versions[row["project_id"]] = (row["scoring_version"], row["ruleset_version"])
         elif summary["previous_score"] is None and summary["latest_score"] is not None:
             summary["previous_score"] = row["overall_score"]
+            current = latest_versions.get(row["project_id"], ("", ""))
+            summary["score_comparable"] = all(current) and current == (
+                row["scoring_version"], row["ruleset_version"]
+            )
     _attach_issue_counts(summaries, latest_completed)
     return summaries
 

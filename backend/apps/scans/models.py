@@ -197,6 +197,19 @@ class ScanJob(models.Model):
     # 網站概況（apps/scans/site_profile.py）：基礎架構（網域／IP／反解／CDN 邊緣）與網站優勢。
     # 空 dict＝舊掃描或本次沒算到。
     site_profile = models.JSONField(default=dict, blank=True)
+    # 掃描覆蓋紀錄（coverage.py）：各項檢查是否完整跑完、產生了哪些問題、各維度覆蓋狀態。
+    # 計分、歷史比較（已修好／未觀察到）與報告都依此判斷；空 dict＝舊掃描，無從判斷。
+    coverage = models.JSONField(default=dict, blank=True)
+    # 完成時的計分公式與判定規則集版本（versions.py）；兩次掃描版本相同，分數變化才可直接比較。
+    # 空字串＝舊掃描、版本不明。
+    scoring_version = models.CharField(max_length=32, blank=True, default="")
+    ruleset_version = models.CharField(max_length=32, blank=True, default="")
+    # Google PageSpeed Insights 量測（pagespeed.py）：Lighthouse 實驗室分數與 CrUX 真實使用者資料。
+    # 外部指標不併入 Argus 分數；空 dict＝沒有量測。
+    performance_report = models.JSONField(default=dict, blank=True)
+    # 網站特徵（fingerprint.py，Smart Scan 階段 1）：只記錄爬取階段已有的訊號，
+    # 不影響任何掃描決策；看不出來的特徵為 None 並在 completeness 註明原因
+    fingerprint = models.JSONField(default=dict, blank=True)
     # 即時進度（worker 寫入；前端輪詢顯示）
     # {pages_done: int, pages_total: int, phase: "crawling"|"scanning"|"agent_testing",
     #  phase_started_at: ISO8601 str}

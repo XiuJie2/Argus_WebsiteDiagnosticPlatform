@@ -120,6 +120,26 @@ function ActiveScanBanner({ scan }) {
   );
 }
 
+
+/** 覆蓋契約：有檢查沒完整跑完時提示，分數只反映實際完成的部分（沒有就不顯示）。 */
+function CoverageNotice({ coverage }) {
+  const incomplete = coverage?.incomplete || [];
+  if (!incomplete.length) return null;
+  const partial = Object.entries(coverage.categories || {})
+    .filter(([, state]) => state === "partial")
+    .map(([category]) => CATEGORY_LABELS[category] || category);
+  return (
+    <section className="panel project-coverage-notice" role="status">
+      <p className="project-coverage-title">這次有 {incomplete.length} 項檢查沒有完整完成</p>
+      <p className="hint-text">
+        {incomplete.map((item) => item.label).join("、")}。
+        {partial.length > 0 && `${partial.join("、")} 的分數只反映實際完成的檢查，`}
+        沒有發現問題不代表沒有問題。
+      </p>
+    </section>
+  );
+}
+
 function ProjectOverviewPage() {
   const { project } = useOutletContext();
   const [data, setData] = useState(null);
@@ -154,10 +174,14 @@ function ProjectOverviewPage() {
 
   const latest = data.latest_scan;
   const previous = data.previous_scan;
+  // 評分公式或規則集不同時，分數差可能只是規則改了，不顯示成進步／退步（後端 versions.py）
+  const comparable = data.score_comparable !== false;
   const delta =
-    latest && previous && latest.overall_score != null && previous.overall_score != null
+    comparable && latest && previous && latest.overall_score != null && previous.overall_score != null
       ? latest.overall_score - previous.overall_score
       : null;
+  const deltaText = previous && !comparable ? "評分規則已更新，無法直接比較" : "—";
+  const modelChanges = data.trend.filter((point) => point.model_changed).length;
   const issuesPath = projectPath(project.id, "issues");
   const trendPoints = data.trend.slice(-trendRange);
 
@@ -195,6 +219,7 @@ function ProjectOverviewPage() {
         </section>
       ) : (
         <>
+          <CoverageNotice coverage={latest.coverage} />
           <div className="project-kpis">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
@@ -203,7 +228,7 @@ function ProjectOverviewPage() {
                 <div>
                   <span className={`project-grade tone-${scoreTone(latest.overall_score)}`}>{scoreGrade(latest.overall_score)}</span>
                   <p className="project-kpi-sub">與上次相比</p>
-                  <p className="project-kpi-delta">{delta === null ? "—" : delta === 0 ? "分數持平" : <DeltaText delta={delta} />}</p>
+                  <p className="project-kpi-delta">{delta === null ? deltaText : delta === 0 ? "分數持平" : <DeltaText delta={delta} />}</p>
                 </div>
               </div>
               <p className="project-kpi-hint">
@@ -226,7 +251,10 @@ function ProjectOverviewPage() {
                     較上次掃描：
                     <Link to={`${issuesPath}?change=new`}>新增 {data.changes.new}</Link>、
                     <Link to={`${issuesPath}?change=persisting`}>持續 {data.changes.persisting}</Link>、
-                    <Link to={`${issuesPath}#missing`}>未出現 {data.changes.missing}</Link>
+                    <Link to={`${issuesPath}#missing`}>
+                      未出現 {data.changes.missing}
+                      {data.changes.resolved ? `（已修好 ${data.changes.resolved}）` : ""}
+                    </Link>
                   </>
                 ) : "再掃描一次後會標示新增、持續與未出現的問題"}
               </p>
@@ -251,7 +279,7 @@ function ProjectOverviewPage() {
               </p>
               <p className="project-kpi-sub">與上次相比</p>
               <p className="project-kpi-change">
-                分數變化 <b>{delta === null ? "—" : delta > 0 ? `+${delta}` : delta}</b>
+                分數變化 <b>{delta === null ? deltaText : delta > 0 ? `+${delta}` : delta}</b>
               </p>
               <Link className="project-text-link" to={`/scans/${latest.id}`}>查看這次結果 →</Link>
             </section>
@@ -291,6 +319,11 @@ function ProjectOverviewPage() {
                 ariaLabel={`${project.name} 分數趨勢`}
               />
               {data.trend.length < 2 && <p className="hint-text">完成兩次以上掃描後即可看出趨勢。</p>}
+              {modelChanges > 0 && (
+                <p className="hint-text">
+                  期間評分規則更新過 {modelChanges} 次，更新前後的分數不宜直接比較。
+                </p>
+              )}
             </section>
           </div>
 
@@ -803,8 +836,8 @@ function ProjectIssuesPage() {
         <section className="panel" id="missing">
           <h2 className="project-section-title">本次未出現（{data.missing.length}）</h2>
           <p className="hint-text">
-            上一次掃描有、這次沒有出現的問題（只列這次仍有檢查的維度）。可能已修好，
-            也可能是這次沒爬到相關頁面或頁面被阻擋，請到該頁確認。
+            上一次掃描有、這次沒有出現的問題（只列這次仍有檢查的維度）。只有同一項檢查這次完整跑完、
+            相關頁面也重新檢查過，才標示「已修好」；其餘可能是這次沒爬到該頁、檢查失敗或沒有執行，請到該頁確認。
           </p>
           <ul className="project-issue-list is-muted">
             {data.missing.map((issue) => (
@@ -814,6 +847,9 @@ function ProjectIssuesPage() {
                   <p className="project-issue-title">{issue.title}</p>
                   <p className="project-issue-meta">{CATEGORY_LABELS[issue.category] || issue.category}</p>
                 </div>
+                {issue.status_label && (
+                  <span className={`project-change-chip is-${issue.status}`}>{issue.status_label}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -1230,11 +1266,17 @@ function ProjectHistoryPage() {
   const completed = scans.filter((scan) => scan.status === "completed");
   // 每次完成掃描與「前一次完成掃描」的分數差
   const deltaById = new Map();
+  // 評分與規則版本不同（或舊掃描版本不明）的兩次不算分數差
+  const sameModel = (a, b) =>
+    Boolean(a.scoring_version && a.ruleset_version)
+    && a.scoring_version === b.scoring_version
+    && a.ruleset_version === b.ruleset_version;
+  const modelChangedIds = new Set();
   completed.forEach((scan, index) => {
     const older = completed[index + 1];
-    if (older && scan.overall_score != null && older.overall_score != null) {
-      deltaById.set(scan.id, scan.overall_score - older.overall_score);
-    }
+    if (!older || scan.overall_score == null || older.overall_score == null) return;
+    if (sameModel(scan, older)) deltaById.set(scan.id, scan.overall_score - older.overall_score);
+    else modelChangedIds.add(scan.id);
   });
 
   return (
@@ -1278,7 +1320,13 @@ function ProjectHistoryPage() {
                       <td>{formatDateTime(scan.created_at)}</td>
                       <td><ScanStatusBadge status={scan.status} /></td>
                       <td><ScoreBadge score={scan.overall_score} /></td>
-                      <td>{deltaById.has(scan.id) ? <DeltaText delta={deltaById.get(scan.id)} /> : "—"}</td>
+                      <td>
+                        {deltaById.has(scan.id) ? (
+                          <DeltaText delta={deltaById.get(scan.id)} />
+                        ) : modelChangedIds.has(scan.id) ? (
+                          <span className="hint-text" title="評分規則與前一次不同，分數不宜直接比較">規則已更新</span>
+                        ) : "—"}
+                      </td>
                       <td>{scan.pages_count} 頁 · {scan.findings_count} 項</td>
                       <td>
                         <div className="project-table-actions">

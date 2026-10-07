@@ -29,6 +29,10 @@ queued → crawling → scanning → [agent_testing] → completed
 | `process_runner.py` | 以 `Popen` 執行 Nuclei/Katana，輪詢 DB 取消並終止 process tree | 吞掉 `ScanCancelled`、記錄 raw stdout/stderr |
 | `crawler.py` | Playwright BFS 爬蟲、收集頁面；整站模式以 robots.txt 宣告的 sitemap（或 `/sitemap.xml`）補種子（`discover_sitemap_urls` → `_CrawlState.seed`，同 origin、非 `.gz`、≤2 MB、索引最多展開 3 個子檔；與掃描網址只差 `www.` 前綴的 sitemap 網址由 `to_scan_origin` 改寫成掃描 origin），連結稀疏的網站也能達到頁數上限；預設深度 `ARGUS_DEFAULT_MAX_DEPTH`＝6。`/cdn-cgi/` 路徑一律不爬（`is_crawl_trap`：Cloudflare 給機器人的無限陷阱連結）。Cloudflare 攔截頁判定只認 `/cdn-cgi/challenge-platform/h/`、`_cf_chl_opt` 等攔截頁專屬標記——**不可用裸字串 `challenge-platform`**：CF Bot 偵測會在每個正常頁面插入 `/cdn-cgi/challenge-platform/scripts/` 背景腳本，曾讓整站只爬到首頁且被誤標為被阻擋（`waf_scanner.py` 同理） | 修改 ScanJob.status、呼叫 billing |
 | `scanners.py` | SEO/AEO/GEO/UX 掃描 + 被動式基本安全檢查（HTTPS/header 存在性/CSRF/PII）、產生 findings | 修改 ScanJob.status、深度資安分析 |
+| `coverage.py` | 掃描覆蓋契約（見下「掃描覆蓋契約」）：`ScanCoverage` 累積各檢查狀態與產生的問題代號、`category_status`、`incomplete_checks`、`absent_issue_status`（前次有本次沒有的問題狀態）、`issue_key` | 寫 DB、修改 `ScanJob.status` |
+| `fingerprint.py`、`fingerprint_gold.py`、`fingerprint_benchmark.py` | 網站特徵（Smart Scan 階段 1，見下「網站特徵」）：`build_fingerprint` 只用爬取已有的訊號、`fingerprint_snapshot` 存 `ScanJob.fingerprint`；準確率資料集與指標 | 發任何請求、改變執行計畫或覆蓋紀錄、把「沒看到」寫成 False |
+| `pagespeed.py` | Google PageSpeed Insights（見下「PageSpeed Insights」）：`fetch` 呼叫 PSI v5、`parse` 整理成 `ScanJob.performance_report`、`summary_lines` 給報告範圍表 | 修改 `ScanJob.status`、把金鑰寫進 log 或錯誤訊息、把外部分數併入 Argus 分數 |
+| `evidence/` | 跨模組共用證據（P0-B）：`contacts.py` 的 Email／電話格式、正規化（`normalize_phone`：+886→0、去分機）、`collect_contacts`（每筆帶來源網址、取得方式、位置 content／comment／link、視窗、登入狀態）。資安 `scanners.analyze_data_exposure`、`security/redaction.py` 與 AEO `aeo/answers.py`、`aeo/evaluate.reconcile_contact` 都從這裡取，**不得各自另寫 Email／電話 regex** | 寫 DB、連線目標網站 |
 | `cancellation.py` | 合作式取消：`is_cancelled` / `raise_if_cancelled` 直接查 DB `ScanJob.status` 是否為 `CANCELLED`（**非 Redis 旗標**），供 worker 在檢查點輪詢 | 直接終止 worker process |
 | `fixgen/` | 修正產出引擎（ADR-0002）：`facts.py` 爬取事實萃取、`policy.py` 事實政策三級驗證、`engine.py` prompt＋單次 JSON 產生＋渲染、`services.py` 計費閘門觸發（先扣後派）＋狀態機冪等、`tasks.py` Celery 任務（不重試）。API 掛在 ScanJobViewSet 的 `fix-output/trigger|status|artifacts` | 修改 `ScanJob.status`、自動重試、繞過事實政策驗證、派工後才計費 |
 | `reports.py` | 報告 payload 與排版：`render_report_docx` 產生 .docx（內容測試直接讀它），`build_scan_report` 再交給 `report_pdf.py` 轉成 PDF 並寫 `ReportVerification`；**對外只提供 PDF**（2026-10-03） | 防偽紀錄以外的 DB 寫入 |
@@ -131,8 +135,10 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
   - 題庫意圖可設 `anchors`（主題詞）。段落或其小標題沒有主題詞時，答案值不算數；沒有任何段落在談這個主題就判 `missing`，不再拿無關段落當「資訊不足」的證據。實例：學員心得裡的「必須」被當成申請資格。
   - 心得／見證段落（小標題含「見證、心得、評價…」，或第一人稱單數「我」出現兩次以上）不能回答題庫問題（`answers.is_testimonial`）。
   - 超過 `MAX_HEADING_CHARS`（80）或含句中句號的 h1–h6 視為內文段落（`content._is_body_text`）。實例：隱私權政策整段寫在 h3 裡，裡面的 Email 被當成標題略過，造成資安判「公開 Email」、AEO 卻判「找不到 Email」的矛盾。
+- **共用聯絡資訊證據（2026-10-07，P0-B）**：`evaluate_site` 以 `evidence.contacts.collect_contacts` 擷取同一份 Email／電話，`reconcile_contact` 核對聯絡題：共用證據的值出現在任何可讀段落（含被當成標題的短段落）就判可回答；只在導覽列、頁首、隱藏區塊或 HTML 註解時判定不變，但理由寫明位置與「與資安檢查情境不同、並不矛盾」。`aeo_report.shared_contacts` 只記筆數不存值。測試 `tests_shared_evidence.py`。
+- **回歸資料集與指標（2026-10-07，P0-C）**：`aeo/gold_dataset.py`（`GOLD_CASES` 調整用＋`HOLDOUT_CASES` 保留集，每題人工標註；tag 分 answerable／insufficient／conflict／missing／near_miss／holdout）、`aeo/benchmark.py`（以「可回答」為正類算 precision、recall、false positive rate、accuracy、每站耗時、混淆矩陣）、`manage.py aeo_benchmark [--holdout] [--json]`（低於門檻非零結束）。門檻 `benchmark.THRESHOLDS`（accuracy／precision／recall ≥ 0.95、FPR ≤ 0.05）由 `tests_aeo_benchmark.py` 鎖定，只能往上調；**不可為了讓規則通過而改標註**，保留集不要拿來調規則。同次依資料集修正的規則：小標題就是主題時段落算候選（`_passage_score` 標題命中權重 1）、「如需／若需」不算條件（`_CONDITIONAL`）、感謝詞算空泛（`_VAGUE`）、營業時間關鍵詞加「無休／全天」。
 - 人工校驗題集在 `tests_aeo_answerability.py` 的 `GOLD_SITES`：改動規則後判定正確率必須維持 100%。**第一版只做可重現的規則判定**；受控 AI 評估與外部平台觀察尚未實作，報告不得宣稱有。
-- 新增意圖或判定規則：先在 `GOLD_SITES` 加一個會踩到的案例，再改規則。
+- 新增意圖或判定規則：先在 `GOLD_SITES`（或 `gold_dataset.GOLD_CASES`）加一個會踩到的案例，再改規則，最後跑 `manage.py aeo_benchmark` 確認門檻。
 
 ## 網站專案（`SiteProject`，2026-10-02）
 
@@ -146,7 +152,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 - **`domain_verified`**：`SiteProjectSerializer` 的唯讀欄位，等於 `user_owns_domain(user, hostname)`，前端頁首顯示已驗證勾勾；權限判斷仍以 view 內的檢查為準。
 - **預設掃描設定**：`SiteProject.default_scope`／`default_categories`／`default_scan_mode`（passive/active，2026-10-03）只是前端表單初始值，建立掃描時仍以實際送出的參數為準；新增專案時可一併設定（`SiteProjectCreateSerializer`），預設主動測試時預設維度必須含資安（`_check_active_needs_security`）。`description`（選填 300 字）在網站沒有 meta description 時顯示在總覽頁首。
 - **示範專案（`is_demo`，2026-10-03，`demo/`）**：Email 註冊與第一次 Google 登入時由 `demo.seed.create_demo_project_safely` 建立（`ARGUS_DEMO_PROJECT_ENABLED`，預設開；失敗只記 log、不影響註冊）。資料是虛構網站 `scripts/demo_site/server.py` 三個版本的**真實掃描**匯出（`manage.py export_demo_dataset`），截圖放在 `demo/screenshots/`、所有示範專案共用；重產步驟見 `demo/README.md`。示範專案唯讀：建立掃描（`_resolve_project`）、PATCH（`SiteProjectUpdateSerializer.validate`）、修正產出觸發、網頁複刻（`apps/rebuild`）都回 400，可以封存。後台統計與清單（`admin_api.views.real_scans()`）與評論資格（`reviews._latest_completed_experience`）都排除示範掃描。`ScanJobSerializer.is_demo` 給前端隱藏複刻。既有帳號補建：`manage.py seed_demo_project --without-projects`（封存過的不補）。測試：`tests_demo_project.py`。
-- **問題的追蹤單位**＝一次掃描中同一條 `rule_id`（沒有就「分類:標題」），與報告合併規則一致；比較對象是同專案前一次「完成」的掃描。「本次未出現」只列本次仍有勾的維度，前端必須提醒不等於已修好。
+- **問題的追蹤單位**＝一次掃描中同一條 `rule_id`（沒有就「分類:標題」），與報告合併規則一致；比較對象是同專案前一次「完成」的掃描。「本次未出現」只列本次仍有勾的維度，每項附覆蓋契約判定的狀態（見「掃描覆蓋契約」），只有 `resolved` 能稱為已修好。
 - **migration 0019 會先清掉殘留**（`drop_orphaned_site_project_schema`）：0019 未套用時若資料庫已有 `scans_siteproject` 表或 `scans_scanjob.project_id` 欄位，只可能是同功能較早版本跑過後被回退（程式與 migration 紀錄退回但表沒刪），會先移除再建立並回填。2026-10-02 Docker migrate 因此報 `relation "scans_siteproject" already exists`；由 `SiteProjectMigrationRecoveryTests` 鎖定（SQLite／PostgreSQL 皆驗證）。**回退含 migration 的功能時要用 `migrate <app> <前一版>` 反向套用，不要只退程式碼或刪 `django_migrations` 紀錄。**
 - **不提供硬刪除**：DELETE＝封存（`archived_at`），單筆讀取仍可讀封存專案（舊掃描詳情要顯示所屬專案），清單只列未封存。
 - **頁面分頁**：`/api/projects/<id>/pages/?scan=` 回一次掃描的每一頁與其問題數（只算有勾的維度），沒有對應頁面的站台層級發現另計 `site_level_findings`。
@@ -196,7 +202,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 |---|---|
 | 掃描範圍（範圍／模式／頁數上限／實際頁數／robots） | 收件者要能判斷涵蓋範圍，「沒發現問題」才有意義 |
 | 掃描授權聲明（`AuthorizationConsent`） | Argus 是授權式掃描平台，報告沒有授權依據等於放棄核心合規主張；查無紀錄要明講，不能讓章節消失 |
-| 掃描警示（`scan_effectiveness` / 略過與失敗頁數） | 爬 0 頁的掃描會產出看起來正常的報告，分數只反映站台層級檢查 |
+| 掃描警示（`scan_effectiveness` / 略過與失敗頁數／部分掃描：`1 < max_pages < ARGUS_DEFAULT_MAX_PAGES`） | 爬 0 頁的掃描會產出看起來正常的報告，分數只反映站台層級檢查；部分掃描不能被當成整站結論 |
 
 | 絕對不能寫進報告 | 為什麼 |
 |---|---|
@@ -324,6 +330,28 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
 - **精準標註（2026-10-06）**：觸控目標、缺標籤欄位、破版元素都記錄行動版文件座標 `box`（`rect + scroll`）；只要有這類問題，爬蟲另拍一張行動版整頁截圖（`page-N-mobile.png`，路徑存 `layout_metrics["mobile_screenshot"]`，API `pages/<id>/screenshot/?variant=mobile`、`PageSerializer.has_mobile_screenshot`）。Finding 的 `evidence_json.annotations = {"viewport": "mobile", "boxes": [...]}`，前端在行動版截圖上逐一框住實際元素，不再框整個區塊。移出視窗左右兩側的抽屜選單不算觸控目標（`isVisible` 排除 `rect.right <= 0 || rect.left >= innerWidth`）。
 - **未捕捉的 JS 例外**（`pageerror` 監聽 → `page["js_errors"]`）：頁面 console 未攔截的
   例外列為 MEDIUM，證據上限 `_MAX_JS_ERROR_EVIDENCE_CHARS`（800）。
+- **axe-core WCAG 自動化檢查（2026-10-07，roadmap P1，`accessibility.py`）**：勾 UX 且
+  `ARGUS_AXE_ENABLED` 時，爬蟲在桌面版視窗、內容／截圖／連結／元素座標都擷取完之後、行動版量測
+  **之前**跑（會注入腳本，不可影響已保存的 HTML；行動版量測會改 viewport）。以 `page.evaluate(原始碼)`
+  注入（DevTools 協定，不受目標網站 CSP 影響；`add_script_tag` 會被擋），只跑 WCAG 2.0／2.1／2.2 A／AA、
+  只回違規；關掉與自建檢查重疊的 `target-size`、`label`、`select-name`。結果在 `page["a11y"]`（不落 DB，
+  與 `ux_signals` 相同），每項違規最多 5 個元素的選擇器、HTML 片段、桌面文件座標。`scanners._ux_axe`
+  轉成 finding：`rule_id=axe-<規則>`、impact critical→高／serious→中／moderate、minor→低、
+  `bounding_box`＝第一個元素、`evidence_source=axe-core <版本>`、常見規則有中文標題與修法（`_AXE_ZH`）。
+  每頁逾時 `ARGUS_AXE_TIMEOUT_SECONDS`（15）、最多 `ARGUS_AXE_MAX_PAGES`（50）頁；覆蓋檢查 `axe`
+  （全部可分析頁跑完＝completed、部分＝partial、全失敗＝failed）。報告來源標「外部工具（axe-core）」、
+  依據 `reports.AXE_BASIS`（自動化檢查不等於符合 WCAG）。axe 檔案固定版本放 `vendor/axe/`（含 LICENSE），
+  升級時換檔並更新 `tests_accessibility_axe.py` 的版本斷言。測試的真實瀏覽器案例需 `ARGUS_TEST_CHROMIUM_PATH`。
+- **PageSpeed Insights（2026-10-07，roadmap P1，`pagespeed.py`）**：勾 UX、`ARGUS_PAGESPEED_ENABLED` 且有
+  `ARGUS_PAGESPEED_API_KEY` 時，`stage_pagespeed` 以 PSI v5（`strategy=mobile`，四個 category）**只測首頁**，結果寫
+  `ScanJob.performance_report`（migration 0030）：`lab`＝Lighthouse 實驗室單次量測（四個分數、LCP／CLS／TBT／FCP／
+  Speed Index、前 5 項改善機會，`runtimeError` 記在 `lab.error`），`field`＝CrUX 過去 28 天第 75 百分位（優先
+  網址本身，`origin_fallback` 時改用整個網站並標 `scope=origin`；都沒有則 `scope=none`＋`reason`，不硬湊數字；
+  CrUX 的 CLS 以 ×100 整數回傳，要除以 100）。**外部指標不併入 Argus 分數、不產生 Finding**，只在掃描「效能」
+  分頁與報告範圍表兩列（`summary_lines`）並列呈現。覆蓋檢查 `pagespeed`（維度 None，不影響維度覆蓋）：成功＝
+  completed、Lighthouse 有 runtimeError＝partial、呼叫失敗＝failed（掃描照常完成）。錯誤訊息只寫原因（逾時、配額
+  用完、HTTP 狀態碼），不含金鑰與回應內文。受測網址會送到 Google。逾時 `ARGUS_PAGESPEED_TIMEOUT_SECONDS`（90）。
+  測試以 PSI 回應 fixture 驗證（`tests_pagespeed.py`），不連線 Google。
 
 `Page.layout_metrics` 為空代表**沒量到**（量測失敗或舊資料），
 不可當成「沒問題」——`tasks.py` 的 `tested_categories` 也依此判斷，否則報告會
@@ -354,7 +382,7 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
 | **報告編號跨重新產生保持不變** | 由 `HMAC(SECRET_KEY, scan_id)` 推導，不含時間戳。報告一旦交付就可能被轉寄存檔，換編號會讓已流出的副本失效 |
 | **報告本身只印編號、不印雜湊** | 雜湊要涵蓋整份檔案，檔案裡又要有雜湊＝循環相依。雜湊由查驗端點提供，收件者自行 `sha256sum` 比對 |
 | **`views.py` 的 report action 必須用快取** | 省下每次下載的 IO 與 CPU。三個條件都成立才可重用：有防偽紀錄、檔案存在、`renderer_version` 等於目前的 `report_render.RENDERER_VERSION` |
-| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
+| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 11：PageSpeed Insights 兩列；10：axe-core 依據與來源；9：評分版本；8：覆蓋契約；7：部分掃描警示；6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
 | **重產時舊雜湊要進 `previous_sha256`** | 重產會換掉 `content_sha256`，若直接覆蓋，先前已寄出的正本在查驗頁會被判成「對不上」——等於自己把交付過的報告變成偽造品 |
 | **`/api/verify/<編號>/` 是公開端點，絕不回傳掃描發起人** | 否則用報告編號就能反查使用者身分。回應只有：編號、目標網址、掃描與產生時間、整體分數、內容雜湊。帶 `?content_sha256=` 時另回 `matches` / `is_latest_version`，比對範圍含 `previous_sha256`；歷史雜湊本身不列進回應 |
 
@@ -395,7 +423,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 `step`／`steps` 是 phase 之下的細分階段（前端掃描進度條據此顯示「正在分析 GEO／UX／資安…」）：
 `steps` 由 `tasks.planned_scan_steps()` 依勾選維度與範圍／授權算出本次實際會跑的子步驟，`step` 是目前這一步。
 可能值：`crawl`、`analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`（只列勾選維度）、`aeo_answers`（勾 AEO，接在逐維度分析之後）、
-`active_probe`（`run_nuclei`）、`deep_security`、`exposure_probe`（`run_exposure`）、`geo_site`（勾 GEO）、`seo_links`（勾 SEO）、`agent`（Agent 啟用且可執行）、`scoring`。
+`active_probe`（`run_nuclei`）、`deep_security`、`exposure_probe`（`run_exposure`）、`geo_site`（勾 GEO）、`seo_links`（勾 SEO）、`pagespeed`（勾 UX 且已設定 PSI 金鑰）、`agent`（Agent 啟用且可執行）、`scoring`。
 頁面分析改為**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
 
 `step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、逐維度分析＝該維度已分析頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
@@ -411,6 +439,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `target_validation` | `stage_validate_target` | 再次確認目標是公開 HTTP(S) |
 | `crawl` | `stage_crawl` | Playwright BFS；每頁回報進度並當取消檢查點。**沒有任何可分析的頁面（2xx／3xx 且未被阻擋）就丟 `ScanTargetUnreachable`**，由 `finish_unreachable` 標失敗、寫可讀原因並全額退款（2026-10-06：0 頁曾標完成並給 73 分） |
 | `enter_scanning` | `stage_enter_scanning` | 記錄警告、狀態推進到 scanning、落地 `Page` |
+| `fingerprint` | `stage_fingerprint` | 網站特徵（只記錄、不影響掃描）：寫 `ScanJob.fingerprint`；失敗只記 log（`fingerprint.py`） |
 | `page_analysis` | `stage_analyze_pages`（單頁單維度：`_analyze_one_page`） | 逐維度、逐頁規則分析＋inline 秘鑰偵測 |
 | `aeo_answers` | `stage_aeo_answerability`（`_aeo_site_pages`） | AEO 問答檢測（見下「AEO 問答檢測」），結果寫 `ScanJob.aeo_report` |
 | `site_security` | `stage_site_security` | 站台層級 HTTPS/HSTS/CSP 等（只評估一次） |
@@ -419,6 +448,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
 | `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲可存取性 |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
+| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`） |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |
 | `agent` | `stage_agent` | Hermes-Agent（資安／UX），失敗不讓掃描失敗 |
 | `kali` | `stage_kali` | Kali 主動驗證 fallback |
@@ -428,6 +458,39 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 階段之間只透過 `ScanRunContext` 傳遞中間產物；`ctx.record(findings, page=...)` 同時寫 `Finding` 與納入計分清單。**新增階段**：寫 `stage_xxx(ctx)`、加進 `SCAN_PIPELINE`；要在進度條顯示時同步 `planned_scan_steps()` 與前端 `SCAN_STEP_META`。測試 patch 目標仍是 `apps.scans.tasks.<名稱>`，所以外部依賴一律以模組層級名稱呼叫。結構由 `tests_pipeline_stages.py` 鎖定。
 
 網頁 API 與 MCP 共用的掃描入口：`views.enqueue_created_scan()`（派工，失敗全額退款）、`views.ensure_report_file()`（報告快取）、`tasks.request_scan_cancel()`（取消＋退款）。
+
+---
+
+## 掃描覆蓋契約（`coverage.py`，2026-10-07，roadmap P0-A）
+
+工具失敗或沒跑完不能被呈現成「0 項問題」，前次問題沒出現也不等於已修好。
+
+- **記錄**：各 `stage_*` 以 `ctx.coverage.mark(check, status, reason)` 記錄檢查結果（completed／partial／failed／blocked／skipped），`ctx.record(findings, check=...)` 同時記下該檢查產生的問題代號（`issue_key`）。檢查名稱與所屬維度在 `CHECK_CATEGORIES`；外部工具例外一律走 `tasks._tool_failed`（記 log＋標 failed）。agent 的 finding 由 runner 直接落 DB，以規則前綴（`AGENT_UX_`／`agent-`／`kali-`）對回檢查。
+- **保存**：`stage_scoring` 把 `coverage_for(ctx, tested)` 寫入 `ScanJob.coverage`（migration 0028）：`checks`（狀態、原因、問題代號）＋`categories`（completed／partial／not_tested；沒進計分的勾選維度一律 not_tested）。
+- **計分**：某維度有記錄的檢查全部失敗／被阻擋時，從 `tested_categories_for` 移除（顯示未評估）；部分失敗照常評分，但標部分評估。爬取有頁面擷取失敗（`failed_urls`）時 `crawl=partial`，逐頁分析的維度都是部分評估；robots／範圍略過不算。
+- **歷史比較**（`projects.compare_issues`）：前次有、本次沒有的問題，以前次覆蓋紀錄找出是哪項檢查產生的，看該檢查本次狀態——completed 且受影響頁面本次有完整分析（沒被阻擋、HTTP < 400）才是 `resolved`；partial→`not_observed`、failed→`inconclusive`、blocked→`blocked`、沒跑→`not_tested`。前次沒有覆蓋紀錄時退回以維度狀態判斷；本次沒有覆蓋紀錄（舊掃描）一律 `not_observed`。回應附 `status_label`，總覽 `changes.resolved` 只算 resolved。
+- **報告**：摘要「已解決 N 項」只算 resolved，其餘寫「另有 N 項本次未出現，但檢查不完整、無法確認已修好」；掃描範圍表列「未完整完成的檢查」（只有 partial 附原因，failed 的例外類別屬內部資訊不印）與「部分評估的面向」。
+- **API**：`ScanJobSerializer.coverage`；專案總覽 `latest_scan.coverage`（`categories`＋`incomplete`），前端顯示不完整提示。
+- **新增檢查**：在 `CHECK_CATEGORIES`／`CHECK_LABELS` 登記，成功、失敗、沒執行三種情況都要 mark。測試：`tests_coverage.py`。
+- 尚未做：rule／resource 級細分、把檢查狀態接到計費。
+
+## 評分與規則版本（`versions.py`，2026-10-07，roadmap P1）
+
+- `ScanJob.scoring_version`（計分公式，`SCORING_VERSION`）與 `ruleset_version`（判定規則集，`RULESET_VERSION`）由 `stage_scoring` 寫入（migration 0029）；`rerun_scan` 兩個都更新，`finding_normalization._rescore` 只更新計分版本（只重跑部分規則）。舊掃描為空字串＝版本不明。
+- **改了 `calculate_scores` 的公式就把 `SCORING_VERSION` +1；改了會影響找出哪些問題、算多嚴重的規則（含 AEO 判定與覆蓋契約）就把 `RULESET_VERSION` 改成當天日期。**
+- `versions.comparable(a, b)`：兩次掃描兩個版本都已知且相同，分數差才可直接解讀。專案總覽 `score_comparable`、走勢每點 `model_changed`／`version_label`、`project_summaries` 的 `score_comparable`；前端版本不同時不顯示 ±分，改寫「評分規則已更新，無法直接比較」，歷史報告列標「規則已更新」。
+- 報告：導讀句版本不同時寫「評分規則與前次不同，分數不宜直接比較」而不是進步／退步；掃描範圍表列「評分版本」（`RENDERER_VERSION` 9）。測試：`tests_scoring_versions.py`。
+
+## 網站特徵（`fingerprint.py`，2026-10-07，ADR-0004 階段 1）
+
+Smart Scan 的第一步：先記錄「這是什麼樣的網站」，**不改任何掃描決策或計費**（[ADR-0004](../../../docs/adr/0004-smart-dynamic-scan.md)）。
+
+- **只用爬取已有的訊號**：頁面 HTML（`rendered_dom` 優先）、回應標頭、狀態碼、爬蟲被動攔截的 XHR／fetch 端點；**不發任何請求**（benchmark 以 socket patch 驗證連線數＝0）。只看 2xx／3xx 且沒被阻擋的頁面；401 頁面只用來讀 `WWW-Authenticate`。
+- **特徵**：`cms`（WordPress／Drupal／Joomla／Shopify／Wix／Squarespace，標記必須在 `src`／`href` 屬性或 meta generator 裡，正文提到路徑不算）、`frameworks`（特有標記或 `X-Powered-By`）、`server`、`edge`（只看標頭，用 `infra_scanner.detect_edge`）、`has_login`／`login_urls`（實際顯示的密碼欄位，`<template>` 裡的不算）、`has_api`／`api_urls`（端點路徑像 API：`/api/`、`/graphql`、`/wp-json/`、`/rest/`、`/v1/`、`.json`；XHR 載入 HTML 片段不算）、`has_upload`、`auth_scheme`。
+- **沒看到＝`None`，不是 `False`**，並在 `completeness` 註明：`complete`（有證據）、`not_observed`（爬取完整但沒看到）、`partial`（爬取不完整——有擷取失敗或達頁數上限；API 與邊緣服務沒看到時一律 partial）、`unavailable`（沒有可分析的頁面）。
+- **信心值**：一頁的證據 0.7、兩頁以上 0.9、meta generator＋路徑 0.95。階段 2 的動態加掃只會用 ≥ 0.8 或兩個獨立證據的特徵。
+- **保存**：`ScanJob.fingerprint`（migration 0031）＝特徵＋`version`、`phase=pre_scan`、`pages_considered`、`endpoints_considered`、`crawl_complete`、`elapsed_ms`；失敗時只有 `error`（例外類別）。目前不進 API、報告與前端。
+- **準確率**：`fingerprint_gold.py`（人工標註；tag `decoy`＝容易誤判、`holdout`＝保留集，不拿來調規則）、`manage.py fingerprint_benchmark [--holdout] [--json]`，門檻 precision／recall ≥ 0.95 且連線數 0，由 `tests_fingerprint.py` 鎖定，只能往上調。**新增特徵或規則：先在資料集加案例並標註，再改規則；不可為了讓規則通過而改標註。**
 
 ---
 
