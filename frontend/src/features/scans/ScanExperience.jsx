@@ -23,6 +23,7 @@ import { formatDateTime } from "../../shared/formatters";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
 import argusEye from "../../assets/argus-eye.webp";
 import { PerformancePanel } from "../../components/scans/PerformancePanel";
+import { ScoreBreakdownPanel } from "../../components/scans/ScoreBreakdownPanel";
 import { EdgeNotice, SiteArchitecture, SiteStrengths } from "../../components/scans/SiteProfilePanel";
 import { ScanStatusBadge, ScoreBadge } from "../../components/scans/ScanBadges.jsx";
 import { useArgusStore } from "../../store";
@@ -88,6 +89,7 @@ const SCAN_STEP_META = {
   analyze_security: { label: "資安", title: "分析資安", hint: "檢查表單 CSRF，以及頁面中外洩的金鑰與個資", Icon: StatusScanGlyph },
   active_probe: { label: "主動探測", title: "主動探測", hint: "以 Nuclei／Katana 對授權目標執行受控探測", Icon: StatusScanGlyph },
   deep_security: { label: "深度資安", title: "深度資安檢查", hint: "檢查 HTTPS 與安全標頭、TLS 憑證、Cookie、SRI、DNS 與前端套件版本", Icon: StatusScanGlyph },
+  zap_passive: { label: "ZAP", title: "OWASP ZAP 被動分析", hint: "把已爬到的流量交給 OWASP ZAP 檢查，不對網站發出新的請求", Icon: StatusScanGlyph },
   exposure_probe: { label: "敏感檔案", title: "敏感檔案探測", hint: "探測常見的敏感檔案路徑是否外洩", Icon: StatusScanGlyph },
   geo_site: { label: "AI 爬蟲", title: "檢查 AI 爬蟲訊號", hint: "檢查 llms.txt 與 robots.txt 對 AI 爬蟲的設定", Icon: StatusScanGlyph },
   seo_links: { label: "連結檢查", title: "檢查連結與網址", hint: "檢查站內外連結的狀態與轉址，以及 robots.txt、HTTPS、www 與 404 頁設定", Icon: StatusScanGlyph },
@@ -1836,6 +1838,7 @@ const SCAN_TABS = [
   { path: "strengths", label: "網站優勢" },
   { path: "architecture", label: "網站架構" },
   { path: "performance", label: "效能" },
+  { path: "score", label: "分數說明" },
 ];
 
 function ScanLayout() {
@@ -1901,6 +1904,26 @@ function ScanPerformancePage() {
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
   if (!scan) return <section className="panel"><p className="hint-text">載入中…</p></section>;
   return <PerformancePanel report={scan.performance_report} />;
+}
+
+/** /scans/:scanId/score：各維度分數怎麼算出來的（基準分、逐項扣分、未完整完成的檢查）。 */
+function ScanScorePage() {
+  const { scanId } = useParams();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`/scans/${scanId}/score-breakdown/`)
+      .then((response) => !cancelled && setData(response.data))
+      .catch(() => !cancelled && setError("無法載入分數說明。"));
+    return () => {
+      cancelled = true;
+    };
+  }, [scanId]);
+  if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
+  if (!data) return <section className="panel"><p className="hint-text">載入中…</p></section>;
+  return <ScoreBreakdownPanel data={data} />;
 }
 
 /** /scans/:scanId/architecture：網站架構（流量路徑、使用的技術）＋網站結構圖。 */
@@ -2294,6 +2317,7 @@ export {
   ScanStrengthsPage,
   ScanArchitecturePage,
   ScanPerformancePage,
+  ScanScorePage,
   TopologyPage,
   isInProgress,
 };

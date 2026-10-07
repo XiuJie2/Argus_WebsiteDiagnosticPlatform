@@ -24,12 +24,14 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.scans import versions
+from apps.scans.ai_bots import summary_line as ai_bots_summary
 from apps.scans.coverage import incomplete_checks
 from apps.scans.models import Finding, ReportVerification, ScanJob
 from apps.scans.pagespeed import summary_lines as pagespeed_summary_lines
 from apps.scans.report_pdf import convert_docx_to_pdf
 from apps.scans.report_render import RENDERER_VERSION, generate_report
 from apps.scans.scan_plan import build_scan_execution_plan
+from apps.scans.security.observatory import summary_line as observatory_summary
 from apps.scans.security.redaction import redact_pii_in_text
 
 # --- 品牌與嚴重度配色 -------------------------------------------------
@@ -230,16 +232,18 @@ RULE_IMPACT = {
     "GEO_GENERAL_A8C8023032":
         "AI 摘要與引用時，較容易取用「可獨立成立的段落」——有明確主題、定義、數據來源。"
         "這是 Argus 依內容結構提出的建議，不是任何搜尋服務公布的門檻。",
-    "GEO_ROBOTS_TXT_AI_AFFA24D778":
-        "robots.txt 阻擋了 GPTBot / ClaudeBot / Google-Extended，代表這些"
-        "AI 系統不會抓你的內容做訓練與引用——會大幅降低你在 AI 回答中的"
-        "曝光。如果你希望被 AI 引用，需要把這些 User-Agent 從 robots 移除"
-        "或在 /llms.txt 提供可引用範圍。",
+    "geo-ai-search-bots-blocked":
+        "OAI-SearchBot、Claude-SearchBot、PerplexityBot 等爬蟲替 AI 搜尋與對話服務讀取網頁；"
+        "被 robots.txt 封鎖時，這些服務比較不會引用、連結你的網站。GPTBot、ClaudeBot、"
+        "Google-Extended 等是訓練用爬蟲，封鎖它們不影響搜尋與引用，是可以單獨做的商業選擇。",
 }
 
 # 「修好了怎麼確認」按 rule_id 客製：給出具體可執行的驗收指令（curl、瀏覽器、開發者工具），
 # 而不是叫使用者「再掃一次 Argus」。
 RULE_VERIFY = {
+    "seo-structured-data-required":
+        "把「逐頁證據」列出的網址貼到 https://search.google.com/test/rich-results，"
+        "確認對應項目沒有「缺少必要欄位」的錯誤。",
     "SECURITY_PII_8B24BB8B28":
         "逐一開啟「逐頁證據」列出的網址，用瀏覽器「檢視原始碼」搜尋報告中遮罩前的號碼開頭，"
         "確認已移除（含 HTML 註解）。",
@@ -301,10 +305,10 @@ RULE_VERIFY = {
         "Argus 以區塊標籤（p、div、li、td、標題等）切段，計算 40 字以上的文字區塊；"
         "少於 2 塊或全頁文字少於 300 字時列出。修改後確認主要內容有 2 段以上、"
         "各自成立的完整段落即可。",
-    "GEO_ROBOTS_TXT_AI_AFFA24D778":
-        "在終端機執行 curl -s https://你的網域/robots.txt，"
-        "應不再有 Disallow: / 對 GPTBot、ClaudeBot、Google-Extended。"
-        "或到 https://support.google.com/webmasters/answer/6062596 測試 robots 規則。",
+    "geo-ai-search-bots-blocked":
+        "在終端機執行 curl -s https://你的網域/robots.txt，確認 OAI-SearchBot、Claude-SearchBot、"
+        "PerplexityBot、ChatGPT-User 等爬蟲的群組沒有 Disallow: /，也沒有被 User-agent: * 的 "
+        "Disallow: / 涵蓋；重新掃描後網站架構分頁的 AI 爬蟲政策表會顯示「允許」。",
 }
 
 
@@ -348,6 +352,13 @@ RULE_BASIS = {
         "限制：只影響摘要與引用，不影響頁面被收錄。",
     "aeo-markup-syntax":
         "依據：JSON-LD 無法以 JSON 解析。限制：只檢查語法，不檢查型別是否適合該頁。",
+    "seo-structured-data-required":
+        "依據：Google Search Central 各類型結構化資料說明頁列為必填的欄位（產品、軟體、職缺、"
+        "食譜、影片、導覽路徑、活動、在地商家、評論與評分彙總）。限制：只檢查必填欄位是否存在，"
+        "不檢查值是否正確；符合資格也不保證 Google 一定顯示複合式搜尋結果。",
+    "seo-structured-data-self-serving-reviews":
+        "依據：Google 評論摘要說明——LocalBusiness／Organization 的評論由該商家自己控制時，"
+        "不顯示星等。限制：無法從標記判斷評論來源，請自行確認是否屬於自家評論。",
     "aeo-markup-mismatch":
         "依據：標記中的問題、答案、電話或 Email 在頁面可見文字中找不到。"
         "限制：以前 16～20 字比對，改寫過的同義文字可能被判為不一致。",
@@ -420,6 +431,8 @@ def _source_label(finding) -> str:
         return "外部工具（Katana 探索）"
     if rule.startswith("axe-"):
         return "外部工具（axe-core 無障礙自動化檢查）"
+    if rule.startswith("zap-"):
+        return "外部工具（OWASP ZAP 被動分析：只檢查已取得的回應，未另行驗證）"
     if source == "exposure_probe":
         return "主動探測（實際請求常見敏感路徑）"
     if rule.split("-")[0] in {"ssl", "dns", "cookie", "sri", "header", "js", "service", "exposure"}:
@@ -1212,6 +1225,12 @@ def _report_site_profile(scan_job: ScanJob) -> dict:
             facts.append({"label": "DNS 代管", "value": "、".join(infra["nameservers"])})
         if edge and edge.get("evidence"):
             facts.append({"label": "判斷依據", "value": "；".join(edge["evidence"][:3])})
+    if profile.get("ai_bots"):
+        facts.append({"label": "AI 爬蟲政策", "value": ai_bots_summary(profile["ai_bots"])})
+    if profile.get("observatory"):
+        facts.append(
+            {"label": "安全標頭等第", "value": observatory_summary(profile["observatory"])}
+        )
     if not facts and not strengths:
         return {}
     return {"notice": infra.get("notice", ""), "facts": facts, "strengths": strengths}

@@ -28,7 +28,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級**：
   1. **有上限的 Render Readiness**：維持 `domcontentloaded`，再以短暫 hydration grace period、DOM/內容穩定度與可選 site-specific selector 判斷就緒；**不以 networkidle 作為必要條件**。必須有總時間上限，逾時仍保留已取得 DOM/截圖並標示 `LIMITED: render_readiness_timeout`。
   2. 爬取預算可觀測（種子來源、每頁耗時、被節流次數、render readiness 結果寫進 coverage/progress）。
-  3. **Near-duplicate 只做 Analysis Reuse，不做 URL Skip**：SimHash / hreflang 僅可重用文字結構、部分 AEO/GEO 等高成本內容分析；每個 URL 仍必須各自做 headers、canonical/noindex、表單、權限、安全與 URL-specific 檢查。
+  3. **Near-duplicate 只做 Analysis Reuse，不做 URL Skip**：SimHash / hreflang 僅可重用文字結構、部分 AEO/GEO 等高成本內容分析；每個 URL 仍必須各自做 headers、canonical/noindex、表單、權限、安全與 URL-specific 檢查。（**評估後暫緩 2026-10-07**：實測逐頁五維規則分析一頁約 70–150 ms（1.1 MB 的大頁約 1.3 s），50 頁合計約 5–10 秒，遠小於爬取本身的數分鐘；重用最多省幾秒，卻有把逐頁問題錯誤複製的風險。等分析改用 LLM 等高成本方法時再做）
   4. 所有重用必須記錄 `analysis_reused_from`、重用規則與未重用檢查，不能讓 dedupe 犧牲 coverage。
 
 ## 1. SEO
@@ -37,7 +37,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
   `page_audit`、`site_findings`、`gsc`、`keywords`。GSC 已接。
 - **升級**：
   1. 接 **PageSpeed Insights API（CrUX 真實場域資料）**：LCP/INP/CLS 實驗室 vs 真實使用者並列——目前最缺的權威外部訊號。
-  2. 結構化資料驗證（JSON-LD 語法 + Google Rich Results 必填欄位，可離線）。
+  2. 結構化資料驗證（JSON-LD 語法 + Google Rich Results 必填欄位，可離線）。（**已實作 2026-10-07**：語法由 AEO `aeo-markup-syntax` 回報；必填欄位 `seo/structured_data.py`，依 Google Search Central 2026-09 版，涵蓋產品（含 Offer／AggregateOffer）、軟體、職缺、食譜、影片、導覽路徑（含 ListItem）、活動（含地點）、在地商家、評論與評分彙總，缺必填 → `seo-structured-data-required`（低）；商家／組織自評星等 → `seo-structured-data-self-serving-reviews`（資訊）。FAQPage／HowTo 已不在 Google 支援清單、Article／Organization 無必填，不檢查；不檢查建議欄位與值的正確性）
   3. robots/sitemap 一致性交叉檢查（sitemap 列出卻 noindex、canonical 指他頁等矛盾）【待驗證：`site_checks` 現況是否已含】。
   4. 目標關鍵字 vs GSC 實際曝光關鍵字的落差分析。
 
@@ -76,8 +76,8 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **現況**：HTTPS/header/CSRF/PII、SSL/Cookie/CORS/CSP/SRI/DNS、JS 套件 CVE、服務 CVE 等規則已具備，OWASP/CWE 對映齊全，NVD 離線庫已接。
 - **升級**：
   1. **校準既有 `Finding.confidence` 的語義與使用方式**：欄位、`make_finding()` 與 serializer 已存在；缺口是規則如何產生 confidence、如何影響 score/report，以及如何區分「配置建議」「曝露面」「疑似弱點」「已驗證弱點」。既有資料的預設 `1.0` 一律視為 **legacy / uncalibrated**，不得回溯解讀為 Confirmed。
-  2. Security headers 評分接 **Mozilla Observatory 規則**（可離線實作，給 A~F 等第）。
-  3. CVE 資料源補 **OSV.dev + EPSS**，讓漏洞優先序不只看 CVSS。
+  2. Security headers 評分接 **Mozilla Observatory 規則**（可離線實作，給 A~F 等第）。（**已實作 2026-10-07**：`security/observatory.py`，獨立呈現在網站架構與報告，不併入 Argus 分數）
+  3. CVE 資料源補 **OSV.dev + EPSS**，讓漏洞優先序不只看 CVSS。（**已實作 2026-10-07**：`security/vuln_intel.py`，EPSS 影響排序與說明、OSV 提供前端函式庫修補版本，不改嚴重度）
 
 ## 6. 主動探測（Active Probing）
 
@@ -100,6 +100,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
   4. **取消契約**：使用者取消或 scan 中止時，必須停止 ZAP spider / active scanner / subprocess 或 container，並確認不再產生新的網路流量；coverage 記為 CANCELLED/PARTIAL。
   5. Authenticated Context：後續支援測試帳號 / session context 時再開啟，不把登入失敗當成「已測」。
   6. ZAP alert 先正規化進 Shared Evidence Store，再由 Argus 做 confidence、severity、去重與 Root Cause；**不要直接照搬 ZAP risk 等級到最終報告**。
+  - 進度（2026-10-07）：第 1 項 Passive Analysis 已實作（HAR 匯入，見 [`zap-passive.md`](zap-passive.md)）；第 2–5 項尚未開始。
 - 工具定位：
   - Nuclei = template / known-pattern detection
   - SQLMap = SQL Injection 專項驗證
@@ -143,7 +144,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 - **現況**：llms.txt 成熟度檢查、FAQ 結構偵測。
 - **升級**：
-  1. AI bot robots 政策分析（`GPTBot`/`ClaudeBot`/`Google-Extended`/`PerplexityBot` 允許或封鎖，說明商業取捨）。
+  1. AI bot robots 政策分析（`GPTBot`/`ClaudeBot`/`Google-Extended`/`PerplexityBot` 允許或封鎖，說明商業取捨）。（**已實作 2026-10-07**：`apps/scans/ai_bots.py`，13 個 bot 依訓練／AI 搜尋／使用者觸發分類；只封鎖訓練用爬蟲不再列為問題）
   2. 內容可機讀性（語意 HTML 比例、主內容可否與導覽/頁尾分離 `<main>`/`article`）。
 
 ## 11. 連結檢查
@@ -161,7 +162,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級（整體最關鍵）**：
   1. **Coverage-aware scoring**：FAILED / BLOCKED / LIMITED / NOT_TESTED 的規則或資源不得被視為「0 問題」而拉高分數。分數需附有效 coverage，coverage 低於門檻時顯示「資料不足／部分評估」，而非假精準高分。
   2. **歷史狀態語義重做**：`finding absent` 先標 `NOT_OBSERVED`；只有同 rule、相容 resource/context、偵測能力已完整執行且 coverage 足夠時，才能升級成 `RESOLVED`。建議生命週期：`NEW / PERSISTING / RESOLVED / NOT_OBSERVED / NOT_TESTED / BLOCKED / INCONCLUSIVE`。
-  3. **評分可解釋化**：每個維度列出扣分來源、coverage、confidence 與未測範圍。
+  3. **評分可解釋化**：每個維度列出扣分來源、coverage、confidence 與未測範圍。（**已實作 2026-10-07**：扣分來源、coverage、未完整完成的檢查；confidence 目前不影響扣分，待第 6 項校準後再列）
   4. **外部指標保持獨立，不做錯誤「對齊總分」**：Lighthouse、CrUX、axe、Observatory 各自呈現；只在同 URL/裝置/期間/構面可直接對應的子指標做 validation。
   5. **保存 `scoring_version` / `ruleset_version`**：規則或權重版本變更時，歷史圖必須標示模型版本；跨版本不得直接把 score delta 解讀成網站改善。
   6. **confidence 使用既有欄位但需重新校準**：低 confidence 可影響排序/扣分，但 legacy `confidence=1.0` 不得等同 Confirmed。
@@ -208,7 +209,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
    - 建立 50–100 組 answerable / insufficient / conflict / missing / semantic-near-but-not-answer regression case。
    - 驗收至少追蹤 precision、recall、false-positive rate、平均判定成本與耗時；門檻先在實作票/ADR 明定後再上線。
 
-4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。尚未做：評分可解釋化（逐維度扣分來源）、外部 benchmark）
+4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。評分可解釋化 **已實作 2026-10-07**：`scanners.score_breakdown()`（`calculate_scores` 的分類分數由它算出）＋`score_explain.py`＋`GET /api/scans/<id>/score-breakdown/`，掃描「分數說明」分頁逐維度列基準分、逐項扣分權重、出現處數、只修好該項時的分數、不扣分項目與未完整完成的檢查；舊公式算的分數標示不一致。尚未做：外部 benchmark、PDF 報告內的逐項扣分、confidence 影響扣分）
    - 加 `scoring_version` / `ruleset_version`；歷史 diff 升級成 RESOLVED / NOT_OBSERVED / BLOCKED / INCONCLUSIVE。
    - 外部 benchmark 只驗證可對應子指標，不把 Argus 總分校準成 Lighthouse/CrUX。
 
@@ -218,9 +219,9 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 7. **P1 Smart Scan Phase 1（只記錄 signal/fingerprint）** — 先修正 stage dependency 與 strategy/testing matrix，再做真實站準確率 benchmark。（**已實作 2026-10-07**：`apps/scans/fingerprint.py`＋`stage_fingerprint`（緊接 `enter_scanning`，只吃爬取當下已有的訊號，沒有反向依賴後續 stage）、`ScanJob.fingerprint`（migration 0031）；資料集 28 站（含誤判誘餌與保留集）precision／recall 1.0、0 次連線。strategy／testing 二維語義已在 ADR-0004 定案，`scan_strategy` 欄位留待階段 2。尚未做：以真實掃描結果人工核對的準確率評估）
 
-8. **P1/P2 OWASP ZAP controlled integration** — 先 Passive Analysis；Spider/AJAX Spider 視為 discovery traffic；最後才開受控 Active Scan。
+8. **P1/P2 OWASP ZAP controlled integration** — 先 Passive Analysis；Spider/AJAX Spider 視為 discovery traffic；最後才開受控 Active Scan。（**Passive Analysis 已實作 2026-10-07**：爬蟲錄同網站 HAR → 獨立 ZAP daemon 只跑被動規則，對目標零新增請求；告警正規化後才成為 Finding，與既有檢查重複者不列、ZAP risk 不直接照搬；預設關閉，compose profile `zap`／`k8s/optional/zap-passive.yaml`（未列入 kustomization），見 [`zap-passive.md`](zap-passive.md)。尚未做：正式叢集部署與資源量測、Spider／AJAX Spider、Active Scan）
 
-9. **P2 OSV.dev + EPSS、Observatory、Analysis Reuse、AI bot 政策等**。
+9. **P2 OSV.dev + EPSS、Observatory、Analysis Reuse、AI bot 政策等**。（OSV.dev＋EPSS、Observatory 等第、AI bot 政策 **已實作 2026-10-07**，見 §5 第 2、3 項與 §10 第 1 項；Analysis Reuse 經量測後暫緩，見「爬取」第 3 項）
 
 ### 每一階段的共通驗收指標
 

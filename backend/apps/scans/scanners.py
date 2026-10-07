@@ -5,8 +5,13 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
+from apps.scans.ai_bots import SEARCH as AI_SEARCH
+from apps.scans.ai_bots import TRAINING as AI_TRAINING
+from apps.scans.ai_bots import USER as AI_USER
+from apps.scans.ai_bots import blocked as ai_blocked
 from apps.scans.evidence import contacts
 from apps.scans.models import Finding
+from apps.scans.seo.structured_data import validate_blocks as validate_structured_data
 
 # ---------- PII（個人資料）偵測 ----------
 # Email 與手機的格式由共用證據模組提供（P0-B），AEO 用同一套，避免兩邊解析結果不一致
@@ -991,6 +996,66 @@ def _seo_open_graph(page_input: PageAnalysisInput, parser: HtmlSignalParser) -> 
     )
 
 
+def _seo_structured_data(page_input: PageAnalysisInput, parser: HtmlSignalParser) -> dict | None:
+    """已有的結構化資料缺少 Google 複合式搜尋結果的必填欄位（seo/structured_data.py）。"""
+    if not parser.json_ld_blocks:
+        return None
+    result = validate_structured_data(parser.json_ld_blocks)
+    issues = result["issues"]
+    if not issues:
+        return None
+    lines = [f"{i['type']}「{i['item']}」缺少：{'、'.join(i['missing'])}" for i in issues]
+    return make_finding(
+        category=Finding.Category.SEO,
+        severity=Finding.Severity.LOW,
+        rule_id="seo-structured-data-required",
+        title="結構化資料缺少 Google 複合式搜尋結果的必填欄位",
+        description=(
+            "頁面的結構化資料缺少 Google 列為必填的欄位，這些項目不符合複合式搜尋結果"
+            "（例如價格、評分星等、活動日期）的顯示資格，只會以一般搜尋結果呈現。"
+        ),
+        remediation=(
+            "依下方清單補上欄位，內容要與頁面上看得到的資訊一致，再用 Google 複合式搜尋結果測試"
+            "（https://search.google.com/test/rich-results）確認。"
+            "若沒有打算爭取複合式搜尋結果，也可以移除不完整的標記。"
+        ),
+        evidence=f"{page_input.url}\n" + "\n".join(lines),
+        selector='script[type="application/ld+json"]',
+        impact_area="structured_data",
+        evidence_json={"url": page_input.url, "issues": issues},
+        priority_score=32,
+    )
+
+
+def _seo_self_serving_reviews(
+    page_input: PageAnalysisInput, parser: HtmlSignalParser
+) -> dict | None:
+    """商家或組織標記了自己的評分：Google 不會顯示星等。"""
+    if not parser.json_ld_blocks:
+        return None
+    names = validate_structured_data(parser.json_ld_blocks)["self_serving"]
+    if not names:
+        return None
+    return make_finding(
+        category=Finding.Category.SEO,
+        severity=Finding.Severity.INFO,
+        rule_id="seo-structured-data-self-serving-reviews",
+        title="商家自己的評分標記不會顯示成搜尋星等",
+        description=(
+            "LocalBusiness 或 Organization 標記裡含有評分或評論。網站自己控制的評論"
+            "（含嵌入的第三方評論元件）屬於 Google 所說的自我評論，不會顯示星等。"
+        ),
+        remediation=(
+            "不需要為了星等保留這段標記；評論內容可以照常顯示在頁面上。"
+            "評價產品或服務時，改標在 Product 等類型上。"
+        ),
+        evidence=f"{page_input.url}\n標記評分的項目：" + "、".join(names),
+        selector='script[type="application/ld+json"]',
+        impact_area="structured_data",
+        evidence_json={"url": page_input.url, "items": names},
+    )
+
+
 # 逐頁 SEO 檢查：每項獨立、順序即 finding 輸出順序；新增檢查寫成同樣簽名的函式加進來。
 SEO_PAGE_CHECKS = (
     _seo_title_length,
@@ -999,6 +1064,8 @@ SEO_PAGE_CHECKS = (
     _seo_image_alt,
     _seo_canonical,
     _seo_open_graph,
+    _seo_structured_data,
+    _seo_self_serving_reviews,
 )
 
 
@@ -1588,24 +1655,39 @@ def analyze_site_signals(site_signals: dict) -> list[dict]:
                 priority_score=20,
             )
         )
-    blocked = site_signals.get("blocked_ai_crawlers") or []
-    if blocked:
+    # 只有擋到「AI 搜尋與回答」「使用者觸發讀取」的爬蟲才列問題；只擋訓練用爬蟲是正當的商業選擇，
+    # 不影響這些服務的搜尋與引用（網站架構分頁另有完整的 AI 爬蟲政策表）
+    policy = site_signals.get("ai_bot_policy") or {}
+    answer_bots = ai_blocked(policy, AI_SEARCH, AI_USER)
+    if answer_bots:
+        names = "、".join(f"{b['agent']}（{b['vendor']}）" for b in answer_bots)
+        training = [b["agent"] for b in ai_blocked(policy, AI_TRAINING)]
         findings.append(
             make_finding(
                 category=Finding.Category.GEO,
-                severity=Finding.Severity.INFO,
-                title="robots.txt 阻擋了主流 AI 爬蟲",
+                severity=Finding.Severity.LOW,
+                title="robots.txt 擋住 AI 搜尋與回答服務的爬蟲",
                 description=(
-                    "robots.txt 目前阻擋部分 AI 爬蟲；"
-                    "若你希望內容能被 AI 引用，這會降低曝光，請依自身策略判斷。"
+                    f"robots.txt 封鎖了 {names}。這些爬蟲替 AI 搜尋與對話服務讀取網頁，"
+                    "封鎖後這些服務的回答比較不會引用、連結到你的網站。"
+                    + (
+                        f"另外封鎖了訓練用的 {'、'.join(training)}，"
+                        "那是不同的選擇，不影響搜尋與引用。"
+                        if training else ""
+                    )
                 ),
                 remediation=(
-                    "若希望被 AI 系統收錄，檢視 robots.txt 對 AI 爬蟲 User-Agent 的規則；"
-                    "若刻意阻擋則可忽略此項。"
+                    "如果希望出現在 AI 搜尋與回答中，在 robots.txt 允許上述爬蟲；"
+                    "不想被拿去訓練模型的話，"
+                    "只封鎖 GPTBot、ClaudeBot、Google-Extended 等訓練用爬蟲即可。"
+                    "若是刻意不讓 AI 服務讀取，可忽略此項。"
                 ),
-                evidence=f"blocked_ai_crawlers={blocked}",
+                evidence="robots.txt 封鎖：" + "、".join(b["agent"] for b in answer_bots),
+                rule_id="geo-ai-search-bots-blocked",
+                evidence_json={"blocked": [b["agent"] for b in answer_bots],
+                               "blocked_training": training},
                 impact_area="fetchable",
-                priority_score=18,
+                priority_score=30,
             )
         )
     return findings
@@ -1631,10 +1713,7 @@ def _dedupe_findings_for_scoring(findings: list[dict]) -> list[dict]:
     seen: set[tuple[str, str]] = set()
     deduped: list[dict] = []
     for finding in findings:
-        key = (
-            str(finding.get("category") or ""),
-            str(finding.get("rule_id") or finding.get("title") or ""),
-        )
+        key = _finding_key(finding)
         if key in seen:
             continue
         seen.add(key)
@@ -1644,6 +1723,96 @@ def _dedupe_findings_for_scoring(findings: list[dict]) -> list[dict]:
 
 # 這些 rule 的結果已經反映在分類的「基準分」裡（base_scores），不再另外扣分
 BASE_SCORED_RULE_PREFIXES = ("aeo-answer-",)
+
+SCORE_CATEGORIES = ("seo", "aeo", "geo", "security", "ux")
+
+# 嚴重度必須壓過數量。舊比例 35/25/14/6 讓「1 個 critical」(50 分) 約等於
+# 「6 個 low」(49 分)——六個缺 canonical URL 等於一個嚴重漏洞，站不住腳。
+# 拉開比例後 1 個 critical 是 30 分、6 個 low 是 62 分，數量只能在同一嚴重度
+# 帶內移動分數，不能把嚴重度洗掉。
+SEVERITY_PENALTY = {
+    Finding.Severity.CRITICAL: 60,
+    Finding.Severity.HIGH: 35,
+    Finding.Severity.MEDIUM: 12,
+    Finding.Severity.LOW: 4,
+    Finding.Severity.INFO: 0,
+}
+
+
+def _finding_key(finding: dict) -> tuple[str, str]:
+    return (
+        str(finding.get("category") or ""),
+        str(finding.get("rule_id") or finding.get("title") or ""),
+    )
+
+
+def score_breakdown(
+    findings: list[dict],
+    *,
+    tested_categories: set[str] | None = None,
+    base_scores: dict[str, int] | None = None,
+) -> dict[str, dict]:
+    """各維度分數的來源（roadmap §12 第 3 項：評分可解釋化）。
+
+    calculate_scores() 的分類分數就是由這裡算出，兩者不會不一致。每個維度：
+
+    - ``score``：base × e^(−penalty／SCORE_DECAY_CONSTANT)。
+    - ``base``／``base_source``：基準分（預設 100；AEO 是可回答性分數）。
+    - ``penalty``：扣分權重合計。
+    - ``deductions``：逐項扣分（同一問題在多頁出現只扣一次，``occurrences`` 記出現筆數），
+      ``score_without`` 是只修好這一項時的分數；依權重由大到小。
+    - ``in_base``：已反映在基準分、不另外扣分的問題筆數（AEO 逐題結果）。
+    - ``info``：資訊類（不扣分）筆數。
+    """
+    base_scores = base_scores or {}
+    occurrences: dict[tuple[str, str], int] = {}
+    for finding in findings:
+        key = _finding_key(finding)
+        occurrences[key] = occurrences.get(key, 0) + 1
+    deduped = _dedupe_findings_for_scoring(findings)
+    result: dict[str, dict] = {}
+    for category in SCORE_CATEGORIES:
+        if tested_categories is not None and category not in tested_categories:
+            continue
+        has_base = category in base_scores
+        base = base_scores.get(category, 100)
+        deductions, in_base, info = [], 0, 0
+        for finding in deduped:
+            if finding["category"] != category:
+                continue
+            key = _finding_key(finding)
+            if has_base and str(finding.get("rule_id") or "").startswith(
+                BASE_SCORED_RULE_PREFIXES
+            ):
+                in_base += occurrences[key]
+                continue
+            weight = SEVERITY_PENALTY.get(finding["severity"], 0)
+            if not weight:
+                info += occurrences[key]
+                continue
+            deductions.append({
+                "rule_id": finding.get("rule_id") or "",
+                "title": finding["title"],
+                "severity": finding["severity"],
+                "weight": weight,
+                "occurrences": occurrences[key],
+            })
+        penalty = sum(item["weight"] for item in deductions)
+        for item in deductions:
+            item["score_without"] = round(
+                base * math.exp(-(penalty - item["weight"]) / SCORE_DECAY_CONSTANT)
+            )
+        deductions.sort(key=lambda item: -item["weight"])
+        result[category] = {
+            "score": round(base * math.exp(-penalty / SCORE_DECAY_CONSTANT)),
+            "base": base,
+            "base_source": "aeo_answerability" if has_base and category == "aeo" else "",
+            "penalty": penalty,
+            "deductions": deductions,
+            "in_base": in_base,
+            "info": info,
+        }
+    return result
 
 
 def calculate_scores(
@@ -1676,45 +1845,11 @@ def calculate_scores(
 
     呼叫端注意：category_scores 不再保證含全部 5 個分類，取值請用 .get()。
     """
-    categories = [
-        Finding.Category.SEO,
-        Finding.Category.AEO,
-        Finding.Category.GEO,
-        Finding.Category.SECURITY,
-        Finding.Category.UX,
-    ]
-    # 嚴重度必須壓過數量。舊比例 35/25/14/6 讓「1 個 critical」(50 分) 約等於
-    # 「6 個 low」(49 分)——六個缺 canonical URL 等於一個嚴重漏洞，站不住腳。
-    # 拉開比例後 1 個 critical 是 30 分、6 個 low 是 62 分，數量只能在同一嚴重度
-    # 帶內移動分數，不能把嚴重度洗掉。
-    severity_penalty = {
-        Finding.Severity.CRITICAL: 60,
-        Finding.Severity.HIGH: 35,
-        Finding.Severity.MEDIUM: 12,
-        Finding.Severity.LOW: 4,
-        Finding.Severity.INFO: 0,
-    }
+    breakdown = score_breakdown(
+        findings, tested_categories=tested_categories, base_scores=base_scores
+    )
+    category_scores = {category: entry["score"] for category, entry in breakdown.items()}
     deduped = _dedupe_findings_for_scoring(findings)
-    scored_categories = [
-        category
-        for category in categories
-        if tested_categories is None or category in tested_categories
-    ]
-    category_scores: dict[str, int] = {}
-    base_scores = base_scores or {}
-    for category in scored_categories:
-        has_base = category in base_scores
-        penalty = sum(
-            severity_penalty.get(finding["severity"], 0)
-            for finding in deduped
-            if finding["category"] == category
-            and not (
-                has_base
-                and str(finding.get("rule_id") or "").startswith(BASE_SCORED_RULE_PREFIXES)
-            )
-        )
-        base = base_scores.get(category, 100)
-        category_scores[category] = round(base * math.exp(-penalty / SCORE_DECAY_CONSTANT))
     overall_score = (
         round(sum(category_scores.values()) / len(category_scores))
         if category_scores

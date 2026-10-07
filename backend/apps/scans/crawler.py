@@ -51,8 +51,6 @@ CF_JS_CHALLENGE_MARKERS = (
     "cf_captcha",
 )
 
-# 用於診斷的主流 AI 爬蟲 User-Agent；僅檢查 robots.txt 規則，不繞過任何限制
-AI_CRAWLER_USER_AGENTS = ("GPTBot", "ClaudeBot", "Google-Extended", "PerplexityBot")
 
 
 def compute_min_interval(scan_mode: str, *, active_rps: int, passive_rps: int) -> float:
@@ -161,6 +159,7 @@ async def probe_site_signals(context, origin: str, robot_parser: RobotFileParser
 
     robots_disallow 供資安層判斷「robots.txt 是否把敏感路徑當地圖洩露」（被動）。
     """
+    from apps.scans.ai_bots import analyze_policy, blocked
     from apps.scans.security.exposure_scanner import parse_robots_disallow
 
     signals: dict = {
@@ -175,6 +174,7 @@ async def probe_site_signals(context, origin: str, robot_parser: RobotFileParser
         signals["llms_txt_found"] = response.ok
     except Exception:
         signals["llms_txt_found"] = False
+    robots_text = None
     try:
         robots_url = assert_public_http_url(f"{origin}/robots.txt")
         resp = await context.request.get(robots_url, timeout=10000, max_redirects=0)
@@ -185,9 +185,10 @@ async def probe_site_signals(context, origin: str, robot_parser: RobotFileParser
             signals["robots_sitemaps"] = parse_robots_sitemaps(robots_text)
     except Exception:
         signals["robots_disallow"] = []
-    for agent in AI_CRAWLER_USER_AGENTS:
-        if not robot_parser.can_fetch(agent, f"{origin}/"):
-            signals["blocked_ai_crawlers"].append(agent)
+    # AI 爬蟲的 robots.txt 政策（ai_bots.py）：依用途分訓練／AI 搜尋／使用者觸發，
+    # 只讀已取得的 robots.txt
+    signals["ai_bot_policy"] = analyze_policy(robots_text)
+    signals["blocked_ai_crawlers"] = [b["agent"] for b in blocked(signals["ai_bot_policy"])]
     return signals
 
 
@@ -618,12 +619,24 @@ async def _enforce_public_websocket(websocket_route, origin: str | None = None):
     websocket_route.connect_to_server()
 
 
-async def _make_context(browser, origin: str):
-    """建立標準 scanner 瀏覽器 context（user-agent + viewport）。"""
+async def _make_context(browser, origin: str, har_path: Path | None = None):
+    """建立標準 scanner 瀏覽器 context（user-agent + viewport）。
+
+    har_path：給 ZAP 被動分析用（security/zap_passive.py），只錄同 origin 的請求與回應，
+    在 context 關閉時寫檔；不會多發任何請求。
+    """
+    har_kwargs = {}
+    if har_path is not None:
+        har_kwargs = {
+            "record_har_path": str(har_path),
+            "record_har_content": "embed",
+            "record_har_url_filter": re.compile("^" + re.escape(origin) + "(?:[/?#]|$)"),
+        }
     context = await browser.new_context(
         user_agent=settings.ARGUS_SCANNER_USER_AGENT,
         viewport={"width": 1440, "height": 1000},
         service_workers="block",
+        **har_kwargs,
     )
     async def _request_handler(route, request):
         await _enforce_public_request(route, request, origin)
@@ -1062,7 +1075,9 @@ def _record_page_failure(
     state.warnings["failed_urls"].append({"url": url, "reason": reason})
 
 
-async def _recycle_context(browser, context, origin: str, state: _CrawlState, url: str):
+async def _recycle_context(
+    browser, context, origin: str, state: _CrawlState, url: str, har_path: Path | None = None
+):
     """每爬 _CONTEXT_RECYCLE_EVERY 頁換一個 browser context（釋放記憶體）。
 
     回傳新的 context；browser process 已死、開不出新 context 時回 None，
@@ -1070,7 +1085,7 @@ async def _recycle_context(browser, context, origin: str, state: _CrawlState, ur
     """
     try:
         await context.close()
-        return await _make_context(browser, origin)
+        return await _make_context(browser, origin, har_path)
     except Exception as exc:
         state.warnings["failed_urls"].append(
             {"url": url, "reason": f"context_recycle_failed:{exc.__class__.__name__}"}
@@ -1102,6 +1117,7 @@ async def crawl_site(
     respect_robots: bool,
     progress_callback=None,
     run_accessibility: bool = False,
+    har_dir: Path | None = None,
 ) -> tuple[list[dict], dict, dict, list[str]]:
     """爬整站（同網域 BFS）。
 
@@ -1117,6 +1133,9 @@ async def crawl_site(
     每頁的流程：_throttle（速率限制）→ _visit_page（導覽、擷取、組單頁資料）→
     enqueue_links；失敗走 _record_page_failure（重試或記錄），每頁結束後視需要
     _recycle_context 並 _report_progress。
+
+    har_dir：有值時每個 browser context 各錄一個 HAR（`context-N.har`，只含同 origin 流量），
+    供 ZAP 被動分析；呼叫端負責刪除。
     """
     state = _CrawlState(start_url, origin, max_depth, max_pages)
     state.run_accessibility = run_accessibility
@@ -1135,7 +1154,16 @@ async def crawl_site(
             headless=True,
             **playwright_launch_kwargs(),
         )
-        context = await _make_context(browser, origin)
+        har_count = 0
+
+        def _next_har() -> Path | None:
+            nonlocal har_count
+            if har_dir is None:
+                return None
+            har_count += 1
+            return har_dir / f"context-{har_count}.har"
+
+        context = await _make_context(browser, origin, _next_har())
         pages_in_context = 0
         try:
             site_signals = await probe_site_signals(context, origin, robot_parser)
@@ -1164,7 +1192,9 @@ async def crawl_site(
                 finally:
                     pages_in_context += 1
                     if pages_in_context >= _CONTEXT_RECYCLE_EVERY:
-                        new_context = await _recycle_context(browser, context, origin, state, url)
+                        new_context = await _recycle_context(
+                            browser, context, origin, state, url, _next_har()
+                        )
                         if new_context is None:
                             context_broken = True
                         else:
