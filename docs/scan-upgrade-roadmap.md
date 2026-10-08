@@ -38,27 +38,27 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級**：
   1. 接 **PageSpeed Insights API（CrUX 真實場域資料）**：LCP/INP/CLS 實驗室 vs 真實使用者並列——目前最缺的權威外部訊號。
   2. 結構化資料驗證（JSON-LD 語法 + Google Rich Results 必填欄位，可離線）。（**已實作 2026-10-07**：語法由 AEO `aeo-markup-syntax` 回報；必填欄位 `seo/structured_data.py`，依 Google Search Central 2026-09 版，涵蓋產品（含 Offer／AggregateOffer）、軟體、職缺、食譜、影片、導覽路徑（含 ListItem）、活動（含地點）、在地商家、評論與評分彙總，缺必填 → `seo-structured-data-required`（低）；商家／組織自評星等 → `seo-structured-data-self-serving-reviews`（資訊）。FAQPage／HowTo 已不在 Google 支援清單、Article／Organization 無必填，不檢查；不檢查建議欄位與值的正確性）
-  3. robots/sitemap 一致性交叉檢查（sitemap 列出卻 noindex、canonical 指他頁等矛盾）【待驗證：`site_checks` 現況是否已含】。
-  4. 目標關鍵字 vs GSC 實際曝光關鍵字的落差分析。
+  3. robots/sitemap 一致性交叉檢查（sitemap 列出卻 noindex、canonical 指他頁等矛盾）。（**已實作 2026-10-07**：原本 `site_checks` 只檢查 robots.txt／sitemap 是否存在、`seo-primary-url-inconsistent` 只比主機，沒有交叉檢查。`seo/site_findings.index_signal_conflicts` → `seo-index-signals-conflict`（低）：sitemap 列出 noindex／canonical 指他頁／回應錯誤／轉址／robots.txt 禁止 Googlebot 的網址，以及 noindex 頁被 robots.txt 擋住；只比對本次爬到的頁面與讀到的 sitemap 網址（最多頁數上限個）。實測 wordpress.org、docs.djangoproject.com、smashingmagazine.com 都抓到真實矛盾並逐筆核對屬實）
+  4. 目標關鍵字 vs GSC 實際曝光關鍵字的落差分析。（**已實作 2026-10-07**：前端 `features/projects/seoKeywordGap.ts`，用 SEO 分頁已有的 `keyword_report` 與 `gsc/performance` 查詢字詞（前 200 個）計算，不新增 API：每個目標關鍵字彙總包含它的搜尋詞曝光／點擊、最佳平均排名分段（第 1 頁／第 2 頁／更後面／沒有曝光）、Google 帶到的頁面與內容最相關頁面不同時提示；另列有曝光但不是目標的搜尋詞，可一鍵設為目標。字面包含比對、不斷詞；尚未用真實 Search Console 帳號驗證）
 
 ## 2. AEO（問答檢測）
 
 - **現況**：`aeo/evaluate.py` 四層判定（可回答/資訊不足/內容衝突/無答案），框架完整，已有答案蘊含判定（`aeo/answers.py` 的 `entails()`）與日期衝突判定（2026-10-06 第二輪準確度修正）；實測曾出現「語意相關段落被誤判為真正答案」與跨模組 evidence 不一致，已知案例已修正，但**缺少量測基準**，無法知道整體誤判率。
 - **升級**：
   1. **Answer Entailment 量測與強化（P0）**：`entails()` 初版已上線，候選段落須通過蘊含判定才算答案。下一步不是重做，而是用 gold dataset（見優先序 P0-C）量測誤判率，再依誤判類型強化。
-  2. **Specificity / Conflict Check（P0）**：衝突判定目前**只判日期**；擴充到價格、資格、聯絡方式等需具體可核對的欄位，多頁內容互斥時標記 conflict。
+  2. **Specificity / Conflict Check（P0）**：衝突判定目前**只判日期**；擴充到價格、資格、聯絡方式等需具體可核對的欄位，多頁內容互斥時標記 conflict。（**已實作 2026-10-08**：`aeo/answers._value_conflict` 涵蓋價格、營業時間、客服專線，同一標籤在兩個以上頁面的值不同才算；先在回歸資料集加 6 個調整案例（3 衝突＋3 不是衝突）與 4 個保留集案例再寫規則。量測：全體 accuracy 0.971、precision 1.0、recall 0.974、FPR 0；保留集 19／21（兩題是沒出題，衝突 3／3 全對，不是衝突的案例沒有判成衝突）。資格條件不做：條件文字差異多半是不同方案，字面比對無法可靠判斷）
   3. **Cross-module evidence reuse（P0）**：Email、電話、地址、日期等與 Security／SEO 共用 evidence，避免一個模組「找到」、另一個模組「找不到」。
-  4. **Answer confidence（P1）**：輸出 Confirmed／Likely／Possible，並保留引用來源與限制。
+  4. **Answer confidence（P1）**：輸出 Confirmed／Likely／Possible，並保留引用來源與限制。（**已實作 2026-10-08**：`aeo/answers.QuestionResult.confidence`，確認＝格式化答案值逐字出現在原文、可能＝步驟／條件或網站自己的問題、推測＝介紹類只確認有具體敘述；附 `limitation` 說明判定限制，顯示在 AEO 分頁與報告附錄，不影響計分。`aeo_benchmark` 輸出各等級 precision：目前資料集三個等級都是 100%（全體 precision 已是 1.0），還無法量出等級之間的差異，需要更多「看起來像答案」的案例）
   5. 問題生成多樣化（標題/H2 + 同業常見問句模板）。
   6. 引用可得性評分。
-  7. `llms.txt`／`llms-full.txt` 僅列為 **Emerging / Experimental** 訊號，不與成熟 SEO 規則等價扣分。【部分完成：`reports.py` 已對 llms.txt 標示「依據／限制」並說明是新興慣例；評分權重是否已降級【待驗證】】
+  7. `llms.txt`／`llms-full.txt` 僅列為 **Emerging / Experimental** 訊號，不與成熟 SEO 規則等價扣分。（**已驗證 2026-10-08**：`scanners.analyze_site_signals` 的「網站未提供 llms.txt」是 info，計分權重 0、不進優先改善建議，描述與報告依據都寫明是新興做法；由 `tests_accuracy_review.py` 鎖定嚴重度與不扣分。`llms-full.txt` 不檢查）
 
 
 ## 3. GEO（生成式引擎優化）
 
 - **現況**：`analyze_geo` / `analyze_geo_fast`（文字區塊數、可見文字長度）。偏輕量。
 - **升級**：
-  1. 實體與權威訊號（作者、組織、`sameAs` → Wikidata/社群）——E-E-A-T。
+  1. 實體與權威訊號（作者、組織、`sameAs` → Wikidata/社群）——E-E-A-T。（**已實作 2026-10-08**：`apps/scans/geo_entity.py`，組織實體缺少（低）、組織沒有 sameAs（資訊）、文章頁沒有作者（低）。真實網站核對：blog.cloudflare.com 只有 WebSite 標記（缺組織）、wordpress.org 與 css-tricks 的組織 sameAs 正確辨識；WordPress 分類頁與 Smashing Magazine 列表頁標了 og:type=article，改以 CollectionPage／`<article>` 區塊數排除，避免誤判成缺作者的文章）
   2. 內容新鮮度（`dateModified`/`datePublished` 與實際更新落差）。
   3. 可被 AI 摘要性（段落結構、清單化、摘要句位置）——與 AEO 共用訊號但角度不同。
 

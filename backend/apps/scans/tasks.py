@@ -37,6 +37,7 @@ from apps.scans.coverage import (
 from apps.scans.crawler import crawl_site
 from apps.scans.favicon import needs_refresh, refresh_project_favicon
 from apps.scans.fingerprint import fingerprint_snapshot
+from apps.scans.geo_entity import analyze_entity, entity_findings
 from apps.scans.katana_scanner import run_katana
 from apps.scans.models import Finding, Page, ScanJob
 from apps.scans.nuclei_scanner import run_nuclei
@@ -1214,10 +1215,11 @@ def stage_exposure(ctx: ScanRunContext) -> None:
 
 
 def stage_geo_site(ctx: ScanRunContext) -> None:
-    """站台層級 GEO 檢查（llms.txt、AI 爬蟲可存取性）；未勾 GEO 維度時跳過。"""
+    """站台層級 GEO 檢查（llms.txt、AI 爬蟲可存取性、組織實體與文章作者）；未勾 GEO 維度時跳過。"""
     if "geo" not in ctx.scan_job.effective_categories:
         return
     findings = analyze_site_signals(ctx.site_signals)
+    findings += entity_findings(analyze_entity([page for page, _data in ctx.pages]))
     ctx.record(findings, check="geo_site")
     ctx.coverage.mark("geo_site", COMPLETED)
     append_log(ctx.scan_job_id, f"站台訊號分析完成：{len(findings)} 項發現")
@@ -1226,7 +1228,8 @@ def stage_geo_site(ctx: ScanRunContext) -> None:
 def stage_seo_links(ctx: ScanRunContext) -> None:
     """SEO 連結狀態與站台層級網址檢查（勾 SEO 才跑），結果寫 ScanJob.seo_report。
 
-    失效站內連結、www 重複、主網址不一致、重複 title 另轉成 Finding（`seo/site_findings.py`），
+    失效站內連結、www 重複、主網址不一致、重複 title、sitemap／robots／noindex 矛盾另轉成 Finding
+    （`seo/site_findings.py`），
     問題清單與報告才看得到；連結檢查本身失敗只記 log、不影響掃描完成。
     """
     scan_job = ctx.scan_job
@@ -1250,7 +1253,13 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
     scan_job.seo_report = report
     scan_job.save(update_fields=["seo_report", "updated_at"])
     try:
-        site_findings = seo_site_findings(report, [page for page, _data in ctx.pages], start_url)
+        site_findings = seo_site_findings(
+            report,
+            [page for page, _data in ctx.pages],
+            start_url,
+            sitemap_urls=ctx.site_signals.get("sitemap_urls") or [],
+            robots_text=ctx.site_signals.get("robots_text"),
+        )
     except Exception:  # noqa: BLE001 - 轉換失敗不影響掃描
         logger.warning("SEO 站台問題轉換失敗 scan_job_id=%s", ctx.scan_job_id, exc_info=True)
         site_findings = []

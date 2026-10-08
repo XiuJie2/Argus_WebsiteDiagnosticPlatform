@@ -33,6 +33,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | `coverage.py` | 掃描覆蓋契約（見下「掃描覆蓋契約」）：`ScanCoverage` 累積各檢查狀態與產生的問題代號、`category_status`、`incomplete_checks`、`absent_issue_status`（前次有本次沒有的問題狀態）、`issue_key` | 寫 DB、修改 `ScanJob.status` |
 | `fingerprint.py`、`fingerprint_gold.py`、`fingerprint_benchmark.py` | 網站特徵（Smart Scan 階段 1，見下「網站特徵」）：`build_fingerprint` 只用爬取已有的訊號、`fingerprint_snapshot` 存 `ScanJob.fingerprint`；準確率資料集與指標 | 發任何請求、改變執行計畫或覆蓋紀錄、把「沒看到」寫成 False |
 | `ai_bots.py` | AI 爬蟲的 robots.txt 政策：13 個 AI 爬蟲依用途分訓練／AI 搜尋／使用者觸發，依 RFC 9309 判斷（點名群組優先於 `*`、產品名稱完全比對、Allow／Disallow 取最長路徑）允許／部分限制／封鎖；爬蟲讀 robots.txt 時算好放 `site_signals.ai_bot_policy`，`site_profile.ai_bots`（勾 GEO）。**只封鎖訓練用爬蟲不算問題**；封鎖 AI 搜尋或使用者觸發的爬蟲才產生 `geo-ai-search-bots-blocked`（低） | 另發請求、把封鎖訓練爬蟲當成問題 |
+| `geo_entity.py` | GEO 實體與權威訊號（roadmap §3 第 1 項，`stage_geo_site` 呼叫）：讀已保存頁面的 JSON-LD 與 meta，判斷組織實體（Organization／LocalBusiness 等，不含 Person——文章作者就是 Person）、`sameAs`（Wikidata、維基百科、社群）、文章作者。Finding：`geo-entity-organization-missing`（低，有結構化資料但沒有組織；完全沒有 JSON-LD 的網站交給逐頁提醒）、`geo-entity-no-same-as`（資訊）、`geo-article-author-missing`（低）。文章頁＝JSON-LD 標 Article 類，或 `og:type=article`＋`article:published_time` 且 `<article>` 區塊少於 3 個；`CollectionPage`／`ItemList` 不算（WordPress 常把分類頁標成 og:type=article） | 發請求、把列表頁當文章、把作者 Person 當組織 |
 | `pagespeed.py` | Google PageSpeed Insights（見下「PageSpeed Insights」）：`fetch` 呼叫 PSI v5、`parse` 整理成 `ScanJob.performance_report`、`summary_lines` 給報告範圍表 | 修改 `ScanJob.status`、把金鑰寫進 log 或錯誤訊息、把外部分數併入 Argus 分數 |
 | `evidence/` | 跨模組共用證據（P0-B）：`contacts.py` 的 Email／電話格式、正規化（`normalize_phone`：+886→0、去分機）、`collect_contacts`（每筆帶來源網址、取得方式、位置 content／comment／link、視窗、登入狀態）。資安 `scanners.analyze_data_exposure`、`security/redaction.py` 與 AEO `aeo/answers.py`、`aeo/evaluate.reconcile_contact` 都從這裡取，**不得各自另寫 Email／電話 regex** | 寫 DB、連線目標網站 |
 | `cancellation.py` | 合作式取消：`is_cancelled` / `raise_if_cancelled` 直接查 DB `ScanJob.status` 是否為 `CANCELLED`（**非 Redis 旗標**），供 worker 在檢查點輪詢 | 直接終止 worker process |
@@ -128,11 +129,11 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 |---|---|
 | `aeo/content.py` | 第 1 層：主要文字擷取（排除 nav／header／aside／表單／隱藏元素；footer 另標 region）、段落與所屬標題、`robots_directives`（meta robots／googlebot＋`X-Robots-Tag`）、`data-nosnippet` |
 | `aeo/questions.py` | 依網站內容出題：固定意圖（電話、Email、地址、營業時間、費用、報名方式／截止、資格、退款、運送…，需在正文命中觸發詞才出題）＋網站自己寫的問句標題 |
-| `aeo/answers.py` | 第 2、3 層：逐題找候選段落並判定 `answered`／`insufficient`（空泛、日期無年度）／`conflict`（不同頁日期矛盾）／`missing`，附原文與位置 |
+| `aeo/answers.py` | 第 2、3 層：逐題找候選段落並判定 `answered`／`insufficient`（空泛、日期無年度）／`conflict`（不同頁截止日期矛盾；2026-10-08 起另有 `_value_conflict`：同一個標籤（值前面同一句的文字）在兩個以上頁面寫了不同的價格、營業時間或客服專線。價格標籤要含項目名稱、標籤或小標題帶原價／優惠／早鳥／平日／假日／連假等字的不比、網站有多個據點時不比營業時間與電話、電話只比客服／訂購／預約專線與總機）／`missing`，附原文與位置。`evaluate.reconcile_contact` 不覆寫 conflict |
 | `aeo/markup.py`、`aeo/page_checks.py` | 第 4 層與逐頁規則：結構化資料語法、標記與可見文字一致性、noindex／nosnippet（`scanners.analyze_aeo` 只委派到這裡） |
 | `aeo/evaluate.py` | 整站評估 `evaluate_site(pages)`：正文 < `MIN_MAIN_TEXT_CHARS` 或題目 < `MIN_QUESTIONS` → `status=insufficient`、**不給分**（`tested_categories_for` 移除 aeo，報告顯示「未評估」）；否則依逐題判定加權算分，產生 `aeo-answer-*` finding 與 `aeo-render-dependent`（主要文字需執行 JS 才出現） |
 
-- 結果存在 `ScanJob.aeo_report`（migration 0018）：`status`、`reason`、`questions_total`、`counts`、`answered_ratio`（有答案的問題比例）、`evidence_ratio`（答案附有原文的比例）、`score`、`questions[]`（逐題判定、理由、證據），`method` 目前是 `rules-v1`。
+- 結果存在 `ScanJob.aeo_report`（migration 0018）：`status`、`reason`、`questions_total`、`counts`、`answered_ratio`（有答案的問題比例）、`evidence_ratio`（答案附有原文的比例）、`score`、`questions[]`（逐題判定、理由、證據；2026-10-08 起可回答與內容衝突另有 `confidence`／`confidence_label`／`limitation`：確認＝號碼、金額、時間、日期等格式化答案值逐字出現在原文，可能＝步驟／條件規則或網站自己的問題，推測＝只確認段落有具體敘述（介紹類）；`aeo_benchmark` 另輸出各等級的 precision，`tests_aeo_confidence.py` 鎖定確認等級 ≥ 0.95），`method` 目前是 `rules-v1`。可信度只是說明，不影響計分。
 - 呈現：網站專案的「AEO 問答」分頁（`/projects/:id/aeo`，`AeoAnswerPanel`；2026-10-02 前在掃描詳情最下方）、PDF 報告範圍表「AEO 問答檢測」列與附錄 6.6 逐題表（`appendix.aeo_items`，`RENDERER_VERSION` 3）、MCP `get_scan` 的 `aeo` 欄位（證據遮罩）、`ScanJobSerializer.aeo_report`。
 - **答案蘊含（2026-10-06，ntubimdbirc.tw 第二輪審查）**：
   - 題庫意圖可設 `anchors`（主題詞）。段落或其小標題沒有主題詞時，答案值不算數；沒有任何段落在談這個主題就判 `missing`，不再拿無關段落當「資訊不足」的證據。實例：學員心得裡的「必須」被當成申請資格。
@@ -163,7 +164,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 
 ## SEO 分析與 Search Console（2026-10-03，`seo/`）
 
-會員區「SEO 分析」分頁（`/projects/:id/seo`）的資料層，是給網站主逐頁查證與修正的工作清單。**例外（2026-10-06）**：`seo/site_findings.py` 把站台層級的結論轉成 Finding（計入 SEO 分數、出現在問題清單與報告）——站內失效連結 `seo-broken-internal-links`（中）、主網址設定不一致 `seo-primary-url-inconsistent`（低；同一個根本原因的症狀合併成一項：www／非 www 都直接回應、og:url／canonical／robots Sitemap 指向另一個主機、沒有 canonical 的頁數，列在 `evidence_json.symptoms`；2026-10-06 前拆成 `seo-www-duplicate`／`seo-declared-host-mismatch` 兩項）、多頁同一個 title `seo-duplicate-titles`（中，≥3 頁且過半）；ntubimdbirc.tw 實測這些只出現在 SEO 頁明細、報告完全沒有。其餘逐頁明細仍不產生 Finding。
+會員區「SEO 分析」分頁（`/projects/:id/seo`）的資料層，是給網站主逐頁查證與修正的工作清單。**例外（2026-10-06）**：`seo/site_findings.py` 把站台層級的結論轉成 Finding（計入 SEO 分數、出現在問題清單與報告）——站內失效連結 `seo-broken-internal-links`（中）、主網址設定不一致 `seo-primary-url-inconsistent`（低；同一個根本原因的症狀合併成一項：www／非 www 都直接回應、og:url／canonical／robots Sitemap 指向另一個主機、沒有 canonical 的頁數，列在 `evidence_json.symptoms`；2026-10-06 前拆成 `seo-www-duplicate`／`seo-declared-host-mismatch` 兩項）、多頁同一個 title `seo-duplicate-titles`（中，≥3 頁且過半）、索引指示互相矛盾 `seo-index-signals-conflict`（低，2026-10-07：sitemap 列出 noindex／canonical 指他頁／錯誤／轉址／robots.txt 禁止 Googlebot 的網址，noindex 頁被 robots.txt 擋住；資料來自 crawler 的 `site_signals.sitemap_urls`／`robots_text`，robots 判斷用 `ai_bots.robots_allows`）；ntubimdbirc.tw 實測這些只出現在 SEO 頁明細、報告完全沒有。其餘逐頁明細仍不產生 Finding。
 
 | 模組 | 職責 |
 |---|---|
@@ -386,7 +387,7 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
 | **報告編號跨重新產生保持不變** | 由 `HMAC(SECRET_KEY, scan_id)` 推導，不含時間戳。報告一旦交付就可能被轉寄存檔，換編號會讓已流出的副本失效 |
 | **報告本身只印編號、不印雜湊** | 雜湊要涵蓋整份檔案，檔案裡又要有雜湊＝循環相依。雜湊由查驗端點提供，收件者自行 `sha256sum` 比對 |
 | **`views.py` 的 report action 必須用快取** | 省下每次下載的 IO 與 CPU。三個條件都成立才可重用：有防偽紀錄、檔案存在、`renderer_version` 等於目前的 `report_render.RENDERER_VERSION` |
-| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 14：AI 爬蟲政策；13：安全標頭等第；12：OWASP ZAP 被動分析的來源標示；11：PageSpeed Insights 兩列；10：axe-core 依據與來源；9：評分版本；8：覆蓋契約；7：部分掃描警示；6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
+| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 15：AEO 逐題可信度；14：AI 爬蟲政策；13：安全標頭等第；12：OWASP ZAP 被動分析的來源標示；11：PageSpeed Insights 兩列；10：axe-core 依據與來源；9：評分版本；8：覆蓋契約；7：部分掃描警示；6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
 | **重產時舊雜湊要進 `previous_sha256`** | 重產會換掉 `content_sha256`，若直接覆蓋，先前已寄出的正本在查驗頁會被判成「對不上」——等於自己把交付過的報告變成偽造品 |
 | **`/api/verify/<編號>/` 是公開端點，絕不回傳掃描發起人** | 否則用報告編號就能反查使用者身分。回應只有：編號、目標網址、掃描與產生時間、整體分數、內容雜湊。帶 `?content_sha256=` 時另回 `matches` / `is_latest_version`，比對範圍含 `previous_sha256`；歷史雜湊本身不列進回應 |
 
@@ -451,7 +452,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `deep_security` | `stage_deep_security` | security/ 子套件被動深度檢查＋WAF 封鎖偵測；已知 CVE 由 `security/vuln_intel.py` 補 EPSS 被利用機率與 OSV 修補版本（只影響排序與說明，不改嚴重度） |
 | `zap_passive` | `stage_zap_passive` | 勾資安且 `ARGUS_ZAP_ENABLED` 才跑：爬取時錄的同網站 HAR 交給 OWASP ZAP 只跑被動規則（零新增請求），重複既有檢查的告警不列；ZAP 不可用只標覆蓋 failed，HAR 用完即刪（`security/zap_passive.py`，見 `docs/zap-passive.md`） |
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
-| `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題） |
+| `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體與文章作者（`geo_entity.py`） |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
 | `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`） |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |

@@ -241,6 +241,9 @@ RULE_IMPACT = {
 # 「修好了怎麼確認」按 rule_id 客製：給出具體可執行的驗收指令（curl、瀏覽器、開發者工具），
 # 而不是叫使用者「再掃一次 Argus」。
 RULE_VERIFY = {
+    "seo-index-signals-conflict":
+        "打開 sitemap.xml 確認證據列出的網址都已移除或改成正式網址；在 Search Console「網址檢查」"
+        "輸入這些網址，確認「Google 選擇的標準網址」與「是否允許檢索」符合預期。",
     "seo-structured-data-required":
         "把「逐頁證據」列出的網址貼到 https://search.google.com/test/rich-results，"
         "確認對應項目沒有「缺少必要欄位」的錯誤。",
@@ -352,6 +355,19 @@ RULE_BASIS = {
         "限制：只影響摘要與引用，不影響頁面被收錄。",
     "aeo-markup-syntax":
         "依據：JSON-LD 無法以 JSON 解析。限制：只檢查語法，不檢查型別是否適合該頁。",
+    "geo-entity-organization-missing":
+        "依據：已檢查頁面的結構化資料中沒有 Organization、LocalBusiness 等組織實體。"
+        "限制：只看本次爬到的頁面；組織標記放在沒爬到的頁面時會誤報。",
+    "geo-entity-no-same-as":
+        "依據：組織實體沒有 sameAs 欄位。限制：sameAs 是協助辨識實體的建議做法，"
+        "不保證被知識圖譜或 AI 採用。",
+    "geo-article-author-missing":
+        "依據：文章頁（Article 類標記，或 og:type=article 且有發布時間）沒有 JSON-LD author、"
+        "author meta 或 rel=author 連結。限制：只寫在內文、沒有標記的作者名稱不會被偵測到。",
+    "seo-index-signals-conflict":
+        "依據：Google 說明 sitemap 應只列希望出現在搜尋結果的標準網址；noindex 必須讓爬蟲抓得到"
+        "才會生效。限制：只比對本次爬到的頁面與讀到的 sitemap 網址（最多頁數上限個），"
+        "robots.txt 依 Googlebot 規則判斷。",
     "seo-structured-data-required":
         "依據：Google Search Central 各類型結構化資料說明頁列為必填的欄位（產品、軟體、職缺、"
         "食譜、影片、導覽路徑、活動、在地商家、評論與評分彙總）。限制：只檢查必填欄位是否存在，"
@@ -787,9 +803,13 @@ def _aeo_items(scan_job: ScanJob) -> list[dict]:
             if evidence:
                 first = evidence[0]
                 basis += f"（{first['url']}｜{first['location']}）"
+        verdict = question.get("verdict_label", "")
+        if question.get("confidence_label"):
+            # 可信度（確認／可能／推測）附在判定後，不改 schema（RENDERER_VERSION 15）
+            verdict = f"{verdict}（{question['confidence_label']}）"
         items.append({
             "question": question.get("text", ""),
-            "verdict": question.get("verdict_label", ""),
+            "verdict": verdict,
             "basis": basis[:400],
         })
     return items
