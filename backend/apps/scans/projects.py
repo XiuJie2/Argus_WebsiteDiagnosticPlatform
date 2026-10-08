@@ -18,6 +18,7 @@ from apps.scans.coverage import (
     issue_key,
 )
 from apps.scans.models import ALL_CATEGORIES, Finding, ScanJob, SiteProject
+from apps.scans.root_causes import annotate_root_causes
 from apps.scans.security.finding_kind import kind_payload
 from apps.scans.services import user_owns_domain
 
@@ -363,15 +364,19 @@ def project_issues(project: SiteProject, scan: ScanJob | None = None) -> dict:
     """問題分析頁：指定（預設最新一次完成）掃描的問題與前次比較。"""
     scan = scan or completed_scans(project).first()
     if scan is None:
-        return {"scan": None, "compared_with": None, "issues": [], "missing": []}
+        return {
+            "scan": None, "compared_with": None, "issues": [], "missing": [], "root_causes": [],
+        }
     previous = previous_completed(project, scan)
     issues, missing = compare_issues(scan, previous)
     issue_streaks(project, scan, issues)
+    root_causes = annotate_root_causes(issues)
     return {
         "scan": {**_scan_brief(scan), "categories": sorted(scan.effective_categories)},
         "compared_with": _scan_brief(previous),
         "issues": issues,
         "missing": missing,
+        "root_causes": root_causes,
     }
 
 

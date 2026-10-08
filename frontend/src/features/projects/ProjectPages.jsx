@@ -39,6 +39,7 @@ import {
   ClockIcon,
   DownloadIcon,
   FlagIcon,
+  LayersIcon,
   ListIcon,
   PlayIcon,
 } from "../../shared/LineIcons";
@@ -616,7 +617,9 @@ function ProjectIssuesPage() {
   const severity = searchParams.get("severity") || "all";
   const change = searchParams.get("change") || "all";
   const query = searchParams.get("q") || "";
-  const grouped = searchParams.get("group") === "severity";
+  const groupMode = ["severity", "cause"].includes(searchParams.get("group"))
+    ? searchParams.get("group")
+    : "all";
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [openKey, setOpenKey] = useState(null);
@@ -645,6 +648,8 @@ function ProjectIssuesPage() {
 
   const completed = (scans || []).filter((scan) => scan.status === "completed");
   const issues = useMemo(() => data?.issues || [], [data]);
+  // 根本原因：同一處修法的問題（後端 root_causes.py，2 個以上問題才成組）
+  const rootCauses = data?.root_causes || [];
   const keyword = query.trim().toLowerCase();
   const filtered = issues.filter(
     (issue) =>
@@ -756,12 +761,17 @@ function ProjectIssuesPage() {
         <div className="issue-toolbar-group">
           <span className="issue-toolbar-label">顯示模式</span>
           <div className="issue-segmented" role="group" aria-label="顯示模式">
-            <button type="button" className={!grouped ? "active" : ""} aria-pressed={!grouped} onClick={() => setParam("group", "all")}>
+            <button type="button" className={groupMode === "all" ? "active" : ""} aria-pressed={groupMode === "all"} onClick={() => setParam("group", "all")}>
               <ListIcon aria-hidden="true" /> 列表模式
             </button>
-            <button type="button" className={grouped ? "active" : ""} aria-pressed={grouped} onClick={() => setParam("group", "severity")}>
+            <button type="button" className={groupMode === "severity" ? "active" : ""} aria-pressed={groupMode === "severity"} onClick={() => setParam("group", "severity")}>
               <BarsIcon aria-hidden="true" /> 依嚴重度分組
             </button>
+            {rootCauses.length > 0 && (
+              <button type="button" className={groupMode === "cause" ? "active" : ""} aria-pressed={groupMode === "cause"} onClick={() => setParam("group", "cause")}>
+                <LayersIcon aria-hidden="true" /> 依根本原因
+              </button>
+            )}
           </div>
         </div>
         <label className="issue-toolbar-group">
@@ -813,7 +823,35 @@ function ProjectIssuesPage() {
             <table className="issue-table">
               <caption className="project-sr-only">問題清單</caption>
               <IssueTableHead />
-              {grouped ? (
+              {groupMode === "cause" && rootCauses.length > 0 ? (
+                <>
+                  {rootCauses
+                    .map((cause) => ({ cause, items: filtered.filter((issue) => issue.root_cause === cause.id) }))
+                    .filter(({ items }) => items.length)
+                    .map(({ cause, items }) => (
+                      <tbody key={cause.id}>
+                        <tr className="issue-group-row issue-cause-row">
+                          <td colSpan={6}>
+                            <p className="issue-cause-title">
+                              {cause.title}<span>{items.length} 個問題，修一處一起解決</span>
+                            </p>
+                            <p className="issue-cause-where">在哪裡修：{cause.where}</p>
+                            <p className="issue-cause-summary">{cause.summary}</p>
+                          </td>
+                        </tr>
+                        {renderRows(items)}
+                      </tbody>
+                    ))}
+                  {filtered.some((issue) => !issue.root_cause) && (
+                    <tbody>
+                      <tr className="issue-group-row">
+                        <td colSpan={6}>其他問題：{filtered.filter((issue) => !issue.root_cause).length} 個，各自處理</td>
+                      </tr>
+                      {renderRows(filtered.filter((issue) => !issue.root_cause))}
+                    </tbody>
+                  )}
+                </>
+              ) : groupMode === "severity" ? (
                 SEVERITY_ORDER.filter((s) => filtered.some((issue) => issue.severity === s)).map((s) => {
                   const items = filtered.filter((issue) => issue.severity === s);
                   return (

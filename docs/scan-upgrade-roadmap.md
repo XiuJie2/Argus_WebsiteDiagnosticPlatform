@@ -177,7 +177,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 | **Shared Evidence MVP（P0-B）** | 各 scanner 各自產 finding | 先只接 AEO + Security 共用的 email/phone evidence；驗證跨模組矛盾改善後再擴大，不先做 Universal Evidence Platform |
 | **Evidence Context Contract** | evidence 缺統一情境 | 最小欄位：source_url、observed_at、acquisition_method、viewport、auth/session context、initial_html/rendered_dom/network、source/tool version、artifact ref、limitations、missing_reason、redaction_state；不同 context 不強制一致 |
 | **Evidence Governance** | — | 敏感資料遮罩、cookie/token 永不落 evidence、raw artifact 大小上限、保留期限與刪除策略 |
-| **Root Cause Correlation（P1）** | finding 去重為主 | 聚合成 Root Cause → Related Findings → Evidence → Fix |
+| **Root Cause Correlation（P1）** | finding 去重為主 | 聚合成 Root Cause → Related Findings → Evidence → Fix（**第一階段已實作 2026-10-08**：`apps/scans/root_causes.py`，只收修法確實在同一處的規則——伺服器回應標頭、Cookie 屬性、TLS、SPF／DMARC、圖片替代文字（SEO 與 axe-core）、文章作者與日期標記；同一原因有 2 個以上問題才成組。問題分析 API 回 `root_causes` 並在問題標 `root_cause`，前端「依根本原因」顯示模式寫明在哪裡修。只是呈現，不改嚴重度、計分與歷史比較；尚未進報告。示範專案三次掃描分別歸出回應標頭 5／4／2 項與 SPF／DMARC 2 項） |
 | **Stage Result（P0-A）** | scanner 失敗可被隱藏 | 狀態必須流入 coverage/scoring/history/billing；禁止把工具失敗呈現成「0 findings」 |
 | **智慧動態掃描（旗艦）** | 固定管線 | Signal Collection → Fingerprint → Dynamic Planner；見 [ADR-0004](adr/0004-smart-dynamic-scan.md) |
 | 外部工具統一介面 | Nuclei/Katana 走 `process_runner`，各自 parse | 抽象 `ExternalTool` protocol（執行/逾時/取消/版本鎖/結果正規化），axe/Lighthouse/ZAP 照契約接 |
