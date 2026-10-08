@@ -371,6 +371,8 @@ class FindingSerializer(serializers.ModelSerializer):
             "bounding_box",
             "selector",
             "ai_handoff_prompt",
+            "security_kind",
+            "security_kind_label",
             "created_at",
         ]
 

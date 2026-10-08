@@ -75,7 +75,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 - **現況**：HTTPS/header/CSRF/PII、SSL/Cookie/CORS/CSP/SRI/DNS、JS 套件 CVE、服務 CVE 等規則已具備，OWASP/CWE 對映齊全，NVD 離線庫已接。
 - **升級**：
-  1. **校準既有 `Finding.confidence` 的語義與使用方式**：欄位、`make_finding()` 與 serializer 已存在；缺口是規則如何產生 confidence、如何影響 score/report，以及如何區分「配置建議」「曝露面」「疑似弱點」「已驗證弱點」。既有資料的預設 `1.0` 一律視為 **legacy / uncalibrated**，不得回溯解讀為 Confirmed。
+  1. **校準既有 `Finding.confidence` 的語義與使用方式**：欄位、`make_finding()` 與 serializer 已存在；缺口是規則如何產生 confidence、如何影響 score/report，以及如何區分「配置建議」「曝露面」「疑似弱點」「已驗證弱點」。既有資料的預設 `1.0` 一律視為 **legacy / uncalibrated**，不得回溯解讀為 Confirmed。（**第一階段已實作 2026-10-08：只標示**。`security/finding_kind.py` 依規則與來源（不看 confidence）把資安發現分成設定建議／曝露面／疑似弱點／已驗證弱點：安全標頭、Cookie、DNS、TLS、SRI、ZAP 被動告警＝設定建議；版本號、技術標頭、管理入口、公開聯絡資料、低風險探測檔案＝曝露面；依版本比對的 CVE、秘鑰樣式、Nuclei 樣板命中、AI 觀察、可能缺 CSRF token、CORS 帶憑證＝疑似弱點；sqlmap 確認注入、真的下載到高風險檔案＝已驗證弱點；掃描說明（例如 WAF 之後 0 項發現）不分類。顯示時推得、不寫 DB、舊掃描也有；呈現在問題分析表、掃描詳情的判定證據與報告每項的追蹤列。**不影響分數與排序**；confidence 的產生方式與影響扣分仍待後續）
   2. Security headers 評分接 **Mozilla Observatory 規則**（可離線實作，給 A~F 等第）。（**已實作 2026-10-07**：`security/observatory.py`，獨立呈現在網站架構與報告，不併入 Argus 分數）
   3. CVE 資料源補 **OSV.dev + EPSS**，讓漏洞優先序不只看 CVSS。（**已實作 2026-10-07**：`security/vuln_intel.py`，EPSS 影響排序與說明、OSV 提供前端函式庫修補版本，不改嚴重度）
 
@@ -165,7 +165,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
   3. **評分可解釋化**：每個維度列出扣分來源、coverage、confidence 與未測範圍。（**已實作 2026-10-07**：扣分來源、coverage、未完整完成的檢查；confidence 目前不影響扣分，待第 6 項校準後再列）
   4. **外部指標保持獨立，不做錯誤「對齊總分」**：Lighthouse、CrUX、axe、Observatory 各自呈現；只在同 URL/裝置/期間/構面可直接對應的子指標做 validation。
   5. **保存 `scoring_version` / `ruleset_version`**：規則或權重版本變更時，歷史圖必須標示模型版本；跨版本不得直接把 score delta 解讀成網站改善。
-  6. **confidence 使用既有欄位但需重新校準**：低 confidence 可影響排序/扣分，但 legacy `confidence=1.0` 不得等同 Confirmed。
+  6. **confidence 使用既有欄位但需重新校準**：低 confidence 可影響排序/扣分，但 legacy `confidence=1.0` 不得等同 Confirmed。（**第一階段已實作 2026-10-08**：資安發現類型標示，見 §5 第 1 項；尚未影響排序或扣分）
 
 ---
 

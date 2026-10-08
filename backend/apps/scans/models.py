@@ -429,6 +429,22 @@ class Finding(models.Model):
     def __str__(self) -> str:
         return f"{self.category}:{self.severity}:{self.title}"
 
+    @property
+    def security_kind(self) -> str | None:
+        """資安發現的類型（設定建議／曝露面／疑似弱點／已驗證弱點），由規則與來源推得。"""
+        from apps.scans.security.finding_kind import security_kind
+
+        return security_kind(
+            category=self.category, rule_id=self.rule_id, title=self.title,
+            severity=self.severity, evidence=self.evidence,
+        )
+
+    @property
+    def security_kind_label(self) -> str:
+        from apps.scans.security.finding_kind import KIND_LABELS
+
+        return KIND_LABELS.get(self.security_kind, "")
+
 
 class SearchConsoleConnection(models.Model):
     """Google Search Console 連線（OAuth，scope 只有 webmasters.readonly）。

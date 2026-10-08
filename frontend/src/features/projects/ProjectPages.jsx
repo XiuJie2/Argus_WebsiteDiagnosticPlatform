@@ -536,6 +536,9 @@ function IssueRow({ issue, scanId, open, onToggle }) {
         </th>
         <td className="issue-col-cat">
           <span className={`issue-cat cat-${issue.category}`}>{CATEGORY_LABELS[issue.category] || issue.category}</span>
+          {issue.security_kind_label && (
+            <span className={`security-kind-chip is-${issue.security_kind}`}>{issue.security_kind_label}</span>
+          )}
         </td>
         <td className="issue-col-pages">{issue.pages || "—"}</td>
         <td className="issue-col-fix">

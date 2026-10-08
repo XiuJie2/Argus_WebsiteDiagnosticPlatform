@@ -8147,6 +8147,16 @@
                     "ai_handoff_prompt": {
                         "type": "string"
                     },
+                    "security_kind": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "資安發現的類型（設定建議／曝露面／疑似弱點／已驗證弱點），由規則與來源推得。",
+                        "readOnly": true
+                    },
+                    "security_kind_label": {
+                        "type": "string",
+                        "readOnly": true
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -8176,6 +8186,8 @@
                     "priority_score",
                     "remediation",
                     "rule_id",
+                    "security_kind",
+                    "security_kind_label",
                     "selector",
                     "severity",
                     "title"
