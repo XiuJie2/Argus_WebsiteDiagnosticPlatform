@@ -54,15 +54,10 @@ _QUOTE_RADIUS = 70
 
 # ---------- 答案值 ----------
 
-# Email 與電話的格式與資安共用（evidence/contacts.py，P0-B），兩邊對同一頁的判斷才會一致
+# Email、電話與地址的格式與其他模組共用（evidence/contacts.py，P0-B），兩邊對同一頁的判斷才會一致
 _PHONE = contacts.PHONE_PATTERN
 _EMAIL = contacts.EMAIL_PATTERN
-_ADDRESS = re.compile(
-    r"(?:[一-鿿]{1,4}[縣市])?[一-鿿]{1,4}[區鄉鎮市]"
-    r"[一-鿿\d]{0,12}(?:路|街|大道)(?:[一二三四五六七八九十\d]+段)?"
-    r"(?:[\d一二三四五六七八九十]+巷)?(?:[\d一二三四五六七八九十]+弄)?\d+(?:之\d+)?號"
-    r"|\d{1,5}\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+(?:Street|St\.|Road|Rd\.|Avenue|Ave\.|Blvd\.?)",
-)
+_ADDRESS = contacts.ADDRESS_PATTERN
 _HOURS = re.compile(
     r"\d{1,2}[:：]\d{2}\s*(?:[-~–—至到]|to)\s*\d{1,2}[:：]\d{2}"
     r"|(?:週|星期|周)[一二三四五六日天]\s*(?:[-~–—至到])\s*(?:週|星期|周)?[一二三四五六日天]"

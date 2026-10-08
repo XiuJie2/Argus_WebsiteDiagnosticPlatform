@@ -169,6 +169,46 @@ describe("ProjectIssuesPage", () => {
   });
 });
 
+describe("ProjectIssuesPage 依根本原因", () => {
+  function mockIssues(rootCauses: unknown[]) {
+    api.get.mockImplementation(async (url: string) => (url !== "/projects/7/issues/" ? { data: { results: [] } } : {
+      data: {
+        scan: { id: 3, completed_at: "2026-10-01T00:00:00Z", categories: ["seo", "security"] },
+        compared_with: null,
+        missing: [],
+        issues: [
+          issue("csp", { severity: "medium", category: "security", title: "缺少 CSP", root_cause: "server-headers" }),
+          issue("hsts", { severity: "medium", category: "security", title: "缺少 HSTS", root_cause: "server-headers" }),
+          issue("h1", { severity: "low", category: "seo", title: "H1 數量不正確" }),
+        ],
+        root_causes: rootCauses,
+      },
+    }));
+  }
+
+  it("同一處修法的問題放在一起並說明在哪裡修，其餘列在其他問題", async () => {
+    mockIssues([{
+      id: "server-headers", title: "網站伺服器的回應標頭設定", where: "網站伺服器或 CDN 的回應標頭設定",
+      summary: "改一次，所有頁面同時生效。", issues: ["csp", "hsts"], count: 2, severity: "medium", pages: 1,
+    }]);
+    const user = userEvent.setup();
+    renderIssuesTab();
+    await screen.findByText("缺少 CSP");
+    await user.click(screen.getByRole("button", { name: /依根本原因/ }));
+    const groups = Array.from(document.querySelectorAll(".issue-group-row")).map((row) => row.textContent?.replace(/\s+/g, ""));
+    expect(groups[0]).toContain("網站伺服器的回應標頭設定2個問題，修一處一起解決");
+    expect(groups[0]).toContain("在哪裡修：網站伺服器或CDN的回應標頭設定");
+    expect(groups[1]).toBe("其他問題：1個，各自處理");
+  });
+
+  it("沒有可歸類的根本原因時不顯示這個模式", async () => {
+    mockIssues([]);
+    renderIssuesTab();
+    await screen.findByText("缺少 CSP");
+    expect(screen.queryByRole("button", { name: /依根本原因/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("ProjectIssuesPage 本次未出現", () => {
   it("只有覆蓋完整的項目標「已修好」，其餘標示實際狀態", async () => {
     api.get.mockImplementation(async (url: string) => (url !== "/projects/7/issues/" ? { data: { results: [] } } : {

@@ -718,3 +718,27 @@ def _appendix(doc, data):
                         "size": 9, "color": T.GREY}], after=5)
         rows = [[i["question"], i["verdict"], i["basis"]] for i in ap["aeo_items"]]
         data_table(doc, ["題目", "判定", "答案原文或理由"], rows, [2300, 1100, 4700])
+    # 逐項扣分（Argus 在地修改：與網頁「分數說明」分頁同一份資料，讀者可自行加總核對）
+    score_items = ap.get("score_items") or {}
+    if score_items:
+        h2(doc, f"6.{7 if ap.get('aeo_items') else 6}　各分類扣分明細")
+        add_para(doc, [{"text": "每一項的扣分依嚴重度固定（嚴重 60、高 35、中 12、低 4），同一個問題出現在多頁只扣一次；"
+                                "「只修好這項時」是其他問題不變、只修好這一項後的分類分數。",
+                        "size": 9, "color": T.GREY}], after=5)
+        if score_items.get("note"):
+            add_para(doc, [{"text": score_items["note"], "size": 10, "color": T.SLATE}], after=6, line=1.44)
+        for cat in score_items.get("categories") or []:
+            add_para(doc, [{"text": f'{cat["name"]}　{cat["score"]} 分', "size": T.TYPE["body"],
+                            "color": T.SLATE, "bold": True},
+                           {"text": f'　{cat["basis"]}', "size": T.TYPE["meta"], "color": T.GREY}],
+                     before=6, after=3)
+            if cat["items"]:
+                rows = [[i.get("ref") or "—", i["title"], i["severity"], f'−{i["weight"]}',
+                         str(i["occurrences"]), f'{i["score_without"]} 分'] for i in cat["items"]]
+                data_table(doc, ["項次", "項目", "嚴重度", "扣分", "出現處", "只修好這項時"], rows,
+                           [800, 3300, 1100, 800, 900, 1200])
+            else:
+                add_para(doc, [{"text": "沒有扣分項目。", "size": 9, "color": T.GREY}], after=3)
+            if cat.get("notes"):
+                add_para(doc, [{"text": cat["notes"] + "。", "size": T.TYPE["meta"], "color": T.GREY}],
+                         before=2, after=4)

@@ -28,7 +28,7 @@ from apps.scans.aeo.content import (
     extract_page_content,
     robots_directives,
 )
-from apps.scans.aeo.questions import EMAIL, PHONE, build_question_set
+from apps.scans.aeo.questions import ADDRESS, EMAIL, PHONE, build_question_set
 from apps.scans.evidence import contacts as shared
 
 METHOD_VERSION = "rules-v1"
@@ -229,7 +229,7 @@ def evaluate_site(pages: list[SitePage]) -> AeoEvaluation:
         # 共用證據的筆數（只記數量，不重複存個資）
         "shared_contacts": {
             kind: sum(1 for c in contact_evidence if c.kind == kind)
-            for kind in (shared.EMAIL, shared.PHONE)
+            for kind in (shared.EMAIL, shared.PHONE, shared.ADDRESS)
         },
         "citation": _citation_summary([c for c in citations.values() if c]),
         "questions": questions,
@@ -240,8 +240,12 @@ def evaluate_site(pages: list[SitePage]) -> AeoEvaluation:
 
 # ---------- 共用聯絡資訊證據 ----------
 
-_CONTACT_KIND = {EMAIL: shared.EMAIL, PHONE: shared.PHONE}
-_CONTACT_LABEL = {shared.EMAIL: "Email", shared.PHONE: "電話"}
+_CONTACT_KIND = {EMAIL: shared.EMAIL, PHONE: shared.PHONE, ADDRESS: shared.ADDRESS}
+_CONTACT_LABEL = {shared.EMAIL: "Email", shared.PHONE: "電話", shared.ADDRESS: "地址"}
+# 另一邊讀同一份證據的模組：情境不同時在理由中點名，說明不是矛盾
+_OTHER_MODULE = {
+    shared.EMAIL: "資安檢查", shared.PHONE: "資安檢查", shared.ADDRESS: "結構化資料檢查",
+}
 
 
 def _passage_values(kind: str, passage) -> dict[str, str]:
@@ -251,12 +255,33 @@ def _passage_values(kind: str, passage) -> dict[str, str]:
     return {shared.normalize_phone(v): v for v in shared.find_phones(passage.text)}
 
 
+def _passage_hit(kind: str, passage, wanted: set[str], originals: dict[str, str]) -> str:
+    """段落是否寫了共用證據中的值，回傳段落中的寫法（沒有則空字串）。
+
+    地址以「正規化後的字串包含」比對：結構化資料的街道地址（濟南路一段321號）在頁面上
+    常寫成含縣市區的完整地址。
+    """
+    if kind != shared.ADDRESS:
+        found = _passage_values(kind, passage)
+        return next((found[n] for n in found if n in wanted), "")
+    text = shared.normalize_address(passage.text)
+    for normalized in wanted:
+        if normalized in text:
+            written = shared.find_addresses(passage.text)
+            return next(
+                (w for w in written if normalized in shared.normalize_address(w)),
+                originals[normalized],
+            )
+    return ""
+
+
 def reconcile_contact(result: a.QuestionResult, evidence: list, passages: list) -> a.QuestionResult:
-    """聯絡題（Email／電話）以共用證據核對，避免和資安檢查互相矛盾。
+    """聯絡題（Email／電話／地址）以共用證據核對，避免和資安、結構化資料檢查互相矛盾。
 
     - 共用證據中的值出現在任何可讀段落（含被當成標題的短段落）：判定為可回答，附該段原文。
     - 只出現在導覽列、頁首、隱藏區塊、屬性或 HTML 註解：判定不變，但理由寫明它在哪裡、
       為什麼正文讀不到——情境不同不算矛盾，不能只寫「找不到」。
+    - 地址只在 JSON-LD 結構化資料：判定不變，理由說明搜尋引擎讀得到、訪客看不到。
     """
     kind = _CONTACT_KIND.get(result.question.answer_type)
     # 只修正「找不到／資訊不足」；已判可回答或內容衝突（兩頁客服專線不同）的不動
@@ -265,10 +290,10 @@ def reconcile_contact(result: a.QuestionResult, evidence: list, passages: list) 
     relevant = [c for c in evidence if c.kind == kind]
     if not relevant:
         return result
+    originals = {c.normalized: c.value for c in relevant}
     wanted = {c.normalized for c in relevant if c.location != shared.LOCATION_COMMENT}
     for passage in passages:
-        found = _passage_values(kind, passage)
-        hit = next((found[n] for n in found if n in wanted), "")
+        hit = _passage_hit(kind, passage, wanted, originals)
         if hit:
             return a.QuestionResult(
                 result.question,
@@ -281,10 +306,19 @@ def reconcile_contact(result: a.QuestionResult, evidence: list, passages: list) 
         sorted({shared.LOCATION_LABELS[c.location] for c in relevant})
     )
     label = _CONTACT_LABEL[kind]
+    if {c.location for c in relevant} == {shared.LOCATION_STRUCTURED}:
+        where = (
+            "只寫在結構化資料裡，搜尋引擎讀得到，但頁面上沒有顯示，"
+            "訪客看不到，AI 摘要也不一定採用"
+        )
+    else:
+        where = (
+            "但不在正文或頁尾的可讀文字裡，例如只出現在導覽列、頁首、隱藏區塊或 HTML 註解，"
+            "訪客與 AI 摘要不一定讀得到"
+        )
     result.reason = (
         f"{result.reason}（網頁原始碼中有 {len(relevant)} 筆{label}，位置：{places}；"
-        f"但不在正文或頁尾的可讀文字裡，例如只出現在導覽列、頁首、隱藏區塊或 HTML 註解，"
-        f"訪客與 AI 摘要不一定讀得到。資安檢查列出的{label}與此判定情境不同，並不矛盾。）"
+        f"{where}。{_OTHER_MODULE[kind]}讀到的{label}與此判定情境不同，並不矛盾。）"
     )
     return result
 

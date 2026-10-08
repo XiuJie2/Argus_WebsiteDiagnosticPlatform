@@ -43,6 +43,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | `report_pdf.py` | LibreOffice headless 把 .docx 轉成 PDF：每次用獨立暫存使用者設定檔（web／worker 同時轉檔不互鎖）、逾時 `ARGUS_REPORT_PDF_TIMEOUT_SECONDS`、原子寫入；失敗拋 `ReportConversionError`，**不退回提供 .docx**。Docker image 裝 `libreoffice-writer-nogui` | 退回 .docx、共用 LibreOffice 設定檔 |
 | `seo/`、`seo_views.py` | SEO 分析頁與 Google Search Console（見下「SEO 分析與 Search Console」） | 修改 `ScanJob.status`、產生 Finding、回傳 refresh token |
 | `projects.py` | 網站專案的彙整資料（只讀 DB）：`project_overview`（含本次掃描覆蓋 `stats`、各維度問題數、AEO 摘要、最近掃描，以及 `site_description`：最新完成掃描首頁 HTML 的 meta description／og:description，前 100k 字元、最多 `SITE_DESCRIPTION_LIMIT` 字）、`project_issues`／`compare_issues`（新增／持續／本次未出現；每個問題含說明、修法、最多 `ISSUE_URLS_LIMIT` 個網址）、`project_pages`（逐頁狀態與問題數）、`project_summaries`（清單用：最新分數與變化、`score_history` 走勢、最新完成掃描依嚴重度的 `issue_counts`；兩次查詢） | 寫 DB、連線目標網站 |
+| `root_causes.py` | 根本原因關聯（roadmap Root Cause Correlation，2026-10-08）：`ROOT_CAUSES` 以 rule_id 正則把同一處修法的問題歸類（伺服器回應標頭 `SECURITY_CSP_`／`SECURITY_HSTS_`／`SECURITY_X_FRAME_OPTIONS_`／`SECURITY_X_CONTENT_TYPE_OPTIONS_`／`header-`、`cookie-`、`ssl-`、`dns-spf|dmarc-`、`SEO_ALT_`＋axe 圖片替代文字、`geo-article-`）；`annotate_root_causes` 只在同一原因有 2 個以上問題時給問題加 `root_cause` 並回傳摘要（依最高嚴重度、問題數、頁數排序）。`project_issues` 回 `root_causes`。新增歸類必須是修法確實在同一處，不可為了湊組放進去。測試 `tests_root_causes.py` | 改嚴重度、合併問題、影響計分或歷史比較 |
 | `favicon.py` | 網站專案圖示：**新增／恢復專案時立刻抓**（`refresh_project_favicon_from_url`：先抓首頁 HTML 前 512KB 找 `<link rel=icon>`，整體上限 8 秒），掃描時再用爬到的首頁更新（`stage_favicon`，每 7 天最多一次）；沒宣告就 `/favicon.ico`。每一跳轉址都過 `assert_public_http_url`、圖示上限 200KB、逾時 5 秒、帶 `ARGUS_SCANNER_USER_AGENT`（Wikipedia 等會拒絕沒有 UA 的請求）；任何 `image/*`（含 gov.tw 的 `image/x-png`）交給 Pillow 縮成 64px PNG、SVG 限 20KB；存成 `SiteProject.favicon`（data URL），失敗保留舊圖示。舊專案補抓：`manage.py refresh_project_favicons`（`--all`／`--dry-run`） | 修改 `ScanJob.status`、讓掃描因圖示失敗 |
 | `aeo/` | AEO 問答檢測（內容擷取、出題、找答案與判定、標記一致性、整站評估；見下「AEO 問答檢測」） | 修改 `ScanJob.status`、發出任何網路請求（只分析爬蟲已抓到的頁面） |
 | `nuclei_scanner.py` | Nuclei binary 封裝；模板治理（固定 KEV 模板集、只掃網站根網址、模板集指紋，見下「Nuclei 模板治理」）、JSONL 解析、Finding mapping | 在 passive 或未授權模式執行 |
@@ -150,7 +151,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
   - 題庫意圖可設 `anchors`（主題詞）。段落或其小標題沒有主題詞時，答案值不算數；沒有任何段落在談這個主題就判 `missing`，不再拿無關段落當「資訊不足」的證據。實例：學員心得裡的「必須」被當成申請資格。
   - 心得／見證段落（小標題含「見證、心得、評價…」，或第一人稱單數「我」出現兩次以上）不能回答題庫問題（`answers.is_testimonial`）。
   - 超過 `MAX_HEADING_CHARS`（80）或含句中句號的 h1–h6 視為內文段落（`content._is_body_text`）。實例：隱私權政策整段寫在 h3 裡，裡面的 Email 被當成標題略過，造成資安判「公開 Email」、AEO 卻判「找不到 Email」的矛盾。
-- **共用聯絡資訊證據（2026-10-07，P0-B）**：`evaluate_site` 以 `evidence.contacts.collect_contacts` 擷取同一份 Email／電話，`reconcile_contact` 核對聯絡題：共用證據的值出現在任何可讀段落（含被當成標題的短段落）就判可回答；只在導覽列、頁首、隱藏區塊或 HTML 註解時判定不變，但理由寫明位置與「與資安檢查情境不同、並不矛盾」。`aeo_report.shared_contacts` 只記筆數不存值。測試 `tests_shared_evidence.py`。
+- **共用聯絡資訊證據（2026-10-07，P0-B）**：`evaluate_site` 以 `evidence.contacts.collect_contacts` 擷取同一份 Email／電話，`reconcile_contact` 核對聯絡題：共用證據的值出現在任何可讀段落（含被當成標題的短段落）就判可回答；只在導覽列、頁首、隱藏區塊或 HTML 註解時判定不變，但理由寫明位置與「與資安檢查情境不同、並不矛盾」。`aeo_report.shared_contacts` 只記筆數不存值。地址（2026-10-08）也走共用證據：`contacts.ADDRESS_PATTERN`（AEO 答案格式同一份）＋JSON-LD `address`（位置 `structured_data`，PostalAddress 只取 streetAddress），頁面文字含該街道即判可回答；只在 JSON-LD 時判定不變、理由寫「搜尋引擎讀得到、訪客看不到」。日期不共用（AEO 與 GEO 的日期是不同的事）。測試 `tests_shared_evidence.py`。
 - **回歸資料集與指標（2026-10-07，P0-C）**：`aeo/gold_dataset.py`（`GOLD_CASES` 調整用＋`HOLDOUT_CASES` 保留集，每題人工標註；tag 分 answerable／insufficient／conflict／missing／near_miss／holdout）、`aeo/benchmark.py`（以「可回答」為正類算 precision、recall、false positive rate、accuracy、每站耗時、混淆矩陣）、`manage.py aeo_benchmark [--holdout] [--json]`（低於門檻非零結束）。門檻 `benchmark.THRESHOLDS`（accuracy／precision／recall ≥ 0.95、FPR ≤ 0.05）由 `tests_aeo_benchmark.py` 鎖定，只能往上調；**不可為了讓規則通過而改標註**，保留集不要拿來調規則。同次依資料集修正的規則：小標題就是主題時段落算候選（`_passage_score` 標題命中權重 1）、「如需／若需」不算條件（`_CONDITIONAL`）、感謝詞算空泛（`_VAGUE`）、營業時間關鍵詞加「無休／全天」。
 - 人工校驗題集在 `tests_aeo_answerability.py` 的 `GOLD_SITES`：改動規則後判定正確率必須維持 100%。**第一版只做可重現的規則判定**；受控 AI 評估與外部平台觀察尚未實作，報告不得宣稱有。
 - 新增意圖或判定規則：先在 `GOLD_SITES`（或 `gold_dataset.GOLD_CASES`）加一個會踩到的案例，再改規則，最後跑 `manage.py aeo_benchmark` 確認門檻。
@@ -261,6 +262,7 @@ schema 沒有的東西（掃描頁面清單、已解決項目清單）不要硬�
 | 中風險以上用完整卡片；低風險與資訊提示是精簡條目（標題＋一句問題＋一句建議，不列逐頁證據與追溯資訊） | 讀者注意力要放在該處理的項目；舊版 25 頁中低風險卡片佔一半 |
 | 第一章摘要先列「建議先處理這 3 件事」（優先清單前三項）、「網站優勢」（每項附依據；由間接訊號推論的標「推論」，例如單次實驗室量測的載入時間）與「網站架構」（`payload.site_profile`：事實表＋CDN／反向代理提醒），之後才是分數圖 | 報告不能只有負面問題；網站在 Cloudflare 等邊緣之後時，必須提醒 Port／主機層級資訊反映的是邊緣節點 |
 | 附錄「修補後如何驗證」只逐項列中風險以上，其餘一行帶過（payload 仍保留全部 `verify_items`） | 舊版這張表單獨佔 5 頁 |
+| 附錄「各分類扣分明細」（`appendix.score_items`，2026-10-08，`RENDERER_VERSION` 17）由 `reports._report_score_items` 取 `score_explain.score_explanation`，與網頁分數說明同一份；項次對應第 4 章卡片（以 `rule_id` 對）；`matches=false`（舊公式或事後重新判定）只放 `note` 不列表 | 分數要能被讀者自行核對；加不回保存分數的表比不列更讓人困惑 |
 
 ntubimdbirc.tw（26 項）由 25 頁降到 19 頁。2026-10-06 第二輪：第 3 章「這些分類為什麼重要」與第 5 章「掃描資訊與範圍」不再強制換頁（章節標題 `keep_with_next`），浮水印縮小、透明度降低；分數說明註明是 Argus 自訂模型、不是產業標準（`SCORE_NOTE`）。
 
@@ -409,7 +411,7 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
 | **報告編號跨重新產生保持不變** | 由 `HMAC(SECRET_KEY, scan_id)` 推導，不含時間戳。報告一旦交付就可能被轉寄存檔，換編號會讓已流出的副本失效 |
 | **報告本身只印編號、不印雜湊** | 雜湊要涵蓋整份檔案，檔案裡又要有雜湊＝循環相依。雜湊由查驗端點提供，收件者自行 `sha256sum` 比對 |
 | **`views.py` 的 report action 必須用快取** | 省下每次下載的 IO 與 CPU。三個條件都成立才可重用：有防偽紀錄、檔案存在、`renderer_version` 等於目前的 `report_render.RENDERER_VERSION` |
-| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 16：資安發現類型；15：AEO 逐題可信度；14：AI 爬蟲政策；13：安全標頭等第；12：OWASP ZAP 被動分析的來源標示；11：PageSpeed Insights 兩列；10：axe-core 依據與來源；9：評分版本；8：覆蓋契約；7：部分掃描警示；6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
+| **改動報告版面（含轉檔方式）就要把 `RENDERER_VERSION` +1**（目前 17：附錄各分類扣分明細；16：資安發現類型；15：AEO 逐題可信度；14：AI 爬蟲政策；13：安全標頭等第；12：OWASP ZAP 被動分析的來源標示；11：PageSpeed Insights 兩列；10：axe-core 依據與來源；9：評分版本；8：覆蓋契約；7：部分掃描警示；6：網站優勢附依據、短章節不換頁；5：重新設計版面；4：改為 PDF） | 否則掃描一旦產過報告就永遠鎖在舊版面。實際踩過：圖表修好後重新下載舊掃描的報告，拿到沒有圖表的快取檔，看起來像修復失敗 |
 | **重產時舊雜湊要進 `previous_sha256`** | 重產會換掉 `content_sha256`，若直接覆蓋，先前已寄出的正本在查驗頁會被判成「對不上」——等於自己把交付過的報告變成偽造品 |
 | **`/api/verify/<編號>/` 是公開端點，絕不回傳掃描發起人** | 否則用報告編號就能反查使用者身分。回應只有：編號、目標網址、掃描與產生時間、整體分數、內容雜湊。帶 `?content_sha256=` 時另回 `matches` / `is_latest_version`，比對範圍含 `previous_sha256`；歷史雜湊本身不列進回應 |
 

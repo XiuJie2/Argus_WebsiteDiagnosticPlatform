@@ -47,7 +47,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級**：
   1. **Answer Entailment 量測與強化（P0）**：`entails()` 初版已上線，候選段落須通過蘊含判定才算答案。下一步不是重做，而是用 gold dataset（見優先序 P0-C）量測誤判率，再依誤判類型強化。（**已實作 2026-10-07**，見優先序 P0-C：`aeo/gold_dataset.py`、`manage.py aeo_benchmark`）
   2. **Specificity / Conflict Check（P0）**：衝突判定目前**只判日期**；擴充到價格、資格、聯絡方式等需具體可核對的欄位，多頁內容互斥時標記 conflict。（**已實作 2026-10-08**：`aeo/answers._value_conflict` 涵蓋價格、營業時間、客服專線，同一標籤在兩個以上頁面的值不同才算；先在回歸資料集加 6 個調整案例（3 衝突＋3 不是衝突）與 4 個保留集案例再寫規則。量測：全體 accuracy 0.971、precision 1.0、recall 0.974、FPR 0；保留集 19／21（兩題是沒出題，衝突 3／3 全對，不是衝突的案例沒有判成衝突）。資格條件不做：條件文字差異多半是不同方案，字面比對無法可靠判斷）
-  3. **Cross-module evidence reuse（P0）**：Email、電話、地址、日期等與 Security／SEO 共用 evidence，避免一個模組「找到」、另一個模組「找不到」。（**Email／電話已實作 2026-10-07**，見優先序 P0-B：`evidence/contacts.py`；地址、日期尚未共用）
+  3. **Cross-module evidence reuse（P0）**：Email、電話、地址、日期等與 Security／SEO 共用 evidence，避免一個模組「找到」、另一個模組「找不到」。（**Email／電話已實作 2026-10-07**，見優先序 P0-B：`evidence/contacts.py`。**地址已實作 2026-10-08**：AEO 地址題與結構化資料（JSON-LD `address`）共用同一份擷取，位置多一種「結構化資料」；頁面文字寫出結構化資料的街道就判可回答，地址只在 JSON-LD 時判定不變、理由說明搜尋引擎讀得到但訪客看不到。真實網站 yamatoya.com.tw 首頁就是只有 JSON-LD 地址。**日期不共用**：AEO 的日期是正文中的截止日、活動日，GEO 的日期是文章發布／更新標記，描述的是不同的事，不會互相矛盾）
   4. **Answer confidence（P1）**：輸出 Confirmed／Likely／Possible，並保留引用來源與限制。（**已實作 2026-10-08**：`aeo/answers.QuestionResult.confidence`，確認＝格式化答案值逐字出現在原文、可能＝步驟／條件或網站自己的問題、推測＝介紹類只確認有具體敘述；附 `limitation` 說明判定限制，顯示在 AEO 分頁與報告附錄，不影響計分。`aeo_benchmark` 輸出各等級 precision：目前資料集三個等級都是 100%（全體 precision 已是 1.0），還無法量出等級之間的差異，需要更多「看起來像答案」的案例）
   5. 問題生成多樣化（標題/H2 + 同業常見問句模板）。（**已實作 2026-10-08**：同業常見問句新增付款方式與預約／訂位兩個意圖（`aeo/questions.py`），先在回歸資料集加 5 個調整案例與 4 個保留集案例並標註再寫規則：保留集 4／4 一次判對，全體 accuracy 0.971→0.975、precision 1.0、recall 0.974→0.977。真實網站核對後修正：選單連結文字不觸發也不當答案（ntub.edu.tw）、英文付款方式（inline.app）、平台名稱 EZTABLE 不算預約管道。不做「標題／H2 自動造題」：該小標題下的段落本身就是答案，幾乎必判可回答，只會灌高分數；網站自己以問號結尾的小標題原本就會出題）
   6. 引用可得性評分。（**已實作 2026-10-08**：`aeo/evaluate._citation`，可回答的題目逐題標示能否被搜尋引擎與 AI 引用——頁面 noindex、禁止摘要（nosnippet、max-snippet:0，含 `X-Robots-Tag`）或答案段落在 data-nosnippet 區塊內＝無法被引用；答案只在執行 JavaScript 後才出現＝引用受限；另算可被引用比例 `aeo_report.citation.citable_ratio`。只是指標，不改 AEO 分數、不另列問題（這些頁面設定本身已由 `page_checks.py` 逐頁列出並扣分）。真實網站核對見 log）
@@ -177,7 +177,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 | **Shared Evidence MVP（P0-B）** | 各 scanner 各自產 finding | 先只接 AEO + Security 共用的 email/phone evidence；驗證跨模組矛盾改善後再擴大，不先做 Universal Evidence Platform |
 | **Evidence Context Contract** | evidence 缺統一情境 | 最小欄位：source_url、observed_at、acquisition_method、viewport、auth/session context、initial_html/rendered_dom/network、source/tool version、artifact ref、limitations、missing_reason、redaction_state；不同 context 不強制一致 |
 | **Evidence Governance** | — | 敏感資料遮罩、cookie/token 永不落 evidence、raw artifact 大小上限、保留期限與刪除策略 |
-| **Root Cause Correlation（P1）** | finding 去重為主 | 聚合成 Root Cause → Related Findings → Evidence → Fix |
+| **Root Cause Correlation（P1）** | finding 去重為主 | 聚合成 Root Cause → Related Findings → Evidence → Fix（**第一階段已實作 2026-10-08**：`apps/scans/root_causes.py`，只收修法確實在同一處的規則——伺服器回應標頭、Cookie 屬性、TLS、SPF／DMARC、圖片替代文字（SEO 與 axe-core）、文章作者與日期標記；同一原因有 2 個以上問題才成組。問題分析 API 回 `root_causes` 並在問題標 `root_cause`，前端「依根本原因」顯示模式寫明在哪裡修。只是呈現，不改嚴重度、計分與歷史比較；尚未進報告。示範專案三次掃描分別歸出回應標頭 5／4／2 項與 SPF／DMARC 2 項） |
 | **Stage Result（P0-A）** | scanner 失敗可被隱藏 | 狀態必須流入 coverage/scoring/history/billing；禁止把工具失敗呈現成「0 findings」 |
 | **智慧動態掃描（旗艦）** | 固定管線 | Signal Collection → Fingerprint → Dynamic Planner；見 [ADR-0004](adr/0004-smart-dynamic-scan.md) |
 | 外部工具統一介面 | Nuclei/Katana 走 `process_runner`，各自 parse | 抽象 `ExternalTool` protocol（執行/逾時/取消/版本鎖/結果正規化），axe/Lighthouse/ZAP 照契約接 |
@@ -209,7 +209,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
    - 建立 50–100 組 answerable / insufficient / conflict / missing / semantic-near-but-not-answer regression case。
    - 驗收至少追蹤 precision、recall、false-positive rate、平均判定成本與耗時；門檻先在實作票/ADR 明定後再上線。
 
-4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。評分可解釋化 **已實作 2026-10-07**：`scanners.score_breakdown()`（`calculate_scores` 的分類分數由它算出）＋`score_explain.py`＋`GET /api/scans/<id>/score-breakdown/`，掃描「分數說明」分頁逐維度列基準分、逐項扣分權重、出現處數、只修好該項時的分數、不扣分項目與未完整完成的檢查；舊公式算的分數標示不一致。尚未做：外部 benchmark、PDF 報告內的逐項扣分、confidence 影響扣分）
+4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。評分可解釋化 **已實作 2026-10-07**：`scanners.score_breakdown()`（`calculate_scores` 的分類分數由它算出）＋`score_explain.py`＋`GET /api/scans/<id>/score-breakdown/`，掃描「分數說明」分頁逐維度列基準分、逐項扣分權重、出現處數、只修好該項時的分數、不扣分項目與未完整完成的檢查；舊公式算的分數標示不一致。PDF 報告內的逐項扣分 **已實作 2026-10-08**：附錄「各分類扣分明細」（`reports._report_score_items`，與分數說明分頁同一份 `score_explanation`，項次對應第 4 章，分數依目前公式加不回來時只說明原因）。尚未做：外部 benchmark、confidence 影響扣分）
    - 加 `scoring_version` / `ruleset_version`；歷史 diff 升級成 RESOLVED / NOT_OBSERVED / BLOCKED / INCONCLUSIVE。
    - 外部 benchmark 只驗證可對應子指標，不把 Argus 總分校準成 Lighthouse/CrUX。
 
