@@ -33,7 +33,8 @@ queued → crawling → scanning → [agent_testing] → completed
 | `coverage.py` | 掃描覆蓋契約（見下「掃描覆蓋契約」）：`ScanCoverage` 累積各檢查狀態與產生的問題代號、`category_status`、`incomplete_checks`、`absent_issue_status`（前次有本次沒有的問題狀態）、`issue_key` | 寫 DB、修改 `ScanJob.status` |
 | `fingerprint.py`、`fingerprint_gold.py`、`fingerprint_benchmark.py` | 網站特徵（Smart Scan 階段 1，見下「網站特徵」）：`build_fingerprint` 只用爬取已有的訊號、`fingerprint_snapshot` 存 `ScanJob.fingerprint`；準確率資料集與指標 | 發任何請求、改變執行計畫或覆蓋紀錄、把「沒看到」寫成 False |
 | `ai_bots.py` | AI 爬蟲的 robots.txt 政策：13 個 AI 爬蟲依用途分訓練／AI 搜尋／使用者觸發，依 RFC 9309 判斷（點名群組優先於 `*`、產品名稱完全比對、Allow／Disallow 取最長路徑）允許／部分限制／封鎖；爬蟲讀 robots.txt 時算好放 `site_signals.ai_bot_policy`，`site_profile.ai_bots`（勾 GEO）。**只封鎖訓練用爬蟲不算問題**；封鎖 AI 搜尋或使用者觸發的爬蟲才產生 `geo-ai-search-bots-blocked`（低） | 另發請求、把封鎖訓練爬蟲當成問題 |
-| `geo_entity.py` | GEO 實體與權威訊號（roadmap §3 第 1 項，`stage_geo_site` 呼叫）：讀已保存頁面的 JSON-LD 與 meta，判斷組織實體（Organization／LocalBusiness 等，不含 Person——文章作者就是 Person）、`sameAs`（Wikidata、維基百科、社群）、文章作者。Finding：`geo-entity-organization-missing`（低，有結構化資料但沒有組織；完全沒有 JSON-LD 的網站交給逐頁提醒）、`geo-entity-no-same-as`（資訊）、`geo-article-author-missing`（低）。文章頁＝JSON-LD 標 Article 類，或 `og:type=article`＋`article:published_time` 且 `<article>` 區塊少於 3 個；`CollectionPage`／`ItemList` 不算（WordPress 常把分類頁標成 og:type=article） | 發請求、把列表頁當文章、把作者 Person 當組織 |
+| `geo_entity.py` | GEO 實體與權威訊號（roadmap §3 第 1 項，`stage_geo_site` 呼叫）：讀已保存頁面的 JSON-LD 與 meta，判斷組織實體（Organization／LocalBusiness 等，不含 Person——文章作者就是 Person）、`sameAs`（Wikidata、維基百科、社群）、文章作者。Finding：`geo-entity-organization-missing`（低，有結構化資料但沒有組織；完全沒有 JSON-LD 的網站交給逐頁提醒）、`geo-entity-no-same-as`（資訊）、`geo-article-author-missing`（低）。文章頁＝JSON-LD 標 Article 類，或 `og:type=article`＋`article:published_time` 且 `<article>` 區塊少於 3 個；`CollectionPage`／`ItemList` 不算（WordPress 常把分類頁標成 og:type=article）。**內容新鮮度**（roadmap §3 第 2 項，`freshness_findings(summary, today)`）：文章頁的 JSON-LD `datePublished`／`dateModified` 與 `article:published_time`／`article:modified_time` → `geo-article-date-missing`（低，兩邊都沒有日期）、`geo-article-date-invalid`（低，更新早於發布或未來日期，容許 1 天）、`geo-article-date-inconsistent`（低，JSON-LD 與 meta 相差超過 1 天）；只檢查日期標記，不判斷內容新舊 | 發請求、把列表頁當文章、把作者 Person 當組織、把長青內容判為過時 |
+| `geo_structure.py` | GEO 可被 AI 摘要性（roadmap §3 第 3 項，`scanners.analyze_page` 的 GEO 分支逐頁呼叫；函式內匯入避免循環）：`geo-long-content-no-subheadings`（低，成句段落 ≥40 字合計約中文 1500 字／英文 1000 詞以上且原始 HTML 沒有 h2–h6——直接數原始 HTML，因為正文擷取排除 `<header>`、部落格常把文章標題放在裡面）、`geo-enumeration-not-list`（資訊，同一段有 3 個以上編號）。略過非 HTML 文件（RSS）與 `<pre>`／`<code>`；入口網站的短連結文字不算長文 | 判斷「開頭有沒有摘要句」這類寫作品質、看整頁有沒有 `<ul>`（導覽列幾乎都是 `<ul>`） |
 | `pagespeed.py` | Google PageSpeed Insights（見下「PageSpeed Insights」）：`fetch` 呼叫 PSI v5、`parse` 整理成 `ScanJob.performance_report`、`summary_lines` 給報告範圍表 | 修改 `ScanJob.status`、把金鑰寫進 log 或錯誤訊息、把外部分數併入 Argus 分數 |
 | `evidence/` | 跨模組共用證據（P0-B）：`contacts.py` 的 Email／電話格式、正規化（`normalize_phone`：+886→0、去分機）、`collect_contacts`（每筆帶來源網址、取得方式、位置 content／comment／link、視窗、登入狀態）。資安 `scanners.analyze_data_exposure`、`security/redaction.py` 與 AEO `aeo/answers.py`、`aeo/evaluate.reconcile_contact` 都從這裡取，**不得各自另寫 Email／電話 regex** | 寫 DB、連線目標網站 |
 | `cancellation.py` | 合作式取消：`is_cancelled` / `raise_if_cancelled` 直接查 DB `ScanJob.status` 是否為 `CANCELLED`（**非 Redis 旗標**），供 worker 在檢查點輪詢 | 直接終止 worker process |
@@ -170,7 +171,8 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 |---|---|
 | `seo/page_audit.py` | 逐頁解析已保存的 HTML（`rendered_dom` 優先）：Title、Description、H1–H6 清單與跳號、正文（沿用 `aeo/content.extract_page_content`）、canonical、robots meta＋`X-Robots-Tag`、圖片 alt、連結（錨文字含圖片 alt）、OG、hreflang、載入時間。**只讀 DB，不連線** |
 | `seo/structured_data.py` | Google 複合式搜尋結果必填欄位（依 Search Central 2026-09 版；`scanners._seo_structured_data` 逐頁呼叫，Finding `seo-structured-data-required`（低）與自評星等 `seo-structured-data-self-serving-reviews`（資訊））：只套頂層節點（區塊根、陣列、`@graph`、`mainEntity`）的類型規則，Review／AggregateRating 任何層都檢查，Offer／活動地點只在 Product／Event 底下檢查；`@type` 接受 schema.org 網址形式；純 `@id` 參照不檢查；語法錯誤略過（由 AEO 回報）。**不檢查** FAQPage／HowTo（Google 已不支援）、建議欄位、值是否正確 |
-| `seo/link_check.py` | 連結狀態：每一跳都過 `assert_public_http_url`、手動跟隨轉址最多 5 跳並記錄跳轉鏈；HEAD 回 4xx／5xx 或連線層錯誤（`RemoteProtocolError` 等，2026-10-06 domjudge 子網域實測）時改 GET（不讀內容）。站台檢查：robots.txt（`User-agent: *` 的 Disallow）、sitemap、HTTP→HTTPS、www／非 www、隨機路徑 404、`/index.html`、結尾斜線 |
+| `seo/link_check.py` | 連結狀態：每一跳都過 `assert_public_http_url`、手動跟隨轉址最多 5 跳並記錄跳轉鏈；HEAD 回 4xx／5xx 或連線層錯誤（`RemoteProtocolError` 等，2026-10-06 domjudge 子網域實測）時改 GET（不讀內容）。站台檢查：robots.txt（`User-agent: *` 的 Disallow）、sitemap、HTTP→HTTPS、www／非 www、隨機路徑 404、`/index.html`、結尾斜線。逾時是獨立判定 `timeout`（2026-10-08 前併在 `error`）；`check_links` 的未檢查數分成 `over_limit`（超過數量上限）與 `budget_exhausted`（時間用完），存 `seo_report.unchecked_reasons` |
+| `seo/link_trend.py` | 連結覆蓋與趨勢（2026-10-08，roadmap §11 第 2、3 項）：`link_coverage` 把每個連結歸到已確認／對方限制／逾時／無法連線／非公開位址／超過數量上限／時間用完，存 `seo_report.coverage`，`seo_links` 覆蓋紀錄的說明列出沒有明確結果的狀態；`link_trend` 和同專案上一次有 `seo_report` 的完成掃描比較，失效連結標 `new`／`persisting`／`recovered`／`unconfirmed`，存 `seo_report.trend`（`items` 逐網址、`counts`、`previous_scan_id`）。只有這次真的檢查過且正常（含轉址後正常）才算恢復；沒檢查、逾時、被拒或頁面上找不到都是無法確認。爬蟲已造訪的頁面不做連結檢查，兩次都用 `crawled_verdicts` 併入爬蟲 HTTP 狀態（上一次由 `Page` 表取）。`seo/report.py` 的連結列帶 `trend`、links 區塊帶 `coverage`／`trend`（不含 items；`CACHE_VERSION` 2），`seo-broken-internal-links` 的描述與證據註明新壞掉／持續失效 |
 | `seo/collect.py` | `stage_seo_links` 主體：收集所有頁面的不重複連結（爬蟲已直接造訪且沒轉址的頁面不重查），依站內→子網域→站外排序，前 `ARGUS_SEO_LINK_CHECK_LIMIT`（150）個、總時間 `ARGUS_SEO_LINK_CHECK_SECONDS`（120） |
 | `seo/report.py` | API 資料：概覽（掃描頁數、受影響頁數、重大／警告／提示、可索引頁數、失效連結、優先修復事項）、頁面、問題（每處附網址、檢測時間、證據）、連結（依目標合併、來源頁與錨文字）、站台檢查、關鍵字報告；以「掃描 id＋連結檢查時間」快取 1 小時 |
 | `seo/keywords.py` | 目標關鍵字（`SiteProject.target_keywords`，最多 20 個、每個 60 字）字面比對 Title／H1／Description／H2–H6／網址／正文 |
@@ -328,6 +330,16 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
 三類量測，全部由爬蟲逐頁收集、`analyze_ux()` 逐頁產生 finding：
 
 - **行動版版面**（`collect_mobile_layout()` → `Page.layout_metrics`）：水平溢出等。
+- **版面位移 CLS 與元素歸因（2026-10-08，roadmap §4 第 3 項）**（`collect_layout_shift()` →
+  `layout_metrics["layout_shift"]`，不需 migration）：每頁在 `scroll_to_bottom` 與 `page.content()` 之後、
+  **截圖之前**量（整頁截圖會改視窗大小），被阻擋的頁不量。讀瀏覽器 buffered `layout-shift` 紀錄，依 Google
+  CLS 定義取最大工作階段視窗，`hadRecentInput` 不計；`scroll_to_bottom` 最後瞬間跳回頂端前會設
+  `window.__argusScrollTopAt`，之後的位移（捲動後縮小的標頭又展開）是量測動作造成的、不計。每個元素分數＝它有移動
+  的位移分數合計（同一次位移同名元素只記一次，不會大於整頁 CLS），附最大移動距離；另數沒有同時標
+  width／height 的 img／video／iframe 當可能原因。`scanners._ux_layout_shift` → `ux-layout-shift`：CLS >0.1 低、
+  >0.25 中。PSI（`pagespeed.py`）只測首頁且需金鑰，這裡是每頁、桌面視窗、單次量測，數值會浮動（沙箱實測
+  udn 首頁兩次分別 0.851 與 0.025：網路慢時樣式表晚到也會量到）。測試 `tests_layout_shift.py`（真實瀏覽器部分
+  要用 `goto`：`set_content` 之後的位移會被 Chromium 標成使用者操作後而不計）。
 - **觸控目標過小 ＋ 表單欄位缺可及名稱**（`collect_ux_signals()` → `page["ux_signals"]`）：
   可點元素在手機寬或高 < `_MIN_TAP_TARGET_PX`（40px）列為 tap-target 問題（≥5 個升
   MEDIUM）；`<input>`/`<select>`/`<textarea>` 無 label/aria/title/placeholder 列為
@@ -452,7 +464,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `deep_security` | `stage_deep_security` | security/ 子套件被動深度檢查＋WAF 封鎖偵測；已知 CVE 由 `security/vuln_intel.py` 補 EPSS 被利用機率與 OSV 修補版本（只影響排序與說明，不改嚴重度） |
 | `zap_passive` | `stage_zap_passive` | 勾資安且 `ARGUS_ZAP_ENABLED` 才跑：爬取時錄的同網站 HAR 交給 OWASP ZAP 只跑被動規則（零新增請求），重複既有檢查的告警不列；ZAP 不可用只標覆蓋 failed，HAR 用完即刪（`security/zap_passive.py`，見 `docs/zap-passive.md`） |
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
-| `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體與文章作者（`geo_entity.py`） |
+| `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體、文章作者與日期（`geo_entity.py`） |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
 | `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`） |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |

@@ -59,8 +59,8 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **現況**：`analyze_geo` / `analyze_geo_fast`（文字區塊數、可見文字長度）。偏輕量。
 - **升級**：
   1. 實體與權威訊號（作者、組織、`sameAs` → Wikidata/社群）——E-E-A-T。（**已實作 2026-10-08**：`apps/scans/geo_entity.py`，組織實體缺少（低）、組織沒有 sameAs（資訊）、文章頁沒有作者（低）。真實網站核對：blog.cloudflare.com 只有 WebSite 標記（缺組織）、wordpress.org 與 css-tricks 的組織 sameAs 正確辨識；WordPress 分類頁與 Smashing Magazine 列表頁標了 og:type=article，改以 CollectionPage／`<article>` 區塊數排除，避免誤判成缺作者的文章）
-  2. 內容新鮮度（`dateModified`/`datePublished` 與實際更新落差）。
-  3. 可被 AI 摘要性（段落結構、清單化、摘要句位置）——與 AEO 共用訊號但角度不同。
+  2. 內容新鮮度（`dateModified`/`datePublished` 與實際更新落差）。（**已實作 2026-10-08**：`geo_entity.freshness_findings`，文章頁缺日期、日期不合理（更新早於發布、未來日期）、JSON-LD 與 article:*_time meta 不一致，各為低風險。只檢查日期標記本身，不判斷內容「舊不舊」（長青內容不需常更新）；也不比對 HTTP Last-Modified——動態網站每次回應都是當下時間，比對沒有意義。真實網站核對 css-tricks、blog.gslin.org 的兩邊日期一致，沒有誤報）
+  3. 可被 AI 摘要性（段落結構、清單化、摘要句位置）——與 AEO 共用訊號但角度不同。（**已實作 2026-10-08**：`apps/scans/geo_structure.py`，段落過長／可引用區塊偏少／缺 main 原本已有；新增長篇內容沒有小標題（低）、列舉寫成一整段（資訊）。「摘要句位置」屬寫作品質，規則無法可靠判定，不做。真實網站核對：ntubimdbirc.tw/about 的「1.技術研究…2.辦理…3.業務…」與 ntub.edu.tw 無障礙說明頁「1) 上方導覽…4) 主要內容區」正確列出；修正四種誤判：RSS 被當網頁、部落格標題在 `<header>` 裡被漏數、入口網站短連結被當長文、CSS 程式碼被當編號）
 
 ## 4. UX
 
@@ -69,7 +69,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級**：
   1. **接 axe-core（Playwright 注入）**：目前 a11y 是自建規則，接開源業界標準可一舉覆蓋 WCAG 2.2 數十條。**UX 維度投報率最高**。
   2. **接 Lighthouse（programmatic）**：Performance/Accessibility/Best-Practices/SEO 四分數與自建並列。
-  3. CLS 元素級歸因（哪個元素造成位移）。
+  3. CLS 元素級歸因（哪個元素造成位移）。（**已實作 2026-10-08**：爬蟲逐頁讀瀏覽器 layout-shift 紀錄（`crawler.collect_layout_shift`），依 Google CLS 定義計算並列出位移的元素與移動距離，CLS >0.1 → `ux-layout-shift`（低，>0.25 中）；不需要 PSI 金鑰、每頁都量。排除爬蟲捲到底後跳回頂端造成的位移。列出的是「被推動」的元素，真正原因通常在它上方較晚載入的內容；另提示沒有標寬高的圖片／影片／iframe 數量。限制：桌面視窗單次量測，沙箱實測 udn 首頁兩次 0.851 與 0.025，網路慢時樣式表晚到也會量到；Lighthouse 的 layout-shifts 稽核（根因）需 PSI 金鑰，未接）
 
 ## 5. 被動資安（Passive Security）
 
@@ -145,16 +145,16 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **現況**：llms.txt 成熟度檢查、FAQ 結構偵測。
 - **升級**：
   1. AI bot robots 政策分析（`GPTBot`/`ClaudeBot`/`Google-Extended`/`PerplexityBot` 允許或封鎖，說明商業取捨）。（**已實作 2026-10-07**：`apps/scans/ai_bots.py`，13 個 bot 依訓練／AI 搜尋／使用者觸發分類；只封鎖訓練用爬蟲不再列為問題）
-  2. 內容可機讀性（語意 HTML 比例、主內容可否與導覽/頁尾分離 `<main>`/`article`）。
+  2. 內容可機讀性（語意 HTML 比例、主內容可否與導覽/頁尾分離 `<main>`/`article`）。（**已驗證 2026-10-08，不新增規則**：既有檢查已涵蓋——缺 `<main>`（`scanners.analyze_geo` 的「缺少語意化主內容區塊」）、正文擷取排除 nav／header／aside／footer（`aeo/content.py`）、核心內容依賴 JavaScript、段落與小標題結構（`geo_structure.py`）。曾評估新增「多個可見 `<main>`」與「`<main>` 只包含少部分正文（<30%）」：實測 8 個網站約 40 頁（ntubimdbirc、ntub、wordpress.org、blog.gslin、cna、setn、law.moj、docs.djangoproject）沒有任何頁面有多個 `<main>`；`<main>` 正文占比除 wordpress.org/showcase（0.31，正文僅約 67 詞）外都在 0.68 以上，沒有 `<main>` 的頁面（cna 首頁、law.moj）已由既有規則列出。新規則不會觸發，不做。「語意 HTML 比例」沒有公認門檻，不做）
 
 ## 11. 連結檢查
 
 - **現況**：`seo/collect.py` 已以 URL 去重跨頁重複連結，`check_links()` 已用 `ThreadPoolExecutor` 並發，並具備站內/子網域/站外分類、跳轉鏈、狀態、robots、難懂錨文字與時間/數量上限。
 - **升級**：
   1. 不重做既有 scan-level 去重與並發；改補 **freshness / cache reuse**，避免同一掃描流程內其他 stage 重複查相同外部 URL。
-  2. 連結 coverage 明確區分 checked / restricted / timeout / skipped / budget_exhausted，歷史比較只能在 coverage 足夠時判定 resolved。
-  3. 連結健康度趨勢標記「新壞掉／持續失效／已確認恢復／本次無法確認」。
-  4. 錨文字品質延伸（「點這裡」「更多」等無意義文字，SEO + 無障礙雙重影響）。
+  2. 連結 coverage 明確區分 checked / restricted / timeout / skipped / budget_exhausted，歷史比較只能在 coverage 足夠時判定 resolved。（**已實作 2026-10-08**：`seo/link_trend.link_coverage`；逾時從「無法連線」分出成 `timeout`，未檢查分成超過數量上限與時間用完，存 `seo_report.coverage`，`seo_links` 覆蓋紀錄說明列出沒有明確結果的連結數，SEO 分析頁連結分頁顯示）
+  3. 連結健康度趨勢標記「新壞掉／持續失效／已確認恢復／本次無法確認」。（**已實作 2026-10-08**：`seo/link_trend.link_trend`，和同專案上一次有連結檢查的完成掃描比較；只有這次真的檢查過且正常才算恢復，沒檢查、逾時、被拒或這次頁面上找不到一律「本次無法確認」；併入爬蟲已造訪頁面的 HTTP 狀態。標記顯示在 SEO 分析頁連結列與「站內連結失效」問題的描述與證據。只比對上一次掃描，不追溯更早的歷史）
+  4. 錨文字品質延伸（「點這裡」「更多」等無意義文字，SEO + 無障礙雙重影響）。（**已具備，2026-10-08 核對**：`seo/page_audit.GENERIC_ANCHORS`（點此、這裡、更多、了解更多、read more、click here 等）與空錨文字由 `seo/report.py` 列在 SEO 分析頁的連結問題（空錨文字為警告、無意義文字為提示）；沒有可讀名稱的連結另由 axe-core `link-name`（WCAG）列為無障礙問題。「連結目的是否清楚」屬 WCAG 2.4.4，需看上下文，不再以字面規則擴充）
 
 ## 12. 評分
 

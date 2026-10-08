@@ -364,6 +364,26 @@ RULE_BASIS = {
     "geo-article-author-missing":
         "依據：文章頁（Article 類標記，或 og:type=article 且有發布時間）沒有 JSON-LD author、"
         "author meta 或 rel=author 連結。限制：只寫在內文、沒有標記的作者名稱不會被偵測到。",
+    "geo-long-content-no-subheadings":
+        "依據：成句段落（40 字以上）合計約中文 1500 字或英文 1000 詞以上，且頁面沒有 h2–h6。"
+        "限制：只看標題標籤，用粗體或圖片當小標題的頁面也會被列出。",
+    "geo-enumeration-not-list":
+        "依據：同一段文字出現 3 個以上編號（1.／1)／(1)／第一、）。限制：只看編號格式，"
+        "程式碼區塊不檢查。",
+    "ux-layout-shift":
+        "依據：瀏覽器 layout-shift 紀錄，依 Google CLS 定義取最大工作階段視窗；0.1 以上列為需改善、"
+        "0.25 以上為不佳。限制：Argus 爬取時的桌面視窗單次量測、沒有使用者操作，"
+        "數值會與 Lighthouse 及真實使用者不同，網路慢時樣式表晚到也會量到較高的值；"
+        "列出的是被推動的元素，不一定是造成位移的元素。",
+    "geo-article-date-missing":
+        "依據：文章頁的 JSON-LD datePublished／dateModified 與 article:*_time meta 都沒有日期。"
+        "限制：只寫在內文的日期不會被偵測到。",
+    "geo-article-date-invalid":
+        "依據：更新日期比發布日期早超過一天，或日期比掃描當天晚超過一天。"
+        "限制：只比對日期，不比對時刻與時區。",
+    "geo-article-date-inconsistent":
+        "依據：同一頁 JSON-LD 與 meta 的發布或更新日期相差超過一天。"
+        "限制：只檢查日期標記，不判斷內容本身是否過時。",
     "seo-index-signals-conflict":
         "依據：Google 說明 sitemap 應只列希望出現在搜尋結果的標準網址；noindex 必須讓爬蟲抓得到"
         "才會生效。限制：只比對本次爬到的頁面與讀到的 sitemap 網址（最多頁數上限個），"
