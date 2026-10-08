@@ -85,7 +85,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **升級**：
   1. **Nuclei 模板治理**：鎖版本與模板雜湊、記錄實際使用模板集、排除高噪音模板，結果可重現。（**已實作 2026-10-08**：模板 v10.4.9 鎖在 image 並以 templates-checksum.txt 逐一驗證；固定只跑 KEV 模板集（511 個、628 個請求）且只掃網站根網址——實測原本的全部模板對單一網址 9535 個請求，1–2 RPS 下要 80 分鐘，正式 300 秒逾時後回傳 0 項卻記為完成；原快速模式標籤寫錯只選到 3 個模板。每次記錄引擎／模板版本與模板集指紋（`warning_summary.nuclei`）；逾時保留部分結果並標 partial，缺模板或異常結束標 failed。高噪音模板清單 `EXCLUDED_TEMPLATE_IDS` 目前為空，尚無真實誤報資料。見 scans CLAUDE.md「Nuclei 模板治理」）
   2. **SQLMap 專項化**：保留為 SQL Injection 深查工具，不把它當通用 Web DAST。
-  3. 主動探測補「掃描來源 IP 宣告」供目標端白名單，並維持 `AuthorizationConsent` + 網域驗證雙閘門。
+  3. 主動探測補「掃描來源 IP 宣告」供目標端白名單，並維持 `AuthorizationConsent` + 網域驗證雙閘門。（**已實作 2026-10-08**：公開頁 `/scanner`「掃描來源說明」＋`GET /api/content/scanner-info/`，User-Agent、robots 比對名稱、出口 IP（`ARGUS_SCANNER_EGRESS_IPS`，逗號分隔 IP／CIDR，格式錯誤由 `scans.E003` 擋下；未設定時請對方以 User-Agent 辨識）與被動／主動速率都取自實際設定。說明 robots.txt 只影響網頁走訪、如何以 WAF 封鎖或放行；網域驗證頁與主動測試設定處連到這頁。同次修正 Docker 版 sqlmap 沒帶統一 User-Agent（K8s runner 原本就有）。正式環境出口 IP 尚未設定；User-Agent 仍是舊名稱 `SiteSense-AI-Scanner`，使用者決定不改。雙閘門不變）
   4. 所有主動 stage 必須有 request budget、timeout、RPS 上限與 BLOCKED/LIMITED 狀態，避免 WAF 攔截被誤解為 0 findings。
   5. 敏感檔案探測字典對齊 **SecLists**，每個命中做內容型別確認；`exposure_scanner` 已有 soft-404 基準比對，擴字典時要一併驗證誤報率。
 

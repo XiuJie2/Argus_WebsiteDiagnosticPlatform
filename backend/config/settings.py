@@ -365,6 +365,12 @@ ARGUS_VULN_INTEL_CACHE_SECONDS = int(os.getenv("ARGUS_VULN_INTEL_CACHE_SECONDS",
 ARGUS_ACTIVE_MAX_RPS = 2
 ARGUS_PASSIVE_MAX_RPS = 5
 ARGUS_SCANNER_USER_AGENT = "SiteSense-AI-Scanner/1.0 (authorized-audit)"
+# 掃描流量的出口 IP（逗號分隔，可寫 CIDR），公布在公開頁「掃描來源說明」（/scanner），
+# 讓目標網站管理者放行或封鎖。依部署而定、沒有固定出口時留空，頁面改請對方以 User-Agent 辨識。
+# 格式錯誤由 manage.py check（scans.E003）擋下。
+ARGUS_SCANNER_EGRESS_IPS = [
+    item.strip() for item in os.getenv("ARGUS_SCANNER_EGRESS_IPS", "").split(",") if item.strip()
+]
 ARGUS_AUTO_QUEUE_SCANS = env_bool("ARGUS_AUTO_QUEUE_SCANS", default=not DEBUG)
 # 新帳號自動建立示範專案（apps/scans/demo/：虛構網站的三次真實掃描結果）
 ARGUS_DEMO_PROJECT_ENABLED = env_bool("ARGUS_DEMO_PROJECT_ENABLED", default=True)
