@@ -575,4 +575,41 @@
     border-radius: 1rem;
     background: #ffffff;
   }
+
+  /* 購點頁「點數紀錄」 */
+  .coin-history {
+    margin-top: 1.5rem;
+  }
+  .coin-history-wrap {
+    overflow-x: auto;
+  }
+  .coin-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+  }
+  .coin-history-table th,
+  .coin-history-table td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .coin-history-table th {
+    color: #64748b;
+    font-weight: 600;
+  }
+  .coin-history-link {
+    color: #0369a1;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .coin-history-debit {
+    color: #b91c1c;
+    font-weight: 600;
+  }
+  .coin-history-credit {
+    color: #047857;
+    font-weight: 600;
+  }
 }

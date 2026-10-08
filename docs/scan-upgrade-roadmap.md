@@ -36,7 +36,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **現況**：`scanners.py` 逐頁 title/meta/H1/alt/canonical/OG；`seo/` 有 `link_check`、
   `page_audit`、`site_findings`、`gsc`、`keywords`。GSC 已接。
 - **升級**：
-  1. 接 **PageSpeed Insights API（CrUX 真實場域資料）**：LCP/INP/CLS 實驗室 vs 真實使用者並列——目前最缺的權威外部訊號。
+  1. 接 **PageSpeed Insights API（CrUX 真實場域資料）**：LCP/INP/CLS 實驗室 vs 真實使用者並列——目前最缺的權威外部訊號。（**已實作 2026-10-07**，見優先序第 6 項：`pagespeed.py`）
   2. 結構化資料驗證（JSON-LD 語法 + Google Rich Results 必填欄位，可離線）。（**已實作 2026-10-07**：語法由 AEO `aeo-markup-syntax` 回報；必填欄位 `seo/structured_data.py`，依 Google Search Central 2026-09 版，涵蓋產品（含 Offer／AggregateOffer）、軟體、職缺、食譜、影片、導覽路徑（含 ListItem）、活動（含地點）、在地商家、評論與評分彙總，缺必填 → `seo-structured-data-required`（低）；商家／組織自評星等 → `seo-structured-data-self-serving-reviews`（資訊）。FAQPage／HowTo 已不在 Google 支援清單、Article／Organization 無必填，不檢查；不檢查建議欄位與值的正確性）
   3. robots/sitemap 一致性交叉檢查（sitemap 列出卻 noindex、canonical 指他頁等矛盾）。（**已實作 2026-10-07**：原本 `site_checks` 只檢查 robots.txt／sitemap 是否存在、`seo-primary-url-inconsistent` 只比主機，沒有交叉檢查。`seo/site_findings.index_signal_conflicts` → `seo-index-signals-conflict`（低）：sitemap 列出 noindex／canonical 指他頁／回應錯誤／轉址／robots.txt 禁止 Googlebot 的網址，以及 noindex 頁被 robots.txt 擋住；只比對本次爬到的頁面與讀到的 sitemap 網址（最多頁數上限個）。實測 wordpress.org、docs.djangoproject.com、smashingmagazine.com 都抓到真實矛盾並逐筆核對屬實）
   4. 目標關鍵字 vs GSC 實際曝光關鍵字的落差分析。（**已實作 2026-10-07**：前端 `features/projects/seoKeywordGap.ts`，用 SEO 分頁已有的 `keyword_report` 與 `gsc/performance` 查詢字詞（前 200 個）計算，不新增 API：每個目標關鍵字彙總包含它的搜尋詞曝光／點擊、最佳平均排名分段（第 1 頁／第 2 頁／更後面／沒有曝光）、Google 帶到的頁面與內容最相關頁面不同時提示；另列有曝光但不是目標的搜尋詞，可一鍵設為目標。字面包含比對、不斷詞；尚未用真實 Search Console 帳號驗證）
@@ -45,9 +45,9 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 - **現況**：`aeo/evaluate.py` 四層判定（可回答/資訊不足/內容衝突/無答案），框架完整，已有答案蘊含判定（`aeo/answers.py` 的 `entails()`）與日期衝突判定（2026-10-06 第二輪準確度修正）；實測曾出現「語意相關段落被誤判為真正答案」與跨模組 evidence 不一致，已知案例已修正，但**缺少量測基準**，無法知道整體誤判率。
 - **升級**：
-  1. **Answer Entailment 量測與強化（P0）**：`entails()` 初版已上線，候選段落須通過蘊含判定才算答案。下一步不是重做，而是用 gold dataset（見優先序 P0-C）量測誤判率，再依誤判類型強化。
+  1. **Answer Entailment 量測與強化（P0）**：`entails()` 初版已上線，候選段落須通過蘊含判定才算答案。下一步不是重做，而是用 gold dataset（見優先序 P0-C）量測誤判率，再依誤判類型強化。（**已實作 2026-10-07**，見優先序 P0-C：`aeo/gold_dataset.py`、`manage.py aeo_benchmark`）
   2. **Specificity / Conflict Check（P0）**：衝突判定目前**只判日期**；擴充到價格、資格、聯絡方式等需具體可核對的欄位，多頁內容互斥時標記 conflict。（**已實作 2026-10-08**：`aeo/answers._value_conflict` 涵蓋價格、營業時間、客服專線，同一標籤在兩個以上頁面的值不同才算；先在回歸資料集加 6 個調整案例（3 衝突＋3 不是衝突）與 4 個保留集案例再寫規則。量測：全體 accuracy 0.971、precision 1.0、recall 0.974、FPR 0；保留集 19／21（兩題是沒出題，衝突 3／3 全對，不是衝突的案例沒有判成衝突）。資格條件不做：條件文字差異多半是不同方案，字面比對無法可靠判斷）
-  3. **Cross-module evidence reuse（P0）**：Email、電話、地址、日期等與 Security／SEO 共用 evidence，避免一個模組「找到」、另一個模組「找不到」。
+  3. **Cross-module evidence reuse（P0）**：Email、電話、地址、日期等與 Security／SEO 共用 evidence，避免一個模組「找到」、另一個模組「找不到」。（**Email／電話已實作 2026-10-07**，見優先序 P0-B：`evidence/contacts.py`；地址、日期尚未共用）
   4. **Answer confidence（P1）**：輸出 Confirmed／Likely／Possible，並保留引用來源與限制。（**已實作 2026-10-08**：`aeo/answers.QuestionResult.confidence`，確認＝格式化答案值逐字出現在原文、可能＝步驟／條件或網站自己的問題、推測＝介紹類只確認有具體敘述；附 `limitation` 說明判定限制，顯示在 AEO 分頁與報告附錄，不影響計分。`aeo_benchmark` 輸出各等級 precision：目前資料集三個等級都是 100%（全體 precision 已是 1.0），還無法量出等級之間的差異，需要更多「看起來像答案」的案例）
   5. 問題生成多樣化（標題/H2 + 同業常見問句模板）。（**已實作 2026-10-08**：同業常見問句新增付款方式與預約／訂位兩個意圖（`aeo/questions.py`），先在回歸資料集加 5 個調整案例與 4 個保留集案例並標註再寫規則：保留集 4／4 一次判對，全體 accuracy 0.971→0.975、precision 1.0、recall 0.974→0.977。真實網站核對後修正：選單連結文字不觸發也不當答案（ntub.edu.tw）、英文付款方式（inline.app）、平台名稱 EZTABLE 不算預約管道。不做「標題／H2 自動造題」：該小標題下的段落本身就是答案，幾乎必判可回答，只會灌高分數；網站自己以問號結尾的小標題原本就會出題）
   6. 引用可得性評分。（**已實作 2026-10-08**：`aeo/evaluate._citation`，可回答的題目逐題標示能否被搜尋引擎與 AI 引用——頁面 noindex、禁止摘要（nosnippet、max-snippet:0，含 `X-Robots-Tag`）或答案段落在 data-nosnippet 區塊內＝無法被引用；答案只在執行 JavaScript 後才出現＝引用受限；另算可被引用比例 `aeo_report.citation.citable_ratio`。只是指標，不改 AEO 分數、不另列問題（這些頁面設定本身已由 `page_checks.py` 逐頁列出並扣分）。真實網站核對見 log）
@@ -67,8 +67,8 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 - **現況**：`crawler.py` 的 `collect_ux_signals`/`collect_mobile_layout`/`collect_element_boxes`，
   `scanners.py` 行動版溢出/觸控目標/未標籤欄位/JS 錯誤，截圖已精準框選。
 - **升級**：
-  1. **接 axe-core（Playwright 注入）**：目前 a11y 是自建規則，接開源業界標準可一舉覆蓋 WCAG 2.2 數十條。**UX 維度投報率最高**。
-  2. **接 Lighthouse（programmatic）**：Performance/Accessibility/Best-Practices/SEO 四分數與自建並列。
+  1. **接 axe-core（Playwright 注入）**：目前 a11y 是自建規則，接開源業界標準可一舉覆蓋 WCAG 2.2 數十條。**UX 維度投報率最高**。（**已實作 2026-10-07**，見優先序第 5 項：`accessibility.py`）
+  2. **接 Lighthouse（programmatic）**：Performance/Accessibility/Best-Practices/SEO 四分數與自建並列。（**已實作 2026-10-07，經由 PageSpeed Insights 取得**，見優先序第 6 項；未在 worker 內另跑 Lighthouse）
   3. CLS 元素級歸因（哪個元素造成位移）。（**已實作 2026-10-08**：爬蟲逐頁讀瀏覽器 layout-shift 紀錄（`crawler.collect_layout_shift`），依 Google CLS 定義計算並列出位移的元素與移動距離，CLS >0.1 → `ux-layout-shift`（低，>0.25 中）；不需要 PSI 金鑰、每頁都量。排除爬蟲捲到底後跳回頂端造成的位移。列出的是「被推動」的元素，真正原因通常在它上方較晚載入的內容；另提示沒有標寬高的圖片／影片／iframe 數量。限制：桌面視窗單次量測，沙箱實測 udn 首頁兩次 0.851 與 0.025，網路慢時樣式表晚到也會量到；Lighthouse 的 layout-shifts 稽核（根因）需 PSI 金鑰，未接）
 
 ## 5. 被動資安（Passive Security）
@@ -160,11 +160,11 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 - **現況**：`calculate_scores` + `base_scores_for` + `_dedupe_findings_for_scoring` 依 finding 嚴重度加權；專案層已有前次分數、new/persisting/本次未出現與趨勢資料，但目前比較主要依「本次有勾該 category」，尚未感知 rule/URL coverage。
 - **升級（整體最關鍵）**：
-  1. **Coverage-aware scoring**：FAILED / BLOCKED / LIMITED / NOT_TESTED 的規則或資源不得被視為「0 問題」而拉高分數。分數需附有效 coverage，coverage 低於門檻時顯示「資料不足／部分評估」，而非假精準高分。
-  2. **歷史狀態語義重做**：`finding absent` 先標 `NOT_OBSERVED`；只有同 rule、相容 resource/context、偵測能力已完整執行且 coverage 足夠時，才能升級成 `RESOLVED`。建議生命週期：`NEW / PERSISTING / RESOLVED / NOT_OBSERVED / NOT_TESTED / BLOCKED / INCONCLUSIVE`。
+  1. **Coverage-aware scoring**：FAILED / BLOCKED / LIMITED / NOT_TESTED 的規則或資源不得被視為「0 問題」而拉高分數。分數需附有效 coverage，coverage 低於門檻時顯示「資料不足／部分評估」，而非假精準高分。（**已實作 2026-10-07**，見優先序 P0-A：`coverage.py`）
+  2. **歷史狀態語義重做**：`finding absent` 先標 `NOT_OBSERVED`；只有同 rule、相容 resource/context、偵測能力已完整執行且 coverage 足夠時，才能升級成 `RESOLVED`。建議生命週期：`NEW / PERSISTING / RESOLVED / NOT_OBSERVED / NOT_TESTED / BLOCKED / INCONCLUSIVE`。（**已實作 2026-10-07**，見優先序 P0-A：`coverage.absent_issue_status`）
   3. **評分可解釋化**：每個維度列出扣分來源、coverage、confidence 與未測範圍。（**已實作 2026-10-07**：扣分來源、coverage、未完整完成的檢查；confidence 目前不影響扣分，待第 6 項校準後再列）
-  4. **外部指標保持獨立，不做錯誤「對齊總分」**：Lighthouse、CrUX、axe、Observatory 各自呈現；只在同 URL/裝置/期間/構面可直接對應的子指標做 validation。
-  5. **保存 `scoring_version` / `ruleset_version`**：規則或權重版本變更時，歷史圖必須標示模型版本；跨版本不得直接把 score delta 解讀成網站改善。
+  4. **外部指標保持獨立，不做錯誤「對齊總分」**：Lighthouse、CrUX、axe、Observatory 各自呈現；只在同 URL/裝置/期間/構面可直接對應的子指標做 validation。（**現況已符合**：PageSpeed、axe、Observatory 各自呈現、不併入 Argus 分數）
+  5. **保存 `scoring_version` / `ruleset_version`**：規則或權重版本變更時，歷史圖必須標示模型版本；跨版本不得直接把 score delta 解讀成網站改善。（**已實作 2026-10-07**，見優先序第 4 項：`versions.py`）
   6. **confidence 使用既有欄位但需重新校準**：低 confidence 可影響排序/扣分，但 legacy `confidence=1.0` 不得等同 Confirmed。（**第一階段已實作 2026-10-08**：資安發現類型標示，見 §5 第 1 項；尚未影響排序或扣分）
 
 ---

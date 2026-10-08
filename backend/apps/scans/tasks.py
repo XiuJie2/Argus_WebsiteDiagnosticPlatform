@@ -1395,7 +1395,11 @@ def stage_pagespeed(ctx: ScanRunContext) -> None:
     量測失敗只記 log 與覆蓋紀錄，不影響掃描完成。
     """
     scan_job = ctx.scan_job
-    if "ux" not in scan_job.effective_categories or not pagespeed_enabled():
+    if "ux" not in scan_job.effective_categories:
+        return
+    if not pagespeed_enabled():
+        # 勾了使用體驗卻沒有量測：記下原因，效能分頁據此說明是平台尚未設定，不是使用者沒勾
+        ctx.coverage.mark("pagespeed", SKIPPED, "平台尚未設定 Google PageSpeed Insights 金鑰")
         return
     raise_if_cancelled(ctx.scan_job_id)
     ctx.scanning_progress(ctx.deep_scan_total, "pagespeed")

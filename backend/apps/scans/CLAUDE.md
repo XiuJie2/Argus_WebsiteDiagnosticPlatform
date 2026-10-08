@@ -476,7 +476,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
 | `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體、文章作者與日期（`geo_entity.py`） |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
-| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`） |
+| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`）。勾了 UX 但平台沒設定金鑰時標覆蓋 skipped（原因「平台尚未設定…」），效能分頁據此說明是平台設定（2026-10-08）；正式環境要在 Secret 設 `ARGUS_PAGESPEED_API_KEY`，後台系統資訊頁 `providers.PAGESPEED_API_KEY_SET` 可確認 |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |
 | `agent` | `stage_agent` | Hermes-Agent（資安／UX），失敗不讓掃描失敗 |
 | `kali` | `stage_kali` | Kali 主動驗證 fallback |
@@ -498,7 +498,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 - **計分**：某維度有記錄的檢查全部失敗／被阻擋時，從 `tested_categories_for` 移除（顯示未評估）；部分失敗照常評分，但標部分評估。爬取有頁面擷取失敗（`failed_urls`）時 `crawl=partial`，逐頁分析的維度都是部分評估；robots／範圍略過不算。
 - **歷史比較**（`projects.compare_issues`）：前次有、本次沒有的問題，以前次覆蓋紀錄找出是哪項檢查產生的，看該檢查本次狀態——completed 且受影響頁面本次有完整分析（沒被阻擋、HTTP < 400）才是 `resolved`；partial→`not_observed`、failed→`inconclusive`、blocked→`blocked`、沒跑→`not_tested`。前次沒有覆蓋紀錄時退回以維度狀態判斷；本次沒有覆蓋紀錄（舊掃描）一律 `not_observed`。回應附 `status_label`，總覽 `changes.resolved` 只算 resolved。
 - **報告**：摘要「已解決 N 項」只算 resolved，其餘寫「另有 N 項本次未出現，但檢查不完整、無法確認已修好」；掃描範圍表列「未完整完成的檢查」（只有 partial 附原因，failed 的例外類別屬內部資訊不印）與「部分評估的面向」。
-- **API**：`ScanJobSerializer.coverage`；專案總覽 `latest_scan.coverage`（`categories`＋`incomplete`），前端顯示不完整提示。
+- **API**：`ScanJobSerializer.coverage`；`ScanJobSerializer.coins_charged`（2026-10-08：該掃描 `scan_hold`＋`scan_refund` 交易加總取負＝實際扣點，列表以 subquery annotate `coin_net` 一次算完）；專案總覽 `latest_scan.coverage`（`categories`＋`incomplete`），前端顯示不完整提示。
 - **新增檢查**：在 `CHECK_CATEGORIES`／`CHECK_LABELS` 登記，成功、失敗、沒執行三種情況都要 mark。測試：`tests_coverage.py`。
 - 尚未做：rule／resource 級細分、把檢查狀態接到計費。
 

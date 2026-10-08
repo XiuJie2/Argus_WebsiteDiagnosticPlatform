@@ -256,6 +256,8 @@ class ScanJobCreateSerializer(serializers.Serializer):
 class ScanJobSerializer(serializers.ModelSerializer):
     findings_count = serializers.IntegerField(read_only=True)
     pages_count = serializers.IntegerField(read_only=True)
+    # 這次掃描實際扣的點數（預扣－退款；進行中的掃描是目前預扣的點數）
+    coins_charged = serializers.SerializerMethodField()
     # 屬於示範專案（唯讀）：前端據此隱藏重新產生修正產出、網頁複刻等會花點數的動作
     is_demo = serializers.SerializerMethodField()
 
@@ -293,9 +295,23 @@ class ScanJobSerializer(serializers.ModelSerializer):
             "completed_at",
             "findings_count",
             "pages_count",
+            "coins_charged",
             "is_demo",
         ]
         read_only_fields = fields
+
+    def get_coins_charged(self, obj) -> int:
+        net = getattr(obj, "coin_net", None)
+        if net is None:  # 沒經過列表查詢的 annotate（例如 MCP 直接序列化）時才另外查
+            from django.db.models import Sum
+
+            from apps.billing.models import CoinTransaction
+
+            net = CoinTransaction.objects.filter(
+                scan_job=obj,
+                kind__in=[CoinTransaction.Kind.SCAN_HOLD, CoinTransaction.Kind.SCAN_REFUND],
+            ).aggregate(total=Sum("amount"))["total"] or 0
+        return max(-int(net), 0)
 
     def get_is_demo(self, obj) -> bool:
         return bool(obj.project_id and obj.project.is_demo)

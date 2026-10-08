@@ -42,4 +42,20 @@ describe("PerformancePanel", () => {
     render(<PerformancePanel report={{}} />);
     expect(screen.getByText(/這次掃描沒有效能量測/)).toBeInTheDocument();
   });
+
+  it("勾了使用體驗但平台沒設定金鑰時，說明是平台設定而不是使用者沒勾", () => {
+    render(
+      <PerformancePanel
+        report={{}}
+        categories={["seo", "ux"]}
+        check={{ status: "skipped", reason: "平台尚未設定 Google PageSpeed Insights 金鑰" }}
+      />,
+    );
+    expect(screen.getByText(/平台尚未設定 Google PageSpeed Insights/)).toHaveTextContent("與你勾選的面向無關");
+  });
+
+  it("沒勾使用體驗時直接說明", () => {
+    render(<PerformancePanel report={{}} categories={["seo"]} />);
+    expect(screen.getByText(/沒有勾選「使用體驗」面向/)).toBeInTheDocument();
+  });
 });

@@ -22,14 +22,32 @@ function formatField(name, value) {
 
 const FIELD_TONE = { FAST: "good", AVERAGE: "warn", SLOW: "bad" };
 
-function PerformancePanel({ report }) {
+/** 沒有效能量測時說明原因：沒勾使用體驗、平台尚未設定金鑰，或量測失敗（後端 coverage.checks.pagespeed）。 */
+function missingReason(categories, check) {
+  if (categories && !categories.includes("ux")) {
+    return "這次掃描沒有勾選「使用體驗」面向，所以沒有量測首頁效能。";
+  }
+  if (check?.status === "skipped") {
+    return "平台尚未設定 Google PageSpeed Insights，所以這次沒有量測首頁效能。這是平台端的設定，需要由平台管理員設定 API 金鑰後才會量測，與你勾選的面向無關。";
+  }
+  if (check?.status === "failed") {
+    return `這次的效能量測沒有成功（${check.reason || "原因不明"}），下次掃描會再量測。`;
+  }
+  return "這次掃描沒有效能量測。勾選「使用體驗」面向且平台已設定 Google PageSpeed Insights 時，會量測首頁的 Lighthouse 分數與真實使用者體驗。";
+}
+
+/**
+ * @param {{
+ *   report: any,
+ *   categories?: string[] | null,
+ *   check?: { status?: string, reason?: string } | null,
+ * }} props
+ */
+function PerformancePanel({ report, categories = null, check = null }) {
   if (!report?.lab) {
     return (
       <section className="panel">
-        <p className="hint-text">
-          這次掃描沒有效能量測。勾選「使用體驗」面向且平台已啟用 Google PageSpeed Insights 時，
-          會量測首頁的 Lighthouse 分數與真實使用者體驗。
-        </p>
+        <p className="hint-text">{missingReason(categories, check)}</p>
       </section>
     );
   }

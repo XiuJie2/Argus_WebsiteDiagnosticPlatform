@@ -8,7 +8,7 @@ from pathlib import Path
 from config.throttling import UserRateThrottle
 from django.conf import settings
 from django.db import close_old_connections, connections
-from django.db.models import Avg, Count, IntegerField, Max, OuterRef, Q, Subquery
+from django.db.models import Avg, Count, IntegerField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
@@ -250,11 +250,25 @@ class ScanJobViewSet(viewsets.ModelViewSet):
             .annotate(c=Count("id"))
             .values("c")
         )
+        # 實際扣點＝預扣－退款（CoinTransaction 是唯一事實來源；進行中的掃描是預扣金額）
+        from apps.billing.models import CoinTransaction
+
+        coins_sq = (
+            CoinTransaction.objects.filter(
+                scan_job=OuterRef("pk"),
+                kind__in=[CoinTransaction.Kind.SCAN_HOLD, CoinTransaction.Kind.SCAN_REFUND],
+            )
+            .order_by()
+            .values("scan_job")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
         qs = (
             ScanJob.objects.filter(user=self.request.user)
             .annotate(
                 findings_count=Coalesce(Subquery(findings_sq, output_field=IntegerField()), 0),
                 pages_count=Coalesce(Subquery(pages_sq, output_field=IntegerField()), 0),
+                coin_net=Coalesce(Subquery(coins_sq, output_field=IntegerField()), 0),
             )
             .order_by("-created_at")
         )

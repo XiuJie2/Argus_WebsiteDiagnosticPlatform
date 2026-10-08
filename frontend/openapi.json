@@ -9457,6 +9457,10 @@
                         "type": "integer",
                         "readOnly": true
                     },
+                    "coins_charged": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
                     "is_demo": {
                         "type": "boolean",
                         "readOnly": true
@@ -9466,6 +9470,7 @@
                     "aeo_report",
                     "categories",
                     "category_scores",
+                    "coins_charged",
                     "completed_at",
                     "coverage",
                     "created_at",

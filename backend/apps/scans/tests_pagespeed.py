@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.scans import pagespeed, tasks
-from apps.scans.coverage import COMPLETED, FAILED
+from apps.scans.coverage import COMPLETED, FAILED, SKIPPED
 from apps.scans.models import ScanJob
 from apps.scans.scan_plan import build_scan_execution_plan
 
@@ -179,5 +179,6 @@ class StageTests(TestCase):
         with mock.patch("apps.scans.tasks.fetch_pagespeed") as fetch:
             tasks.stage_pagespeed(self.ctx)
         fetch.assert_not_called()
-        self.assertIsNone(self.ctx.coverage.status_of("pagespeed"))
+        # 勾了使用體驗卻沒有金鑰：記 skipped 與原因，效能分頁據此說明是平台尚未設定（2026-10-08）
+        self.assertEqual(self.ctx.coverage.status_of("pagespeed"), SKIPPED)
         self.assertNotIn("pagespeed", tasks.planned_scan_steps(self.scan, self.ctx.execution_plan))
