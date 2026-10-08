@@ -45,7 +45,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | `projects.py` | 網站專案的彙整資料（只讀 DB）：`project_overview`（含本次掃描覆蓋 `stats`、各維度問題數、AEO 摘要、最近掃描，以及 `site_description`：最新完成掃描首頁 HTML 的 meta description／og:description，前 100k 字元、最多 `SITE_DESCRIPTION_LIMIT` 字）、`project_issues`／`compare_issues`（新增／持續／本次未出現；每個問題含說明、修法、最多 `ISSUE_URLS_LIMIT` 個網址）、`project_pages`（逐頁狀態與問題數）、`project_summaries`（清單用：最新分數與變化、`score_history` 走勢、最新完成掃描依嚴重度的 `issue_counts`；兩次查詢） | 寫 DB、連線目標網站 |
 | `favicon.py` | 網站專案圖示：**新增／恢復專案時立刻抓**（`refresh_project_favicon_from_url`：先抓首頁 HTML 前 512KB 找 `<link rel=icon>`，整體上限 8 秒），掃描時再用爬到的首頁更新（`stage_favicon`，每 7 天最多一次）；沒宣告就 `/favicon.ico`。每一跳轉址都過 `assert_public_http_url`、圖示上限 200KB、逾時 5 秒、帶 `ARGUS_SCANNER_USER_AGENT`（Wikipedia 等會拒絕沒有 UA 的請求）；任何 `image/*`（含 gov.tw 的 `image/x-png`）交給 Pillow 縮成 64px PNG、SVG 限 20KB；存成 `SiteProject.favicon`（data URL），失敗保留舊圖示。舊專案補抓：`manage.py refresh_project_favicons`（`--all`／`--dry-run`） | 修改 `ScanJob.status`、讓掃描因圖示失敗 |
 | `aeo/` | AEO 問答檢測（內容擷取、出題、找答案與判定、標記一致性、整站評估；見下「AEO 問答檢測」） | 修改 `ScanJob.status`、發出任何網路請求（只分析爬蟲已抓到的頁面） |
-| `nuclei_scanner.py` | Nuclei binary 封裝；工具預算、JSONL 解析、Finding mapping | 在 passive 或未授權模式執行 |
+| `nuclei_scanner.py` | Nuclei binary 封裝；模板治理（固定 KEV 模板集、只掃網站根網址、模板集指紋，見下「Nuclei 模板治理」）、JSONL 解析、Finding mapping | 在 passive 或未授權模式執行 |
 | `katana_scanner.py` | Katana 全站 JS/端點探索封裝；時間、大小、同主機與 RPS 預算 | 在單頁、passive 或未授權模式執行 |
 | `domain_verification.py` | 網域所有權驗證引擎：Google Search Console 擁有者驗證（主要）、token 產生、網域正規化、DNS TXT／meta tag／HTML 檔三種備用驗證、`run_verification()` 更新 `VerifiedDomain`、`sync_search_console_ownership()` 連接 Search Console 時自動驗證 | 修改 `ScanJob.status`、繞過 `assert_public_http_url` SSRF 檢查 |
 | `security/` | 深度主動式資安檢查（SSL/TLS、Cookie、CORS、CSP 品質、敏感檔外洩探測、硬編碼秘鑰偵測、OWASP 對映、Kali 工具）| 修改 ScanJob.status、呼叫 billing |
@@ -56,10 +56,20 @@ queued → crawling → scanning → [agent_testing] → completed
 |---|---:|---:|---:|---:|---:|---:|
 | 單頁 + passive | 否 | 否 | 否 | 否 | 否 | 否 |
 | 全網站 + passive | 否 | 否 | 否 | 否 | 勾 UX 才跑 | 否 |
-| 單頁 + active 且已授權 | 僅輸入頁 | 否 | 否 | 否 | 否 | 可執行既有同源候選驗證 |
-| 全網站 + active 且已授權 | 已爬 URL | 是 | 是 | 是（另受總開關控制） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
+| 單頁 + active 且已授權 | 網站根網址（KEV 模板） | 否 | 否 | 否 | 否 | 可執行既有同源候選驗證 |
+| 全網站 + active 且已授權 | 網站根網址（KEV 模板） | 是 | 是 | 是（另受總開關控制） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
 
 Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`；若總預算只有 1 RPS，必須改為依序執行。單頁不得用 Katana、敏感路徑字典或 Agent 擴張成全站掃描。
+
+### Nuclei 模板治理（2026-10-08，roadmap §6 第 1 項）
+
+- **模板版本鎖在 image**：Dockerfile `NUCLEI_TEMPLATES_VERSION`（目前 v10.4.9）下載到 `/opt/nuclei-templates`（`ARGUS_NUCLEI_TEMPLATES_DIR`），以 sha256 鎖定的 `templates-checksum.txt` 逐一驗證模板內容，並寫 `.argus-templates-version`；任何一步失敗 build 就失敗。原本 `nuclei -update-templates || true` 每次 build 模板不同，下載失敗也照樣 build 成功。升級模板要同時改兩個 ARG 並重新量 KEV 模板集的請求量。
+- **固定模板集 `TEMPLATE_POLICY`**：`-tags kev`（CISA 已知被利用漏洞）、`-severity critical,high,medium`、排除 dos／fuzz 等標籤、只用 http。實測（v10.4.9，對單一網址）：原本 deep 模式全部模板 6680 個、9535 個請求，在 1–2 RPS 下要 80 分鐘，正式環境 300 秒逾時後回傳 0 項卻記為完成；KEV 511 個模板、628 個請求。Nuclei 標籤是單數（`cve`、`misconfig`、`exposure`、`default-login`），原本快速模式寫成 `cves`／`misconfigurations` 只選到 3 個模板（該模式已移除）。高噪音模板加進 `EXCLUDED_TEMPLATE_IDS` 並寫原因。
+- **只掃網站根網址**（`_root_url`）：模板多半檢查網站層級路徑，每頁重掃只是把同樣的探測乘以頁數；單頁與全網站相同。
+- **模板集紀錄**：每次執行用 `nuclei -tl` 列出實際選到的模板，記錄引擎版本、模板版本、模板數與指紋（模板路徑＋內容雜湊的 sha256），存在 `warning_summary.nuclei` 並寫進掃描 log；同一指紋才代表同一組檢查。
+- **結果狀態**：逾時（`ARGUS_NUCLEI_TIMEOUT`，預設 660 秒——全網站時 Nuclei 與 Katana 分預算只有 1 RPS）保留逾時前已輸出的結果（`process_runner` 逾時時把已輸出的 stdout 放進 `TimeoutExpired.output`），覆蓋紀錄 `partial`；沒有 binary、模板目錄缺失、選不到模板或異常結束拋 `NucleiUnavailable`，覆蓋紀錄 `failed`（原因是固定代碼）。WAF 之後 0 項發現的說明只在 Nuclei 完整跑完時才加。
+- 呼叫 `nuclei -tl`／`-version` 一律帶 `-no-stdin`／`-duc` 與 `stdin=DEVNULL`：沒有時 nuclei 會等 stdin 的目標清單或檢查更新，在 worker 裡卡到逾時。
+- Agent 的 `run_nuclei` 工具用同一個模板目錄（`-t ARGUS_NUCLEI_TEMPLATES_DIR`），tags 由 agent 指定。
 
 **Agent 有兩種角色，閘門分離**（都受 `ARGUS_AGENT_ENABLED` 總開關控制）：
 
@@ -566,8 +576,8 @@ log、findings、報告。migration 0016。
 ### SPA 攻擊面管道（2026-09-25）
 
 `crawl_site` 被動攔截 same-origin XHR/fetch 端點（第 4 回傳值）→
-`tasks.py` 併入：sqlmap 候選＝全部端點；Nuclei extra_urls＝頁面＋帶
-query 端點前 3 個（`_NUCLEI_MAX_ENDPOINT_URLS`，全塞會炸時間預算）。
+`tasks.py` 併入：sqlmap 候選＝全部端點。Nuclei 2026-10-08 起只掃網站根網址
+（見「Nuclei 模板治理」），不再使用頁面與端點清單。
 Agent 端同能力＝`get_network_requests` 工具（見架構文件 §3）。
 
 ---

@@ -83,7 +83,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
 
 - **現況**：Nuclei + Katana + Kali(SQLmap) + 敏感檔案探測（`security/exposure_scanner.py`；`scan_plan.py` 的 `run_exposure` 只在主動模式＋已授權＋整站時開啟）+ 自建 probe，可在授權閘門後做主動檢測。
 - **升級**：
-  1. **Nuclei 模板治理**：鎖版本與模板雜湊、記錄實際使用模板集、排除高噪音模板，結果可重現。
+  1. **Nuclei 模板治理**：鎖版本與模板雜湊、記錄實際使用模板集、排除高噪音模板，結果可重現。（**已實作 2026-10-08**：模板 v10.4.9 鎖在 image 並以 templates-checksum.txt 逐一驗證；固定只跑 KEV 模板集（511 個、628 個請求）且只掃網站根網址——實測原本的全部模板對單一網址 9535 個請求，1–2 RPS 下要 80 分鐘，正式 300 秒逾時後回傳 0 項卻記為完成；原快速模式標籤寫錯只選到 3 個模板。每次記錄引擎／模板版本與模板集指紋（`warning_summary.nuclei`）；逾時保留部分結果並標 partial，缺模板或異常結束標 failed。高噪音模板清單 `EXCLUDED_TEMPLATE_IDS` 目前為空，尚無真實誤報資料。見 scans CLAUDE.md「Nuclei 模板治理」）
   2. **SQLMap 專項化**：保留為 SQL Injection 深查工具，不把它當通用 Web DAST。
   3. 主動探測補「掃描來源 IP 宣告」供目標端白名單，並維持 `AuthorizationConsent` + 網域驗證雙閘門。
   4. 所有主動 stage 必須有 request budget、timeout、RPS 上限與 BLOCKED/LIMITED 狀態，避免 WAF 攔截被誤解為 0 findings。

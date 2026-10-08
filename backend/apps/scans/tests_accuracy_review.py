@@ -88,15 +88,31 @@ class MaturityAndWafWordingTests(SimpleTestCase):
         geo = score_breakdown([finding], tested_categories={"geo"})["geo"]
         self.assertEqual((geo["score"], geo["penalty"], geo["info"]), (100, 0, 1))
 
-    def test_zero_nuclei_findings_is_not_proof_of_waf_blocking(self):
-        ctx = SimpleNamespace(
+    def _waf_ctx(self, nuclei_status):
+        from apps.scans.coverage import ScanCoverage
+
+        coverage = ScanCoverage()
+        coverage.mark("nuclei", nuclei_status)
+        return SimpleNamespace(
             nuclei_findings=[], katana_tech=["Cloudflare"], page_urls=["https://example.tw/a"],
-            scan_job_id=0,
+            scan_job_id=0, coverage=coverage, nuclei_template_set={"templates": 511},
         )
+
+    def test_zero_nuclei_findings_is_not_proof_of_waf_blocking(self):
         from unittest import mock
 
+        from apps.scans.coverage import COMPLETED
+
         with mock.patch("apps.scans.tasks.append_log"):
-            note = tasks._waf_blocked_nuclei_note(ctx)[0]
+            note = tasks._waf_blocked_nuclei_note(self._waf_ctx(COMPLETED))[0]
         self.assertNotIn("有效的入侵防護", note["description"])
         self.assertIn("不代表網站沒有弱點", note["description"])
+        self.assertIn("511 個", note["description"])
         self.assertLess(note["confidence"], 0.9)
+
+    def test_failed_or_partial_nuclei_gets_no_zero_findings_note(self):
+        # 失敗或逾時沒有「0 項發現」可言，覆蓋紀錄已說明，不可再蓋成「WAF 之後 0 項」
+        from apps.scans.coverage import FAILED, PARTIAL
+
+        for status in (FAILED, PARTIAL):
+            self.assertEqual(tasks._waf_blocked_nuclei_note(self._waf_ctx(status)), [], status)

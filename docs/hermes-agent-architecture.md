@@ -137,7 +137,7 @@ M3 特性：思考型、探索深（步數上限會切斷）、行為非決定�
 | `ARGUS_AGENT_ENABLED` | false | true | 總開關 |
 | `ARGUS_AGENT_MAX_STEPS` | 20 | 100 | orchestrator/recon 用；specialist 另受 60 盒 |
 | `ARGUS_AGENT_MAX_TOKENS` | 60000 | 500000 | 每角色各自上限；**chat 場景 500k 不足**（回應全文進 context，#53-55 實測 900k 三 specialist 仍爆至 908-938k）——chat 導向輪建議 exec 進程同步 apply 覆寫（Celery 常駐進程不吃 exec env） |
-| `ARGUS_NUCLEI_DEEP_TIMEOUT` | 300 | 900 | pipeline 全模板掃 |
+| `ARGUS_NUCLEI_TIMEOUT` | 660 | 900 | pipeline Nuclei（KEV 模板集、只掃網站根網址；2026-10-08 前為 `ARGUS_NUCLEI_DEEP_TIMEOUT` 全模板） |
 | `ARGUS_KALI_TIMEOUT` | 120 | 240 | sqlmap level3 需 ≥240（120 會邊緣超時） |
 | `ARGUS_ALLOW_PRIVATE_TARGETS` | false | true | 私網靶機旁路（DEBUG 雙條件＋scans.E002） |
 
