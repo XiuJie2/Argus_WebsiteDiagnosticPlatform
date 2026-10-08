@@ -30,6 +30,7 @@ from apps.scans.models import Finding, ReportVerification, ScanJob
 from apps.scans.pagespeed import summary_lines as pagespeed_summary_lines
 from apps.scans.report_pdf import convert_docx_to_pdf
 from apps.scans.report_render import RENDERER_VERSION, generate_report
+from apps.scans.root_causes import annotate_root_causes
 from apps.scans.scan_plan import build_scan_execution_plan
 from apps.scans.security.observatory import summary_line as observatory_summary
 from apps.scans.security.redaction import redact_pii_in_text
@@ -1242,6 +1243,25 @@ def _report_score_items(
     return {"categories": categories}
 
 
+def _report_root_causes(grouped: list[dict], findings_payload: list[dict]) -> list[dict]:
+    """改一處就能一起解決的問題（root_causes.py，與問題分析頁「依根本原因」同一套歸類）。"""
+    issues = [
+        {
+            "key": f["id"],
+            "rule_id": item["finding"].rule_id or "",
+            "severity": item["finding"].severity,
+            "pages": len(item["pages"]),
+        }
+        for f, item in zip(findings_payload, grouped, strict=True)
+        # 資訊提示不用修，不列進「一起修」
+        if item["finding"].severity != Finding.Severity.INFO
+    ]
+    return [
+        {"title": cause["title"], "where": cause["where"], "refs": cause["issues"]}
+        for cause in annotate_root_causes(issues)
+    ]
+
+
 def build_report_payload(scan_job: ScanJob) -> dict:
     """把一次掃描轉成 report_render 的輸入 JSON（契約見 report_render/schema.json）。
 
@@ -1267,6 +1287,9 @@ def build_report_payload(scan_job: ScanJob) -> dict:
         "summary": _report_summary(scan_job, previous, grouped),
         "findings": findings_payload,
     }
+    root_causes = _report_root_causes(grouped, findings_payload)
+    if root_causes:
+        payload["summary"]["root_causes"] = root_causes
     priorities = _report_priorities(scan_job, findings_payload)
     if priorities:
         payload["priorities"] = priorities

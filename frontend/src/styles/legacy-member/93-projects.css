@@ -291,6 +291,86 @@
   }
 }
 
+.project-scans-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* ── 資安分析（2026-10-08） ── */
+.security-notice {
+  @apply rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900;
+}
+.security-kinds {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.security-kind-card {
+  @apply grid cursor-pointer gap-1 rounded-xl border border-slate-200 bg-white p-3 text-left transition;
+}
+.security-kind-card:hover {
+  @apply border-sky-300;
+}
+.security-kind-card.active {
+  @apply border-sky-400 bg-sky-50;
+}
+.security-kind-card .security-kind-chip {
+  @apply mt-0 justify-self-start;
+}
+.security-kind-card b {
+  @apply text-2xl font-bold text-slate-900;
+}
+.security-kind-desc {
+  @apply text-xs text-slate-500;
+}
+.security-causes,
+.security-issues {
+  @apply mt-3 grid gap-3;
+}
+.security-causes li {
+  @apply rounded-xl border border-slate-200 p-3;
+}
+.security-cause-title {
+  @apply text-sm font-semibold text-slate-800;
+}
+.security-cause-title span {
+  @apply ml-2 text-xs font-normal text-slate-500;
+}
+.security-cause-where,
+.security-cause-items {
+  @apply mt-1 text-xs text-slate-600;
+}
+.security-issues li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+  @apply border-b border-slate-100 pb-3;
+}
+.security-issue-title {
+  @apply text-sm font-semibold text-slate-800;
+}
+.security-issue-title .security-kind-chip {
+  @apply ml-2 mt-0;
+}
+.security-issue-change {
+  @apply ml-2 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600;
+}
+.security-issue-fix {
+  @apply mt-1 text-xs text-slate-600;
+}
+@media (max-width: 640px) {
+  .security-issues li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .security-issues li > a {
+    grid-column: 2;
+  }
+}
+
 /* ── 問題分析 ── */
 .project-filters {
   @apply grid gap-3;

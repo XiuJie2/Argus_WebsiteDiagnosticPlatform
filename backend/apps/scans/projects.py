@@ -13,13 +13,14 @@ from django.db.models import Count, Q
 from apps.scans import versions
 from apps.scans.coverage import (
     ABSENT_STATUS_LABELS,
+    CHECK_CATEGORIES,
     absent_issue_status,
     incomplete_checks,
     issue_key,
 )
 from apps.scans.models import ALL_CATEGORIES, Finding, ScanJob, SiteProject
 from apps.scans.root_causes import annotate_root_causes
-from apps.scans.security.finding_kind import kind_payload
+from apps.scans.security.finding_kind import KIND_DESCRIPTIONS, KIND_LABELS, kind_payload
 from apps.scans.services import user_owns_domain
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
@@ -377,6 +378,48 @@ def project_issues(project: SiteProject, scan: ScanJob | None = None) -> dict:
         "issues": issues,
         "missing": missing,
         "root_causes": root_causes,
+    }
+
+
+def project_security(project: SiteProject, scan: ScanJob | None = None) -> dict:
+    """資安分析頁：指定（預設最新一次完成）掃描的資安分數、標頭等第、問題依類型、根本原因與做得好的地方。
+
+    問題沿用問題分析的合併與比較（project_issues），只取資安；不重新判定、不另算分數。
+    """
+    data = project_issues(project, scan)
+    scan = scan or completed_scans(project).first()
+    if scan is None:
+        return {"scan": None}
+    checked = "security" in scan.effective_categories
+    issues = [i for i in data["issues"] if i["category"] == "security"]
+    keys = {i["key"] for i in issues}
+    profile = scan.site_profile or {}
+    kinds = []
+    for kind, label in KIND_LABELS.items():
+        count = sum(1 for i in issues if i.get("security_kind") == kind)
+        kinds.append({
+            "kind": kind, "label": label, "description": KIND_DESCRIPTIONS.get(kind, ""),
+            "count": count,
+        })
+    return {
+        "scan": data["scan"],
+        "compared_with": data["compared_with"],
+        "checked": checked,
+        "score": (scan.category_scores or {}).get("security"),
+        "coverage": ((scan.coverage or {}).get("categories") or {}).get("security", ""),
+        "incomplete_checks": [
+            item["label"] for item in incomplete_checks(scan.coverage or {})
+            if CHECK_CATEGORIES.get(item["check"]) == "security"
+        ],
+        "observatory": profile.get("observatory") or None,
+        "edge": ((profile.get("infrastructure") or {}).get("edge")) or None,
+        "kinds": kinds,
+        "issues": issues,
+        "missing": [i for i in data["missing"] if i["category"] == "security"],
+        "root_causes": [c for c in data["root_causes"] if set(c["issues"]) & keys],
+        "strengths": [
+            s for s in profile.get("strengths") or [] if s.get("category") == "security"
+        ],
     }
 
 
