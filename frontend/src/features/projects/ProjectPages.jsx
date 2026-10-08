@@ -379,6 +379,8 @@ function ProjectOverviewPage() {
               )}
             </section>
           </div>
+
+          {latest.site_summary && <SiteSummaryPanel project={project} scan={latest} />}
         </>
       )}
 
@@ -433,6 +435,87 @@ function ProjectScansPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** 效能為什麼沒有數字：與掃描「效能」分頁的 missingReason 同一套判斷。 */
+function performanceNote(scan) {
+  const perf = scan.site_summary.performance;
+  if (!scan.categories.includes("ux")) return "這次沒有勾選使用體驗";
+  if (perf.status === "skipped") return "平台尚未設定 PageSpeed 金鑰";
+  if (perf.status === "failed") return "量測失敗";
+  return "這次沒有量測";
+}
+
+/** 總覽的效能與網站架構摘要（2026-10-08）：原本只在單次掃描的效能／網站架構分頁看得到。 */
+function SiteSummaryPanel({ project, scan }) {
+  const summary = scan.site_summary;
+  const perf = summary.performance;
+  const hasPerf = perf.score !== null && perf.score !== undefined;
+  const more = summary.technologies_total - summary.technologies.length;
+  return (
+    <section className="panel">
+      <div className="project-section-head">
+        <h2 className="project-section-title">效能與網站架構</h2>
+        <span className="project-section-hint">最新一次完成的掃描</span>
+      </div>
+      <div className="project-site-summary">
+        <Link className="project-site-tile" to={`/scans/${scan.id}/performance`}>
+          <span className="project-site-tile-label">行動版效能（Lighthouse）</span>
+          {hasPerf ? (
+            <strong className={`project-site-tile-value tone-${perf.score >= 90 ? "good" : perf.score >= 50 ? "medium" : "bad"}`}>
+              {perf.score}<small> 分</small>
+            </strong>
+          ) : (
+            <strong className="project-site-tile-value is-muted">—</strong>
+          )}
+          <span className="project-site-tile-hint">
+            {hasPerf
+              ? perf.field_overall_label ? `真實使用者體驗：${perf.field_overall_label}` : "沒有足夠的真實使用者資料"
+              : performanceNote(scan)}
+          </span>
+        </Link>
+        <Link className="project-site-tile" to={projectPath(project.id, "security")}>
+          <span className="project-site-tile-label">安全標頭參考等第</span>
+          <strong className={`project-site-tile-value ${summary.observatory_grade ? "" : "is-muted"}`}>
+            {summary.observatory_grade || "—"}
+          </strong>
+          <span className="project-site-tile-hint">
+            {summary.observatory_grade ? "非官方、不計入分數" : "這次沒有檢查資安或較早的掃描"}
+          </span>
+        </Link>
+        <Link className="project-site-tile" to={`/scans/${scan.id}/architecture`}>
+          <span className="project-site-tile-label">CDN／反向代理</span>
+          {summary.profile_available ? (
+            <>
+              <strong className="project-site-tile-value is-text">{summary.edge || "未偵測到"}</strong>
+              <span className="project-site-tile-hint">{summary.edge ? "流量經過邊緣節點" : "流量看起來直接到網站主機"}</span>
+            </>
+          ) : (
+            <>
+              <strong className="project-site-tile-value is-muted">—</strong>
+              <span className="project-site-tile-hint">較早的掃描沒有這項資料，重新掃描後會顯示</span>
+            </>
+          )}
+        </Link>
+        <Link className="project-site-tile" to={`/scans/${scan.id}/architecture`}>
+          <span className="project-site-tile-label">使用的技術</span>
+          {summary.profile_available ? (
+            <>
+              <strong className="project-site-tile-value is-text">
+                {summary.technologies.length ? summary.technologies.join("、") : "未辨識到"}
+              </strong>
+              <span className="project-site-tile-hint">{more > 0 ? `另有 ${more} 項，查看網站架構` : "依首頁內容與回應標頭判斷"}</span>
+            </>
+          ) : (
+            <>
+              <strong className="project-site-tile-value is-muted">—</strong>
+              <span className="project-site-tile-hint">較早的掃描沒有這項資料，重新掃描後會顯示</span>
+            </>
+          )}
+        </Link>
+      </div>
+    </section>
   );
 }
 
@@ -1610,6 +1693,7 @@ export {
   FilterChips,
   ScanTimeCard,
   SeverityChip,
+  SiteSummaryPanel,
   useProjectScans,
   ProjectIssuesPage,
   ProjectOverviewPage,

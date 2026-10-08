@@ -19,6 +19,7 @@ from apps.scans.coverage import (
     issue_key,
 )
 from apps.scans.models import ALL_CATEGORIES, Finding, ScanJob, SiteProject
+from apps.scans.pagespeed import FIELD_CATEGORY_LABELS
 from apps.scans.root_causes import annotate_root_causes
 from apps.scans.security.finding_kind import KIND_DESCRIPTIONS, KIND_LABELS, kind_payload
 from apps.scans.services import user_owns_domain
@@ -218,6 +219,35 @@ def _scan_brief(scan: ScanJob | None) -> dict | None:
     }
 
 
+def site_summary(scan: ScanJob) -> dict:
+    """總覽的效能與網站架構摘要（2026-10-08）：原本只在單次掃描的效能／網站架構分頁看得到。
+
+    只整理已保存的資料：PageSpeed 的 Lighthouse 效能分數與 CrUX 整體評等、覆蓋紀錄的
+    pagespeed 狀態（沒量到時的原因）、CDN／反向代理、使用的技術、安全標頭參考等第。
+    """
+    report = scan.performance_report or {}
+    lab = report.get("lab") or {}
+    field = report.get("field") or {}
+    check = ((scan.coverage or {}).get("checks") or {}).get("pagespeed") or {}
+    profile = scan.site_profile or {}
+    technologies = profile.get("technologies") or []
+    return {
+        "performance": {
+            "score": (lab.get("scores") or {}).get("performance"),
+            "field_overall": field.get("overall") or "",
+            "field_overall_label": FIELD_CATEGORY_LABELS.get(field.get("overall") or "", ""),
+            "status": check.get("status", ""),
+            "reason": check.get("reason", ""),
+        },
+        # 較早的掃描沒有網站概況：前端要寫「沒有資料」，不能寫成「未偵測到」
+        "profile_available": bool(profile),
+        "edge": ((profile.get("infrastructure") or {}).get("edge") or {}).get("provider", ""),
+        "technologies": [item.get("name", "") for item in technologies[:6]],
+        "technologies_total": len(technologies),
+        "observatory_grade": (profile.get("observatory") or {}).get("grade", ""),
+    }
+
+
 def project_overview(project: SiteProject) -> dict:
     """專案總覽頁的全部資料。沒有完成的掃描時 latest_scan 為 None。"""
     latest = completed_scans(project).first()
@@ -294,6 +324,7 @@ def project_overview(project: SiteProject) -> dict:
             }
             if aeo
             else None,
+            "site_summary": site_summary(latest),
         }
     trend_scans = list(reversed(list(completed_scans(project)[:TREND_LIMIT])))
     trend = [
