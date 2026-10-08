@@ -170,10 +170,14 @@ async def probe_site_signals(context, origin: str, robot_parser: RobotFileParser
         # 原文留給 robots／sitemap／noindex 一致性檢查（seo/site_findings.py）；
         # Google 只讀前 500 KiB
         "robots_text": None,
+        # 已取得的站台檔案 {網址: HTTP 狀態}（不跟隨轉址）；SEO 連結檢查與站台檢查沿用，
+        # 同一次掃描不再對同一網址送第二次請求（roadmap §11 第 1 項）
+        "fetched": {},
     }
     try:
         llms_url = assert_public_http_url(f"{origin}/llms.txt")
         response = await context.request.get(llms_url, timeout=10000, max_redirects=0)
+        signals["fetched"][llms_url] = response.status
         signals["llms_txt_found"] = response.ok
     except Exception:
         signals["llms_txt_found"] = False
@@ -181,6 +185,7 @@ async def probe_site_signals(context, origin: str, robot_parser: RobotFileParser
     try:
         robots_url = assert_public_http_url(f"{origin}/robots.txt")
         resp = await context.request.get(robots_url, timeout=10000, max_redirects=0)
+        signals["fetched"][robots_url] = resp.status
         if resp.ok:
             robots_text = (await resp.text())[:512_000]
             signals["robots_text"] = robots_text
@@ -254,14 +259,18 @@ def sitemap_page_urls(locs: list[str], origin: str) -> list[str]:
     return urls
 
 
-async def _fetch_sitemap(context, url: str, origin: str) -> str:
-    """抓單一 sitemap（同源、公開位址、不跟隨轉址）；失敗或過大回空字串。"""
+async def _fetch_sitemap(context, url: str, origin: str, fetched: dict | None = None) -> str:
+    """抓單一 sitemap（同源、公開位址、不跟隨轉址）；失敗或過大回空字串。
+
+    fetched 有值時記下 {網址: HTTP 狀態}，給 SEO 站台檢查沿用。
+    """
     try:
         if not same_origin(url, origin) or url.lower().endswith(".gz"):
             return ""
-        response = await context.request.get(
-            assert_public_http_url(url), timeout=10000, max_redirects=0
-        )
+        safe_url = assert_public_http_url(url)
+        response = await context.request.get(safe_url, timeout=10000, max_redirects=0)
+        if fetched is not None:
+            fetched[safe_url] = response.status
         if not response.ok:
             return ""
         body = await response.body()
@@ -272,7 +281,9 @@ async def _fetch_sitemap(context, url: str, origin: str) -> str:
         return ""
 
 
-async def discover_sitemap_urls(context, origin: str, declared: list[str], limit: int) -> list[str]:
+async def discover_sitemap_urls(
+    context, origin: str, declared: list[str], limit: int, fetched: dict | None = None
+) -> list[str]:
     """從 robots.txt 宣告的 sitemap（沒有就 /sitemap.xml）取出同源頁面網址，最多 limit 個。
 
     被動、只讀網站公開給搜尋引擎的清單：只靠 <a> 連結 BFS 時，連結稀疏或以 JavaScript
@@ -288,7 +299,7 @@ async def discover_sitemap_urls(context, origin: str, declared: list[str], limit
         if sitemap_url in seen:
             continue
         seen.add(sitemap_url)
-        text = await _fetch_sitemap(context, sitemap_url, origin)
+        text = await _fetch_sitemap(context, sitemap_url, origin, fetched)
         if not text:
             continue
         locs = _SITEMAP_LOC.findall(text)
@@ -1425,7 +1436,8 @@ async def crawl_site(
             site_signals = await probe_site_signals(context, origin, robot_parser)
             if max_pages > 1:
                 sitemap_urls = await discover_sitemap_urls(
-                    context, origin, site_signals.get("robots_sitemaps") or [], max_pages
+                    context, origin, site_signals.get("robots_sitemaps") or [], max_pages,
+                    site_signals.get("fetched"),
                 )
                 site_signals["sitemap_seeded"] = state.seed(sitemap_urls)
                 site_signals["sitemap_urls"] = sitemap_urls

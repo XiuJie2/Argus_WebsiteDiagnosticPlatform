@@ -1305,6 +1305,7 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
             start_url,
             [page for page, _data in ctx.pages],
             should_stop=lambda: raise_if_cancelled(ctx.scan_job_id),
+            site_signals=ctx.site_signals,
         )
     except ScanCancelled:
         raise
@@ -1346,8 +1347,14 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
     append_log(
         ctx.scan_job_id,
         f"SEO 連結檢查完成：{len(links)} 個連結（失效 {broken}），"
-        f"未檢查 {report.get('unchecked', 0)} 個",
+        f"未檢查 {report.get('unchecked', 0)} 個" + _reused_text(report.get("reused") or {}),
     )
+
+
+def _reused_text(reused: dict) -> str:
+    """沿用爬取階段已取得結果、沒有重送的請求（roadmap §11 第 1 項）。"""
+    count = reused.get("links", 0) + reused.get("site_checks", 0) + int(bool(reused.get("robots")))
+    return f"；沿用爬取階段已有結果 {count} 個請求" if count else ""
 
 
 def _link_trend_for(ctx: ScanRunContext, report: dict) -> dict | None:
