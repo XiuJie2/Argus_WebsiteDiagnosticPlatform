@@ -988,6 +988,7 @@ def _report_finding_entry(scan_job: ScanJob, ref: str, item: dict) -> dict:
         "trace": (
             f"規則 {finding.rule_id or '—'}　·　觀測 {observed_at}"
             f"　·　來源：{_source_label(finding)}"
+            + (f"　·　類型：{finding.security_kind_label}" if finding.security_kind_label else "")
         ),
     }
     if len(pages) > 1:

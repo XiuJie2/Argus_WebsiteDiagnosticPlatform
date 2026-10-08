@@ -53,7 +53,10 @@ beforeEach(() => {
           compared_with: null,
           missing: [],
           issues: [
-            issue("a", { severity: "high", category: "security", title: "缺少 CSP", remediation: "設定 content-security-policy" }),
+            issue("a", {
+              severity: "high", category: "security", title: "缺少 CSP", remediation: "設定 content-security-policy",
+              security_kind: "config", security_kind_label: "設定建議",
+            }),
             issue("b", { severity: "medium", category: "seo", title: "H1 數量不正確" }),
             issue("c", { severity: "low", category: "seo", title: "缺少 canonical" }),
           ],
@@ -138,6 +141,13 @@ describe("ProjectIssuesPage", () => {
     expect(screen.queryByText("H1 數量不正確")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "清除搜尋" }));
     expect(screen.getByText("H1 數量不正確")).toBeInTheDocument();
+  });
+
+  it("資安問題在分類旁標示類型，其他維度不顯示", async () => {
+    renderIssuesTab();
+    await screen.findByText("缺少 CSP");
+    const labels = Array.from(document.querySelectorAll(".issue-col-cat")).map((cell) => cell.textContent);
+    expect(labels).toEqual(["資安設定建議", "SEO", "SEO"]);
   });
 
   it("依嚴重度分組顯示分組列，點嚴重度數量只看該級", async () => {

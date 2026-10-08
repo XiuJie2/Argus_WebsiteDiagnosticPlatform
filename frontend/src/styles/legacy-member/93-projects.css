@@ -1300,6 +1300,15 @@
 .issue-cat.cat-geo { @apply border-cyan-200 bg-cyan-50 text-cyan-800; }
 .issue-cat.cat-ux { @apply border-emerald-200 bg-emerald-50 text-emerald-700; }
 .issue-cat.cat-security { @apply border-rose-200 bg-rose-50 text-rose-700; }
+/* 資安發現類型（設定建議／曝露面／疑似弱點／已驗證弱點）：只標示，不影響分數 */
+.security-kind-chip {
+  @apply mt-1 inline-flex whitespace-nowrap rounded-lg border px-2 py-0.5 text-xs font-semibold;
+}
+.issue-col-cat .security-kind-chip { @apply ml-1; }
+.security-kind-chip.is-config { @apply border-slate-200 bg-slate-50 text-slate-700; }
+.security-kind-chip.is-exposure { @apply border-sky-200 bg-sky-50 text-sky-800; }
+.security-kind-chip.is-suspected { @apply border-amber-200 bg-amber-50 text-amber-800; }
+.security-kind-chip.is-verified { @apply border-red-300 bg-red-50 text-red-800; }
 .issue-col-pages {
   @apply text-center font-semibold;
   width: 5.5rem;

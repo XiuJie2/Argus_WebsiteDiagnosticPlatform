@@ -3113,6 +3113,9 @@ export interface components {
             bounding_box: unknown;
             selector: string;
             ai_handoff_prompt: string;
+            /** @description 資安發現的類型（設定建議／曝露面／疑似弱點／已驗證弱點），由規則與來源推得。 */
+            readonly security_kind: string | null;
+            readonly security_kind_label: string;
             /** Format: date-time */
             readonly created_at: string;
         };

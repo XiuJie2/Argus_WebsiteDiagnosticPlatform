@@ -1135,6 +1135,12 @@ function EvidencePanel({ finding }) {
           <span>證據型態</span>
           <strong>{finding.evidence_type || "text"}</strong>
         </div>
+        {finding.security_kind_label && (
+          <div>
+            <span>資安類型</span>
+            <strong className={`security-kind-chip is-${finding.security_kind}`}>{finding.security_kind_label}</strong>
+          </div>
+        )}
         {finding.owasp_category && (
           <div>
             <span>OWASP</span>

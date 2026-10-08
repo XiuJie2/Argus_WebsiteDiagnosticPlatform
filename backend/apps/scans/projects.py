@@ -18,6 +18,7 @@ from apps.scans.coverage import (
     issue_key,
 )
 from apps.scans.models import ALL_CATEGORIES, Finding, ScanJob, SiteProject
+from apps.scans.security.finding_kind import kind_payload
 from apps.scans.services import user_owns_domain
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
@@ -71,6 +72,7 @@ def issue_groups(scan: ScanJob) -> dict[str, dict]:
             "title",
             "description",
             "remediation",
+            "evidence",
             "page__final_url",
             "page__url",
         )
@@ -92,6 +94,11 @@ def issue_groups(scan: ScanJob) -> dict[str, dict]:
                 "remediation": row["remediation"],
                 "occurrences": 0,
                 "_urls": [],
+                # 資安問題的類型（設定建議／曝露面／疑似弱點／已驗證弱點），只是標示、不影響排序
+                **kind_payload(
+                    category=row["category"], rule_id=row["rule_id"], title=row["title"],
+                    severity=row["severity"], evidence=row["evidence"],
+                ),
             }
         group["occurrences"] += 1
         if url and url not in group["_urls"]:
