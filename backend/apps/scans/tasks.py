@@ -40,7 +40,7 @@ from apps.scans.fingerprint import fingerprint_snapshot
 from apps.scans.geo_entity import analyze_entity, entity_findings, freshness_findings
 from apps.scans.katana_scanner import run_katana
 from apps.scans.models import Finding, Page, ScanJob
-from apps.scans.nuclei_scanner import run_nuclei
+from apps.scans.nuclei_scanner import NucleiUnavailable, run_nuclei
 from apps.scans.pagespeed import PageSpeedError
 from apps.scans.pagespeed import enabled as pagespeed_enabled
 from apps.scans.pagespeed import fetch as fetch_pagespeed
@@ -88,9 +88,6 @@ from apps.scans.versions import RULESET_VERSION, SCORING_VERSION
 
 logger = logging.getLogger(__name__)
 
-# Nuclei extra_urls 中帶參數 API 端點的上限：模板掃描對 API 端點命中率低，
-# 全塞只會把 1 RPS 的時間預算炸掉（#23 實測 12 URL × 全模板掃掛死）
-_NUCLEI_MAX_ENDPOINT_URLS = 3
 
 
 def _new_event_loop_with_retry():
@@ -410,6 +407,8 @@ class ScanRunContext:
     katana_findings: list[dict] = field(default_factory=list)
     katana_tech: list[str] = field(default_factory=list)
     nuclei_findings: list[dict] = field(default_factory=list)
+    # 這次 Nuclei 用的引擎、模板版本與模板集指紋（nuclei_scanner.template_set_info）
+    nuclei_template_set: dict = field(default_factory=dict)
     # AEO 可回答性檢測（aeo/evaluate.py 的 AeoEvaluation）
     aeo_evaluation: object | None = None
     # Agent 階段
@@ -906,10 +905,10 @@ def stage_site_security(ctx: ScanRunContext) -> None:
         )
 
 
-def _collect_probe_targets(ctx: ScanRunContext) -> list[str]:
-    """整理主動工具的目標：已爬頁面（排除被擋）＋爬取期間被動攔截的 same-origin 端點。
+def _collect_probe_targets(ctx: ScanRunContext) -> None:
+    """整理 sqlmap 候選：已爬頁面（排除被擋）＋爬取期間被動攔截的 same-origin 端點。
 
-    回傳 Nuclei 的 URL 清單；sqlmap 候選（頁面＋全部端點）留在 ctx 供 Kali 階段使用。
+    Nuclei 只掃網站根網址（模板多半檢查網站層級路徑），不用這份清單。
     """
     ctx.page_urls = [
         assert_public_http_url(p["url"])
@@ -925,21 +924,31 @@ def _collect_probe_targets(ctx: ScanRunContext) -> list[str]:
         if normalized_endpoint in ctx.page_urls or normalized_endpoint in ctx.endpoint_urls:
             continue
         ctx.endpoint_urls.append(normalized_endpoint)
-    # Nuclei 只吃頁面 URL＋前幾個帶參數端點——模板掃描對 API 端點命中率低，
-    # 全塞只會把 1 RPS 的時間預算炸掉（#23 實測 12 URL × 全模板掛死）
-    return ctx.page_urls + [
-        u for u in ctx.endpoint_urls if "?" in u
-    ][:_NUCLEI_MAX_ENDPOINT_URLS]
 
 
 def _tool_failed(ctx: ScanRunContext, check: str, tool: str, exc: Exception) -> None:
     """外部工具失敗：記 log 並標記覆蓋紀錄（工具失敗不能被呈現成「0 項問題」）。"""
     logger.exception("掃描子步驟失敗 scan_job_id=%s", ctx.scan_job_id)
     append_log(ctx.scan_job_id, f"{tool} 略過（{exc.__class__.__name__}）", level="warn")
-    ctx.coverage.mark(check, FAILED, exc.__class__.__name__)
+    # 原因只寫固定代碼，不寫例外訊息（可能含網址或工具輸出）
+    reason = str(exc) if isinstance(exc, NucleiUnavailable) else exc.__class__.__name__
+    ctx.coverage.mark(check, FAILED, reason)
 
 
-def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[str]) -> None:
+def _apply_nuclei_run(ctx: ScanRunContext, run) -> None:
+    """Nuclei 結果：逾時的結果只是部分完成，不能當成「完整跑完、沒有問題」。"""
+    ctx.nuclei_findings = run.findings
+    ctx.nuclei_template_set = run.template_set
+    if run.timed_out:
+        ctx.coverage.mark(
+            "nuclei", PARTIAL,
+            f"逾時（{settings.ARGUS_NUCLEI_TIMEOUT} 秒），只有逾時前完成的模板有結果",
+        )
+    else:
+        ctx.coverage.mark("nuclei", COMPLETED)
+
+
+def _run_site_active_tools(ctx: ScanRunContext, target: str) -> None:
     """全網站主動掃描：Katana 與 Nuclei 共享 ARGUS_ACTIVE_MAX_RPS 預算。"""
     scan_job = ctx.scan_job
     scan_job_id = ctx.scan_job_id
@@ -965,14 +974,7 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
             _tool_failed(ctx, "katana", "Katana", exc)
         raise_if_cancelled(scan_job_id)
         try:
-            ctx.nuclei_findings = run_nuclei(
-                target,
-                scan_job_id,
-                deep=True,
-                extra_urls=nuclei_urls,
-                rate_limit=1,
-            )
-            ctx.coverage.mark("nuclei", COMPLETED)
+            _apply_nuclei_run(ctx, run_nuclei(target, scan_job_id, rate_limit=1))
         except ScanCancelled:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -989,14 +991,7 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
             rate_limit=katana_rps,
             scan_job_id=scan_job_id,
         )
-        f_nuclei = executor.submit(
-            run_nuclei,
-            target,
-            scan_job_id,
-            deep=True,
-            extra_urls=nuclei_urls,
-            rate_limit=nuclei_rps,
-        )
+        f_nuclei = executor.submit(run_nuclei, target, scan_job_id, rate_limit=nuclei_rps)
     try:
         ctx.katana_findings, ctx.katana_tech = f_katana.result()
         ctx.coverage.mark("katana", COMPLETED)
@@ -1005,8 +1000,7 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
     except Exception as exc:  # noqa: BLE001
         _tool_failed(ctx, "katana", "Katana", exc)
     try:
-        ctx.nuclei_findings = f_nuclei.result()
-        ctx.coverage.mark("nuclei", COMPLETED)
+        _apply_nuclei_run(ctx, f_nuclei.result())
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -1014,17 +1008,12 @@ def _run_site_active_tools(ctx: ScanRunContext, target: str, nuclei_urls: list[s
 
 
 def _run_single_page_nuclei(ctx: ScanRunContext, target: str) -> None:
-    """單頁主動掃描：Nuclei 只掃輸入頁，不啟動 Katana 整站探索。"""
-    append_log(ctx.scan_job_id, "單頁主動掃描：Nuclei 僅掃描輸入頁，略過 Katana 整站探索")
+    """單頁主動掃描：不啟動 Katana 整站探索；Nuclei 與全網站相同，只掃網站根網址。"""
+    append_log(ctx.scan_job_id, "單頁主動掃描：略過 Katana 整站探索")
     try:
-        ctx.nuclei_findings = run_nuclei(
-            target,
-            ctx.scan_job_id,
-            deep=True,
-            extra_urls=[],
-            rate_limit=settings.ARGUS_ACTIVE_MAX_RPS,
+        _apply_nuclei_run(
+            ctx, run_nuclei(target, ctx.scan_job_id, rate_limit=settings.ARGUS_ACTIVE_MAX_RPS)
         )
-        ctx.coverage.mark("nuclei", COMPLETED)
     except ScanCancelled:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -1040,7 +1029,12 @@ def _waf_blocked_nuclei_note(ctx: ScanRunContext) -> list[dict]:
     0 項發現只代表「沒有產生 finding」，不能推論成 WAF 擋下了攻擊（2026-10-06 審查）；
     真的被攔截要看 403／challenge 等證據，由 waf_scanner.detect_waf_block 判定。
     """
-    if ctx.nuclei_findings or not ctx.katana_tech:
+    # 只有完整跑完才談得上「0 項發現」；失敗或逾時已由覆蓋紀錄說明
+    if (
+        ctx.nuclei_findings
+        or not ctx.katana_tech
+        or ctx.coverage.status_of("nuclei") != COMPLETED
+    ):
         return []
     detected_wafs = [
         t for t in ctx.katana_tech if any(w in t.lower() for w in _WAF_KEYWORDS)
@@ -1048,7 +1042,7 @@ def _waf_blocked_nuclei_note(ctx: ScanRunContext) -> list[dict]:
     if not detected_wafs:
         return []
     waf_names = "、".join(detected_wafs)
-    scanned_count = len(ctx.page_urls) + 1  # entry URL + crawled
+    template_count = ctx.nuclei_template_set.get("templates", 0)
     append_log(
         ctx.scan_job_id,
         f"目標位於 {waf_names} 之後且 Nuclei 0 項發現，已新增「結果可能不完整」說明",
@@ -1058,7 +1052,8 @@ def _waf_blocked_nuclei_note(ctx: ScanRunContext) -> list[dict]:
         "severity": "info",
         "title": f"主動弱點掃描 0 項發現，但目標位於 {waf_names} 之後",
         "description": (
-            f"Nuclei 對 {scanned_count} 個網址發出的主動探測沒有產生任何發現。"
+            f"Nuclei 以 {template_count} 個已知被利用漏洞（KEV）模板探測網站根網址，"
+            "沒有產生任何發現。"
             f"由於流量先經過 {waf_names}，部分探測可能在邊緣節點就被過濾，"
             "因此「0 項發現」不代表網站沒有弱點，也不能證明防火牆擋下了攻擊。"
         ),
@@ -1069,7 +1064,7 @@ def _waf_blocked_nuclei_note(ctx: ScanRunContext) -> list[dict]:
         ),
         "evidence": (
             f"偵測技術棧：{', '.join(ctx.katana_tech)}；"
-            f"Nuclei 掃描 {scanned_count} 個 URL，回傳 0 項發現"
+            f"Nuclei 掃描網站根網址（KEV 模板 {template_count} 個），回傳 0 項發現"
         ),
         "selector": "",
         "bounding_box": None,
@@ -1090,13 +1085,13 @@ def stage_active_probe(ctx: ScanRunContext) -> None:
     """
     plan = ctx.execution_plan
     raise_if_cancelled(ctx.scan_job_id)
-    nuclei_urls = _collect_probe_targets(ctx)
+    _collect_probe_targets(ctx)
     target = assert_public_http_url(ctx.scan_job.normalized_url)
 
     if plan.run_nuclei:
         ctx.scanning_progress(ctx.scanning_total, "active_probe")
     if plan.run_katana:
-        _run_site_active_tools(ctx, target, nuclei_urls)
+        _run_site_active_tools(ctx, target)
     elif plan.run_nuclei:
         _run_single_page_nuclei(ctx, target)
     else:
@@ -1114,6 +1109,13 @@ def stage_active_probe(ctx: ScanRunContext) -> None:
         ctx.coverage.mark("nuclei", PARTIAL, "目標位於 WAF／CDN 之後，探測可能被過濾")
     ctx.record(ctx.katana_findings, check="katana")
     ctx.record(ctx.nuclei_findings, check="nuclei")
+    if ctx.nuclei_template_set:
+        # 模板集紀錄：同一指紋才代表同一組檢查，重現或比較結果時要看這裡
+        scan_job = ctx.scan_job
+        warnings = dict(scan_job.warning_summary or {})
+        warnings["nuclei"] = ctx.nuclei_template_set
+        scan_job.warning_summary = warnings
+        scan_job.save(update_fields=["warning_summary", "updated_at"])
     # Kali 主動驗證已移到 Agent 之後（Hermes-first fallback）；這裡標示 Nuclei 階段結束、
     # 即將進入深度被動安全掃描。
     ctx.scanning_progress(ctx.scanning_total + 2, "deep_security")
@@ -1303,6 +1305,7 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
             start_url,
             [page for page, _data in ctx.pages],
             should_stop=lambda: raise_if_cancelled(ctx.scan_job_id),
+            site_signals=ctx.site_signals,
         )
     except ScanCancelled:
         raise
@@ -1344,8 +1347,14 @@ def stage_seo_links(ctx: ScanRunContext) -> None:
     append_log(
         ctx.scan_job_id,
         f"SEO 連結檢查完成：{len(links)} 個連結（失效 {broken}），"
-        f"未檢查 {report.get('unchecked', 0)} 個",
+        f"未檢查 {report.get('unchecked', 0)} 個" + _reused_text(report.get("reused") or {}),
     )
+
+
+def _reused_text(reused: dict) -> str:
+    """沿用爬取階段已取得結果、沒有重送的請求（roadmap §11 第 1 項）。"""
+    count = reused.get("links", 0) + reused.get("site_checks", 0) + int(bool(reused.get("robots")))
+    return f"；沿用爬取階段已有結果 {count} 個請求" if count else ""
 
 
 def _link_trend_for(ctx: ScanRunContext, report: dict) -> dict | None:

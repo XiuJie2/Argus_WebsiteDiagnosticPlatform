@@ -1319,6 +1319,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/content/scanner-info/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description 公開頁「掃描來源說明」（/scanner）：讓目標網站管理者辨識、放行或封鎖 Argus 的掃描流量。
+         *
+         *     全部取自實際生效的設定，不另外手寫，避免說明與行為不一致。
+         */
+        get: operations["content_scanner_info_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/content/team/": {
         parameters: {
             query?: never;
@@ -6095,6 +6116,24 @@ export interface operations {
         };
     };
     content_releases_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    content_scanner_info_retrieve: {
         parameters: {
             query?: never;
             header?: never;

@@ -45,7 +45,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | `projects.py` | 網站專案的彙整資料（只讀 DB）：`project_overview`（含本次掃描覆蓋 `stats`、各維度問題數、AEO 摘要、最近掃描，以及 `site_description`：最新完成掃描首頁 HTML 的 meta description／og:description，前 100k 字元、最多 `SITE_DESCRIPTION_LIMIT` 字）、`project_issues`／`compare_issues`（新增／持續／本次未出現；每個問題含說明、修法、最多 `ISSUE_URLS_LIMIT` 個網址）、`project_pages`（逐頁狀態與問題數）、`project_summaries`（清單用：最新分數與變化、`score_history` 走勢、最新完成掃描依嚴重度的 `issue_counts`；兩次查詢） | 寫 DB、連線目標網站 |
 | `favicon.py` | 網站專案圖示：**新增／恢復專案時立刻抓**（`refresh_project_favicon_from_url`：先抓首頁 HTML 前 512KB 找 `<link rel=icon>`，整體上限 8 秒），掃描時再用爬到的首頁更新（`stage_favicon`，每 7 天最多一次）；沒宣告就 `/favicon.ico`。每一跳轉址都過 `assert_public_http_url`、圖示上限 200KB、逾時 5 秒、帶 `ARGUS_SCANNER_USER_AGENT`（Wikipedia 等會拒絕沒有 UA 的請求）；任何 `image/*`（含 gov.tw 的 `image/x-png`）交給 Pillow 縮成 64px PNG、SVG 限 20KB；存成 `SiteProject.favicon`（data URL），失敗保留舊圖示。舊專案補抓：`manage.py refresh_project_favicons`（`--all`／`--dry-run`） | 修改 `ScanJob.status`、讓掃描因圖示失敗 |
 | `aeo/` | AEO 問答檢測（內容擷取、出題、找答案與判定、標記一致性、整站評估；見下「AEO 問答檢測」） | 修改 `ScanJob.status`、發出任何網路請求（只分析爬蟲已抓到的頁面） |
-| `nuclei_scanner.py` | Nuclei binary 封裝；工具預算、JSONL 解析、Finding mapping | 在 passive 或未授權模式執行 |
+| `nuclei_scanner.py` | Nuclei binary 封裝；模板治理（固定 KEV 模板集、只掃網站根網址、模板集指紋，見下「Nuclei 模板治理」）、JSONL 解析、Finding mapping | 在 passive 或未授權模式執行 |
 | `katana_scanner.py` | Katana 全站 JS/端點探索封裝；時間、大小、同主機與 RPS 預算 | 在單頁、passive 或未授權模式執行 |
 | `domain_verification.py` | 網域所有權驗證引擎：Google Search Console 擁有者驗證（主要）、token 產生、網域正規化、DNS TXT／meta tag／HTML 檔三種備用驗證、`run_verification()` 更新 `VerifiedDomain`、`sync_search_console_ownership()` 連接 Search Console 時自動驗證 | 修改 `ScanJob.status`、繞過 `assert_public_http_url` SSRF 檢查 |
 | `security/` | 深度主動式資安檢查（SSL/TLS、Cookie、CORS、CSP 品質、敏感檔外洩探測、硬編碼秘鑰偵測、OWASP 對映、Kali 工具）| 修改 ScanJob.status、呼叫 billing |
@@ -56,10 +56,20 @@ queued → crawling → scanning → [agent_testing] → completed
 |---|---:|---:|---:|---:|---:|---:|
 | 單頁 + passive | 否 | 否 | 否 | 否 | 否 | 否 |
 | 全網站 + passive | 否 | 否 | 否 | 否 | 勾 UX 才跑 | 否 |
-| 單頁 + active 且已授權 | 僅輸入頁 | 否 | 否 | 否 | 否 | 可執行既有同源候選驗證 |
-| 全網站 + active 且已授權 | 已爬 URL | 是 | 是 | 是（另受總開關控制） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
+| 單頁 + active 且已授權 | 網站根網址（KEV 模板） | 否 | 否 | 否 | 否 | 可執行既有同源候選驗證 |
+| 全網站 + active 且已授權 | 網站根網址（KEV 模板） | 是 | 是 | 是（另受總開關控制） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
 
 Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`；若總預算只有 1 RPS，必須改為依序執行。單頁不得用 Katana、敏感路徑字典或 Agent 擴張成全站掃描。
+
+### Nuclei 模板治理（2026-10-08，roadmap §6 第 1 項）
+
+- **模板版本鎖在 image**：Dockerfile `NUCLEI_TEMPLATES_VERSION`（目前 v10.4.9）下載到 `/opt/nuclei-templates`（`ARGUS_NUCLEI_TEMPLATES_DIR`），以 sha256 鎖定的 `templates-checksum.txt` 逐一驗證模板內容，並寫 `.argus-templates-version`；任何一步失敗 build 就失敗。原本 `nuclei -update-templates || true` 每次 build 模板不同，下載失敗也照樣 build 成功。升級模板要同時改兩個 ARG 並重新量 KEV 模板集的請求量。
+- **固定模板集 `TEMPLATE_POLICY`**：`-tags kev`（CISA 已知被利用漏洞）、`-severity critical,high,medium`、排除 dos／fuzz 等標籤、只用 http。實測（v10.4.9，對單一網址）：原本 deep 模式全部模板 6680 個、9535 個請求，在 1–2 RPS 下要 80 分鐘，正式環境 300 秒逾時後回傳 0 項卻記為完成；KEV 511 個模板、628 個請求。Nuclei 標籤是單數（`cve`、`misconfig`、`exposure`、`default-login`），原本快速模式寫成 `cves`／`misconfigurations` 只選到 3 個模板（該模式已移除）。高噪音模板加進 `EXCLUDED_TEMPLATE_IDS` 並寫原因。
+- **只掃網站根網址**（`_root_url`）：模板多半檢查網站層級路徑，每頁重掃只是把同樣的探測乘以頁數；單頁與全網站相同。
+- **模板集紀錄**：每次執行用 `nuclei -tl` 列出實際選到的模板，記錄引擎版本、模板版本、模板數與指紋（模板路徑＋內容雜湊的 sha256），存在 `warning_summary.nuclei` 並寫進掃描 log；同一指紋才代表同一組檢查。
+- **結果狀態**：逾時（`ARGUS_NUCLEI_TIMEOUT`，預設 660 秒——全網站時 Nuclei 與 Katana 分預算只有 1 RPS）保留逾時前已輸出的結果（`process_runner` 逾時時把已輸出的 stdout 放進 `TimeoutExpired.output`），覆蓋紀錄 `partial`；沒有 binary、模板目錄缺失、選不到模板或異常結束拋 `NucleiUnavailable`，覆蓋紀錄 `failed`（原因是固定代碼）。WAF 之後 0 項發現的說明只在 Nuclei 完整跑完時才加。
+- 呼叫 `nuclei -tl`／`-version` 一律帶 `-no-stdin`／`-duc` 與 `stdin=DEVNULL`：沒有時 nuclei 會等 stdin 的目標清單或檢查更新，在 worker 裡卡到逾時。
+- Agent 的 `run_nuclei` 工具用同一個模板目錄（`-t ARGUS_NUCLEI_TEMPLATES_DIR`），tags 由 agent 指定。
 
 **Agent 有兩種角色，閘門分離**（都受 `ARGUS_AGENT_ENABLED` 總開關控制）：
 
@@ -173,7 +183,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
 | `seo/structured_data.py` | Google 複合式搜尋結果必填欄位（依 Search Central 2026-09 版；`scanners._seo_structured_data` 逐頁呼叫，Finding `seo-structured-data-required`（低）與自評星等 `seo-structured-data-self-serving-reviews`（資訊））：只套頂層節點（區塊根、陣列、`@graph`、`mainEntity`）的類型規則，Review／AggregateRating 任何層都檢查，Offer／活動地點只在 Product／Event 底下檢查；`@type` 接受 schema.org 網址形式；純 `@id` 參照不檢查；語法錯誤略過（由 AEO 回報）。**不檢查** FAQPage／HowTo（Google 已不支援）、建議欄位、值是否正確 |
 | `seo/link_check.py` | 連結狀態：每一跳都過 `assert_public_http_url`、手動跟隨轉址最多 5 跳並記錄跳轉鏈；HEAD 回 4xx／5xx 或連線層錯誤（`RemoteProtocolError` 等，2026-10-06 domjudge 子網域實測）時改 GET（不讀內容）。站台檢查：robots.txt（`User-agent: *` 的 Disallow）、sitemap、HTTP→HTTPS、www／非 www、隨機路徑 404、`/index.html`、結尾斜線。逾時是獨立判定 `timeout`（2026-10-08 前併在 `error`）；`check_links` 的未檢查數分成 `over_limit`（超過數量上限）與 `budget_exhausted`（時間用完），存 `seo_report.unchecked_reasons` |
 | `seo/link_trend.py` | 連結覆蓋與趨勢（2026-10-08，roadmap §11 第 2、3 項）：`link_coverage` 把每個連結歸到已確認／對方限制／逾時／無法連線／非公開位址／超過數量上限／時間用完，存 `seo_report.coverage`，`seo_links` 覆蓋紀錄的說明列出沒有明確結果的狀態；`link_trend` 和同專案上一次有 `seo_report` 的完成掃描比較，失效連結標 `new`／`persisting`／`recovered`／`unconfirmed`，存 `seo_report.trend`（`items` 逐網址、`counts`、`previous_scan_id`）。只有這次真的檢查過且正常（含轉址後正常）才算恢復；沒檢查、逾時、被拒或頁面上找不到都是無法確認。爬蟲已造訪的頁面不做連結檢查，兩次都用 `crawled_verdicts` 併入爬蟲 HTTP 狀態（上一次由 `Page` 表取）。`seo/report.py` 的連結列帶 `trend`、links 區塊帶 `coverage`／`trend`（不含 items；`CACHE_VERSION` 2），`seo-broken-internal-links` 的描述與證據註明新壞掉／持續失效 |
-| `seo/collect.py` | `stage_seo_links` 主體：收集所有頁面的不重複連結（爬蟲已直接造訪且沒轉址的頁面不重查），依站內→子網域→站外排序，前 `ARGUS_SEO_LINK_CHECK_LIMIT`（150）個、總時間 `ARGUS_SEO_LINK_CHECK_SECONDS`（120） |
+| `seo/collect.py` | `stage_seo_links` 主體：收集所有頁面的不重複連結（爬蟲已直接造訪且沒轉址的頁面不重查；爬蟲已取得的 robots.txt／llms.txt／sitemap（`site_signals.fetched`，不跟隨轉址的狀態）也不重查，robots.txt 以爬蟲原文解析，站台檢查先沿用已有結果；轉址的照常檢查；沿用數在 `seo_report.reused`，2026-10-08 roadmap §11 第 1 項，測試 `tests_seo_reuse.py`），依站內→子網域→站外排序，前 `ARGUS_SEO_LINK_CHECK_LIMIT`（150）個、總時間 `ARGUS_SEO_LINK_CHECK_SECONDS`（120） |
 | `seo/report.py` | API 資料：概覽（掃描頁數、受影響頁數、重大／警告／提示、可索引頁數、失效連結、優先修復事項）、頁面、問題（每處附網址、檢測時間、證據）、連結（依目標合併、來源頁與錨文字）、站台檢查、關鍵字報告；以「掃描 id＋連結檢查時間」快取 1 小時 |
 | `seo/keywords.py` | 目標關鍵字（`SiteProject.target_keywords`，最多 20 個、每個 60 字）字面比對 Title／H1／Description／H2–H6／網址／正文 |
 | `seo/gsc.py`、`seo_views.py` | Google Search Console（下表） |
@@ -566,8 +576,8 @@ log、findings、報告。migration 0016。
 ### SPA 攻擊面管道（2026-09-25）
 
 `crawl_site` 被動攔截 same-origin XHR/fetch 端點（第 4 回傳值）→
-`tasks.py` 併入：sqlmap 候選＝全部端點；Nuclei extra_urls＝頁面＋帶
-query 端點前 3 個（`_NUCLEI_MAX_ENDPOINT_URLS`，全塞會炸時間預算）。
+`tasks.py` 併入：sqlmap 候選＝全部端點。Nuclei 2026-10-08 起只掃網站根網址
+（見「Nuclei 模板治理」），不再使用頁面與端點清單。
 Agent 端同能力＝`get_network_requests` 工具（見架構文件 §3）。
 
 ---

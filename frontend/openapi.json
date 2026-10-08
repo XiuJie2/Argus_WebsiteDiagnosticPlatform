@@ -3587,6 +3587,26 @@
                 }
             }
         },
+        "/api/content/scanner-info/": {
+            "get": {
+                "operationId": "content_scanner_info_retrieve",
+                "description": "公開頁「掃描來源說明」（/scanner）：讓目標網站管理者辨識、放行或封鎖 Argus 的掃描流量。\n\n全部取自實際生效的設定，不另外手寫，避免說明與行為不一致。",
+                "tags": [
+                    "content"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
         "/api/content/team/": {
             "get": {
                 "operationId": "content_team_retrieve",

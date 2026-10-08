@@ -28,6 +28,7 @@ const loadReviewsPage = () => import("./features/reviews/ReviewsPage.jsx");
 const loadPublicPages = () => import("./features/public/PublicPages.jsx");
 const loadPartnersPage = () => import("./features/public/PartnersPage.jsx");
 const loadLegalPages = () => import("./features/public/LegalPages.jsx");
+const loadScannerInfoPage = () => import("./features/public/ScannerInfoPage.jsx");
 const loadMcpAccessPage = () => import("./features/account/McpAccessPage.jsx");
 const loadProjectWorkspace = () => import("./features/projects/ProjectWorkspace.jsx");
 const loadProjectPages = () => import("./features/projects/ProjectPages.jsx");
@@ -86,6 +87,7 @@ const VerifyReportPage = lazyNamed(loadPublicPages, "VerifyReportPage");
 const PartnersPage = lazyNamed(loadPartnersPage, "PartnersPage");
 const PrivacyPolicyPage = lazyNamed(loadLegalPages, "PrivacyPolicyPage");
 const TermsOfServicePage = lazyNamed(loadLegalPages, "TermsOfServicePage");
+const ScannerInfoPage = lazyNamed(loadScannerInfoPage, "ScannerInfoPage");
 const RequireAdmin = lazyNamed(loadAdminPages, "RequireAdmin");
 const AdminLayout = lazyNamed(loadAdminPages, "AdminLayout");
 const AdminOverviewPage = lazyNamed(loadAdminOverview, "AdminOverviewPage");
@@ -121,7 +123,7 @@ function AppShell({ googleOAuthEnabled }) {
   const isAdmin = location.pathname.startsWith("/admin");
   // 評論頁：登入後留在會員區（會員導覽列）；未登入才走公開頁版型
   const isPublic = [
-    "/project", "/free-tools", "/purchase", "/download", "/verify", "/partners", "/share", "/optimized",
+    "/project", "/free-tools", "/purchase", "/download", "/verify", "/partners", "/scanner", "/share", "/optimized",
     ...(accessToken ? [] : ["/reviews"]),
   ].some((p) =>
     // 以路徑段比對：/projects（會員的網站專案）不能被當成公開頁 /project
@@ -167,6 +169,7 @@ function AppShell({ googleOAuthEnabled }) {
             <Route path="/partners" element={<PartnersPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
+            <Route path="/scanner" element={<ScannerInfoPage />} />
             {!accessToken && <Route path="/reviews" element={<ReviewsPage />} />}
           </Route>
           {accessToken && <Route path="/reviews" element={<ReviewsPage />} />}

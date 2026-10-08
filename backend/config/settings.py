@@ -365,6 +365,12 @@ ARGUS_VULN_INTEL_CACHE_SECONDS = int(os.getenv("ARGUS_VULN_INTEL_CACHE_SECONDS",
 ARGUS_ACTIVE_MAX_RPS = 2
 ARGUS_PASSIVE_MAX_RPS = 5
 ARGUS_SCANNER_USER_AGENT = "SiteSense-AI-Scanner/1.0 (authorized-audit)"
+# 掃描流量的出口 IP（逗號分隔，可寫 CIDR），公布在公開頁「掃描來源說明」（/scanner），
+# 讓目標網站管理者放行或封鎖。依部署而定、沒有固定出口時留空，頁面改請對方以 User-Agent 辨識。
+# 格式錯誤由 manage.py check（scans.E003）擋下。
+ARGUS_SCANNER_EGRESS_IPS = [
+    item.strip() for item in os.getenv("ARGUS_SCANNER_EGRESS_IPS", "").split(",") if item.strip()
+]
 ARGUS_AUTO_QUEUE_SCANS = env_bool("ARGUS_AUTO_QUEUE_SCANS", default=not DEBUG)
 # 新帳號自動建立示範專案（apps/scans/demo/：虛構網站的三次真實掃描結果）
 ARGUS_DEMO_PROJECT_ENABLED = env_bool("ARGUS_DEMO_PROJECT_ENABLED", default=True)
@@ -381,9 +387,11 @@ ARGUS_ALLOW_PRIVATE_TARGETS = env_bool("ARGUS_ALLOW_PRIVATE_TARGETS", default=Fa
 # 前提：本機需有 Docker Desktop 並已 pull 過 projectdiscovery/katana
 KATANA_DOCKER_IMAGE = os.getenv("KATANA_DOCKER_IMAGE", "projectdiscovery/katana:latest")
 KATANA_TIMEOUT = int(os.getenv("KATANA_TIMEOUT", "90"))  # subprocess 超時（秒）
-# Nuclei deep 模式硬逾時（秒）。2 RPS 下全模板掃描可能超過預設 300 秒；
-# 本機／隔離 demo 掃受控目標（如 Juice Shop）可透過環境變數放寬。
-ARGUS_NUCLEI_DEEP_TIMEOUT = int(os.getenv("ARGUS_NUCLEI_DEEP_TIMEOUT", "300"))
+# Nuclei 模板目錄（image 建置時鎖定版本並驗證，見 Dockerfile）與硬逾時（秒）。
+# KEV 模板集對網站根網址約 630 個請求：全網站掃描與 Katana 分享預算時 Nuclei 只有 1 RPS，
+# 預設 660 秒剛好跑得完；逾時保留已得結果並標為部分完成。
+ARGUS_NUCLEI_TEMPLATES_DIR = os.getenv("ARGUS_NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates")
+ARGUS_NUCLEI_TIMEOUT = int(os.getenv("ARGUS_NUCLEI_TIMEOUT", "660"))
 
 # Phase 2 Hermes-Agent 上限（避免 token 失控與無限循環）
 ARGUS_AGENT_MAX_STEPS = int(os.getenv("ARGUS_AGENT_MAX_STEPS", "20"))

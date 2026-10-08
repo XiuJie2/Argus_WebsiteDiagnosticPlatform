@@ -762,6 +762,12 @@ function ScanJobForm({ onCreated, project = null }) {
           我同意進行侵入式測試，並理解系統會限制 RPS ≤ 2。
         </label>
       )}
+      {activeMode && (
+        <p className="coin-estimate-hint">
+          網站有 WAF 或機器人防護時，請先放行 Argus 的掃描流量，否則部分檢查會被擋下：
+          <Link to="/scanner" target="_blank" rel="noopener">掃描來源說明</Link>
+        </p>
+      )}
       {activeMode && !matchedVerifiedDomain && !staffDomainBypass && (
         <div className="scan-domain-warning" role="alert">
           <p className="scan-domain-warning-title">⚠ 主動式測試需要先通過網域驗證</p>

@@ -29,6 +29,7 @@ from apps.scans.coverage import (
     incomplete_checks,
 )
 from apps.scans.models import Finding, Page, ScanJob
+from apps.scans.nuclei_scanner import NucleiRun
 from apps.scans.projects import compare_issues
 from apps.scans.scan_plan import build_scan_execution_plan
 
@@ -266,7 +267,7 @@ class ActiveProbeCoverageTests(TestCase):
         finding = {
             "category": "security", "severity": "medium", "title": "XSS", "rule_id": "nuclei-xss",
         }
-        with mock.patch("apps.scans.tasks.run_nuclei", return_value=[finding]):
+        with mock.patch("apps.scans.tasks.run_nuclei", return_value=NucleiRun(findings=[finding])):
             tasks.stage_active_probe(self.ctx)
         coverage = self.ctx.coverage.to_json(["security"])
         self.assertEqual(coverage["checks"]["nuclei"]["status"], COMPLETED)
