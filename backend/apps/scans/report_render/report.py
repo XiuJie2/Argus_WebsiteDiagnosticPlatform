@@ -429,6 +429,17 @@ def _summary(doc, data, ch):
             add_run(p, f"  {pr['problem']}", size=T.TYPE["body"], color=T.SLATE, bold=True)
             if pr.get("ref"):
                 add_run(p, f"　詳見 {pr['ref']}", size=T.TYPE["meta"], color=T.GREY)
+    # 改一處就能一起解決的問題（Argus 在地修改：root_causes.py，與問題分析頁同一套歸類）
+    causes = s.get("root_causes") or []
+    if causes:
+        h2(doc, "改一處就能一起解決")
+        for cause in causes:
+            p = add_para(doc, after=1, line=1.4)
+            add_run(p, cause["title"], size=T.TYPE["body"], color=T.SLATE, bold=True)
+            add_run(p, f'　{len(cause["refs"])} 項：{"、".join(cause["refs"])}',
+                    size=T.TYPE["meta"], color=T.GREY)
+            add_para(doc, [{"text": f'在哪裡修：{cause["where"]}', "size": T.TYPE["meta"],
+                            "color": T.GREY}], after=5)
     _site_profile(doc, data.get("site_profile") or {})
     scores_heading = h2(doc, "各分類分數")
     if data.get("site_profile"):

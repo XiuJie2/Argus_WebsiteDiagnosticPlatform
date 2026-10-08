@@ -42,7 +42,11 @@
         },
         "new_findings":  {"type": "array", "items": {"type": "string"}},
         "priority_note": {"type": "string"},
-        "score_note":    {"type": "string", "description": "分數算法說明"}
+        "score_note":    {"type": "string", "description": "分數算法說明"},
+        "root_causes":   {"type": "array", "description": "改一處就能一起解決的問題（root_causes.py）",
+                          "items": {"type": "object", "required": ["title", "where", "refs"],
+                                    "properties": {"title": {"type": "string"}, "where": {"type": "string"},
+                                                   "refs": {"type": "array", "items": {"type": "string"}}}}}
       }
     },
     "site_profile": {

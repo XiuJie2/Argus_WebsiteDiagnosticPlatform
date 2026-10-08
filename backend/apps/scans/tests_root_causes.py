@@ -96,3 +96,43 @@ class IssuesApiTests(TestCase):
         by_rule = {i["rule_id"]: i.get("root_cause") for i in data["issues"]}
         self.assertEqual(by_rule["SECURITY_HTTPS_X"], None)
         self.assertEqual(by_rule["header-hsts-missing"], "server-headers")
+
+
+class ReportRootCauseTests(TestCase):
+    """PDF 報告摘要的「改一處就能一起解決」：項次對應第 4 章，資訊提示不列。"""
+
+    def setUp(self):
+        user = User.objects.create_user(username="report-causes", password="safe-test-password")
+        self.scan = ScanJob.objects.create(
+            user=user, original_url="https://example.com/", normalized_url="https://example.com/",
+            origin="https://example.com", status=ScanJob.Status.COMPLETED,
+            completed_at=timezone.now(), category_scores={"security": 80}, overall_score=80,
+        )
+        for rule_id, title, severity in (
+            ("SECURITY_CSP_X", "缺少 CSP", "low"),
+            ("header-hsts-missing", "缺少 HSTS", "medium"),
+            ("header-x-powered-by", "回應標頭透露技術", "info"),
+            ("dns-spf-missing", "網域缺少 SPF 記錄", "medium"),
+        ):
+            Finding.objects.create(
+                scan_job=self.scan, category="security", severity=severity, title=title,
+                description="d", remediation="r", rule_id=rule_id, ai_handoff_prompt="p",
+            )
+
+    def test_payload_lists_causes_with_chapter_refs(self):
+        from apps.scans.reports import build_report_payload
+
+        payload = build_report_payload(self.scan)
+        causes = payload["summary"]["root_causes"]
+        self.assertEqual([c["title"] for c in causes], ["網站伺服器的回應標頭設定"])
+        refs = {f["title"]: f["id"] for f in payload["findings"]}
+        self.assertEqual(sorted(causes[0]["refs"]), sorted([refs["缺少 CSP"], refs["缺少 HSTS"]]))
+
+    def test_rendered_summary_has_section(self):
+        from docx import Document
+
+        from apps.scans.reports import render_report_docx
+
+        text = "\n".join(p.text for p in Document(render_report_docx(self.scan)).paragraphs)
+        self.assertIn("改一處就能一起解決", text)
+        self.assertIn("在哪裡修：網站伺服器", text)
