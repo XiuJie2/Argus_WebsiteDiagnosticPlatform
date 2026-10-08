@@ -352,12 +352,6 @@ function ScanJobForm({ onCreated, project = null }) {
   const initial = loadScanDraft(draftKey) || defaults;
   const [scope, setScope] = useState(initial.scope || "site"); // "single" | "site"
   const [url, setUrl] = useState(initial.url || "");
-  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(
-    initial.authorizationConfirmed || false,
-  );
-  const [thirdPartyReconfirmed, setThirdPartyReconfirmed] = useState(
-    initial.thirdPartyReconfirmed || false,
-  );
   const [activeMode, setActiveMode] = useState(initial.activeMode || false);
   const [activeAuthorized, setActiveAuthorized] = useState(initial.activeAuthorized || false);
   // 掃描維度多選（至少一項；費用＝頁數 × 勾選維度數 × 每維單價）
@@ -476,13 +470,11 @@ function ScanJobForm({ onCreated, project = null }) {
     saveScanDraft({
       scope,
       url,
-      authorizationConfirmed,
-      thirdPartyReconfirmed,
       activeMode,
       activeAuthorized,
       categories,
     }, draftKey);
-  }, [draftKey, scope, url, authorizationConfirmed, thirdPartyReconfirmed, activeMode, activeAuthorized, categories]);
+  }, [draftKey, scope, url, activeMode, activeAuthorized, categories]);
 
   useEffect(() => {
     if (!submitting) return undefined;
@@ -503,8 +495,9 @@ function ScanJobForm({ onCreated, project = null }) {
       // 整站掃描：遵守專案預設上限，避免過度爬取與預扣過高
       const payload = {
         url,
-        authorization_confirmed: authorizationConfirmed,
-        third_party_reconfirmed: thirdPartyReconfirmed,
+        // 送出即聲明擁有此網站或已取得授權（表單上的文字說明）；後端仍寫授權紀錄
+        authorization_confirmed: true,
+        third_party_reconfirmed: true,
         scan_mode: activeMode ? "active" : "passive",
         active_testing_authorized: activeMode && activeAuthorized,
         categories,
@@ -514,8 +507,6 @@ function ScanJobForm({ onCreated, project = null }) {
       };
       const response = await api.post("/scans/", payload);
       setUrl(defaults.url || "");
-      setAuthorizationConfirmed(false);
-      setThirdPartyReconfirmed(false);
       setActiveMode(false);
       setActiveAuthorized(false);
       setCategories(defaults.categories || DEFAULT_SCAN_CATEGORIES);
@@ -726,22 +717,6 @@ function ScanJobForm({ onCreated, project = null }) {
         </p>
       </div>
 
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={authorizationConfirmed}
-          onChange={(event) => setAuthorizationConfirmed(event.target.checked)}
-        />
-        我擁有此網站或已獲得書面授權測試。
-      </label>
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={thirdPartyReconfirmed}
-          onChange={(event) => setThirdPartyReconfirmed(event.target.checked)}
-        />
-        若此網站看似第三方或敏感產業，我已再次確認授權。
-      </label>
       <label className={`checkbox-row ${securitySelected ? "" : "opacity-60"}`}>
         <input
           type="checkbox"
@@ -794,6 +769,7 @@ function ScanJobForm({ onCreated, project = null }) {
         </div>
       )}
       {error && <p className="error-text">{error}</p>}
+      <p className="coin-estimate-hint">送出即表示你擁有此網站或已取得授權進行檢查。</p>
       <button className="primary-button" type="submit" disabled={submitting}>
         {submitting ? "送出中... (請勿關閉視窗)" : "建立掃描"}
       </button>
@@ -1915,7 +1891,13 @@ function ScanPerformancePage() {
   const { scan, error } = useScanDetail(scanId);
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
   if (!scan) return <section className="panel"><p className="hint-text">載入中…</p></section>;
-  return <PerformancePanel report={scan.performance_report} />;
+  return (
+    <PerformancePanel
+      report={scan.performance_report}
+      categories={scan.categories}
+      check={scan.coverage?.checks?.pagespeed}
+    />
+  );
 }
 
 /** /scans/:scanId/score：各維度分數怎麼算出來的（基準分、逐項扣分、未完整完成的檢查）。 */

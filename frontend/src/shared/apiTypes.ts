@@ -3550,6 +3550,7 @@ export interface components {
             readonly completed_at: string | null;
             readonly findings_count: number;
             readonly pages_count: number;
+            readonly coins_charged: number;
             readonly is_demo: boolean;
         };
         ScanJobCreate: {

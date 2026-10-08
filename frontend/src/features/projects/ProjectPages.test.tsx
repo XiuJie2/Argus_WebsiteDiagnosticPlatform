@@ -3,7 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { issuesToCsv, ProjectIssuesPage, ProjectPagesPage, ProjectScansPage } from "./ProjectPages";
+import {
+  issuesToCsv,
+  ProjectHistoryPage,
+  ProjectIssuesPage,
+  ProjectPagesPage,
+  ProjectScansPage,
+} from "./ProjectPages";
 
 vi.mock("../../api", () => ({ api: { get: vi.fn() }, setAccessToken: vi.fn() }));
 const { api } = vi.mocked(await import("../../api"));
@@ -201,5 +207,37 @@ describe("ProjectScansPage 示範專案", () => {
     expect(screen.getByRole("link", { name: "新增你的網站" })).toHaveAttribute("href", "/projects/new");
     expect(screen.queryByRole("button", { name: "建立掃描" })).not.toBeInTheDocument();
     expect(screen.getByText("示範")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectHistoryPage 扣點", () => {
+  it("每次掃描列出實際扣的點數；免費、失敗與進行中各自說明", async () => {
+    const scan = (id: number, overrides: Record<string, unknown>) => ({
+      id, status: "completed", overall_score: 80, pages_count: 3, findings_count: 2,
+      created_at: "2026-10-08T01:00:00Z", completed_at: "2026-10-08T01:10:00Z",
+      coins_charged: 0, is_trial: false, scoring_version: "1", ruleset_version: "1", ...overrides,
+    });
+    api.get.mockImplementation(async (url: string) => (url === "/scans/" ? {
+      data: { results: [
+        scan(4, { status: "crawling", coins_charged: 100, overall_score: null }),
+        scan(3, { coins_charged: 30 }),
+        scan(2, { status: "failed", overall_score: null }),
+        scan(1, { is_trial: true }),
+      ] },
+    } : { data: { results: [] } }));
+    render(
+      <MemoryRouter initialEntries={["/projects/7/history"]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<Outlet context={{ project: PROJECT }} />}>
+            <Route path="history" element={<ProjectHistoryPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("columnheader", { name: "扣點" })).toBeInTheDocument();
+    expect(screen.getByText("預扣 100 點")).toBeInTheDocument();
+    expect(screen.getByText("30 點")).toBeInTheDocument();
+    expect(screen.getByText("已全額退回")).toBeInTheDocument();
+    expect(screen.getByText("免費")).toBeInTheDocument();
   });
 });

@@ -76,10 +76,12 @@ describe("ScanJobForm（2026-10-07 定價：首次免費、部分掃描、深度
     expect(screen.queryByText(/部分掃描：最多 18 頁，結果可能/)).not.toBeInTheDocument();
     await user.click(partial);
     expect(screen.getByText(/部分掃描：最多 18 頁，結果可能/)).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: /我擁有此網站/ }));
+    // 不需勾選授權：送出即聲明，送出內容帶授權確認
+    expect(screen.queryByRole("checkbox", { name: /我擁有此網站/ })).not.toBeInTheDocument();
+    expect(screen.getByText("送出即表示你擁有此網站或已取得授權進行檢查。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
     expect(vi.mocked(api.post)).toHaveBeenCalledWith(
-      "/scans/", expect.objectContaining({ max_pages: 18 }),
+      "/scans/", expect.objectContaining({ max_pages: 18, authorization_confirmed: true }),
     );
   });
 

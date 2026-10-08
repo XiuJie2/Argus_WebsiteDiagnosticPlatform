@@ -1246,6 +1246,15 @@ function ProjectPagesPage() {
 // 歷史報告
 // ============================================================
 
+/** 歷史報告的「扣點」欄：預扣－退款（後端 scan.coins_charged）；進行中的掃描是目前預扣的點數。 */
+function coinsChargedText(scan) {
+  if (scan.is_trial) return "免費";
+  const coins = (scan.coins_charged ?? 0).toLocaleString();
+  if (isInProgress(scan.status)) return `預扣 ${coins} 點`;
+  if (scan.status === "failed" || scan.status === "cancelled") return "已全額退回";
+  return `${coins} 點`;
+}
+
 function ProjectHistoryPage() {
   const { project } = useOutletContext();
   const { scans } = useProjectScans(project.id);
@@ -1318,6 +1327,7 @@ function ProjectHistoryPage() {
                   <th scope="col">分數</th>
                   <th scope="col">變化</th>
                   <th scope="col">頁數／發現</th>
+                  <th scope="col">扣點</th>
                   <th scope="col"><span className="project-sr-only">操作</span></th>
                 </tr>
               </thead>
@@ -1337,6 +1347,7 @@ function ProjectHistoryPage() {
                         ) : "—"}
                       </td>
                       <td>{scan.pages_count} 頁 · {scan.findings_count} 項</td>
+                      <td>{coinsChargedText(scan)}</td>
                       <td>
                         <div className="project-table-actions">
                           <Link className="project-text-link" to={`/scans/${scan.id}`}>查看結果</Link>
