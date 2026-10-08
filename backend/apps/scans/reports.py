@@ -1187,6 +1187,61 @@ def _report_appendix(
     return appendix
 
 
+def _report_score_items(
+    scan_job: ScanJob, grouped: list[dict], findings_payload: list[dict]
+) -> dict:
+    """附錄：各分類的逐項扣分（score_explain.py，與網頁「分數說明」分頁同一份資料）。
+
+    依目前公式重算的分數和保存的分數不同（舊版公式或事後重新判定）時不列明細，
+    只說明原因——列出一份加不回報告分數的表，比不列更讓人困惑。
+    """
+    # 函式內匯入：score_explain → finding_normalization → reports 會循環
+    from apps.scans.score_explain import score_explanation
+
+    explanation = score_explanation(scan_job)
+    if not explanation["available"]:
+        return {}
+    if not explanation["matches"]:
+        return {
+            "note": "這次掃描的分數以舊版計分公式算出，依目前公式無法逐項還原，因此不列扣分明細。"
+        }
+    refs = {
+        item["finding"].rule_id: f["id"]
+        for f, item in zip(findings_payload, grouped, strict=True)
+        if item["finding"].rule_id
+    }
+    categories = []
+    for entry in explanation["categories"]:
+        name = CATEGORY_DISPLAY.get(entry["category"], entry["category"].upper())
+        if entry["base_source"] == "aeo_answerability":
+            basis = f"起始分 {entry['base']}（可回答性分數，逐題結果已反映在這裡）"
+        else:
+            basis = "起始分 100"
+        notes = []
+        if entry["in_base"]:
+            notes.append(f"{entry['in_base']} 筆問答檢測結果已計入起始分")
+        if entry["info"]:
+            notes.append(f"{entry['info']} 筆資訊提示不扣分")
+        categories.append({
+            "name": name,
+            "score": entry["score"],
+            "basis": basis,
+            "notes": "；".join(notes),
+            "items": [
+                {
+                    "ref": refs.get(item["rule_id"], ""),
+                    "title": item["title"],
+                    "severity": _render_severity(item["severity"]),
+                    "weight": item["weight"],
+                    "occurrences": item["occurrences"],
+                    "score_without": item["score_without"],
+                }
+                for item in entry["deductions"]
+            ],
+        })
+    return {"categories": categories}
+
+
 def build_report_payload(scan_job: ScanJob) -> dict:
     """把一次掃描轉成 report_render 的輸入 JSON（契約見 report_render/schema.json）。
 
@@ -1223,6 +1278,9 @@ def build_report_payload(scan_job: ScanJob) -> dict:
         payload["site_profile"] = site_profile
     payload["scan_info"] = _report_scan_info(scan_job)
     payload["appendix"] = _report_appendix(scan_job, grouped, findings_payload)
+    score_items = _report_score_items(scan_job, grouped, findings_payload)
+    if score_items:
+        payload["appendix"]["score_items"] = score_items
     return payload
 
 

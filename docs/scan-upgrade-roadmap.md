@@ -209,7 +209,7 @@ Argus 掃描架構已達商用雛形：`tasks.py` 以 `ScanRunContext` + 20+ 個
    - 建立 50–100 組 answerable / insufficient / conflict / missing / semantic-near-but-not-answer regression case。
    - 驗收至少追蹤 precision、recall、false-positive rate、平均判定成本與耗時；門檻先在實作票/ADR 明定後再上線。
 
-4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。評分可解釋化 **已實作 2026-10-07**：`scanners.score_breakdown()`（`calculate_scores` 的分類分數由它算出）＋`score_explain.py`＋`GET /api/scans/<id>/score-breakdown/`，掃描「分數說明」分頁逐維度列基準分、逐項扣分權重、出現處數、只修好該項時的分數、不扣分項目與未完整完成的檢查；舊公式算的分數標示不一致。尚未做：外部 benchmark、PDF 報告內的逐項扣分、confidence 影響扣分）
+4. **P1 Coverage-aware scoring + comparable history**（**已實作 2026-10-07**：`scoring_version`／`ruleset_version`（`apps/scans/versions.py`、migration 0029），跨版本不顯示分數增減；coverage-aware 計分與 RESOLVED／NOT_OBSERVED／BLOCKED／INCONCLUSIVE 已於 P0-A 完成。評分可解釋化 **已實作 2026-10-07**：`scanners.score_breakdown()`（`calculate_scores` 的分類分數由它算出）＋`score_explain.py`＋`GET /api/scans/<id>/score-breakdown/`，掃描「分數說明」分頁逐維度列基準分、逐項扣分權重、出現處數、只修好該項時的分數、不扣分項目與未完整完成的檢查；舊公式算的分數標示不一致。PDF 報告內的逐項扣分 **已實作 2026-10-08**：附錄「各分類扣分明細」（`reports._report_score_items`，與分數說明分頁同一份 `score_explanation`，項次對應第 4 章，分數依目前公式加不回來時只說明原因）。尚未做：外部 benchmark、confidence 影響扣分）
    - 加 `scoring_version` / `ruleset_version`；歷史 diff 升級成 RESOLVED / NOT_OBSERVED / BLOCKED / INCONCLUSIVE。
    - 外部 benchmark 只驗證可對應子指標，不把 Argus 總分校準成 Lighthouse/CrUX。
 
