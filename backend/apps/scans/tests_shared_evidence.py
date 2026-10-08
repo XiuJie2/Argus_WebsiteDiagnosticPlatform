@@ -2,9 +2,12 @@
 
 鎖定：資安的個資檢查與 AEO 的聯絡題用同一套擷取；同一頁上，資安看得到的 Email／電話，
 AEO 要嘛判定可回答，要嘛在理由中說明它在哪裡、為什麼正文讀不到——不能只說「找不到」。
+地址（2026-10-08）同理：結構化資料寫了地址，AEO 不能沒有說明就判「找不到」。
 """
 
 from __future__ import annotations
+
+import json
 
 from django.test import SimpleTestCase
 
@@ -124,4 +127,90 @@ class CrossModuleConsistencyTests(SimpleTestCase):
         url = "https://center.example/contact"
         html = _page(url, "<p>聯絡信箱 a@center.example，電話 02-2322-6000。</p>")
         summary = evaluate_site([SitePage(url, html)]).summary
-        self.assertEqual(summary["shared_contacts"], {"email": 1, "phone": 1})
+        self.assertEqual(summary["shared_contacts"], {"email": 1, "phone": 1, "address": 0})
+
+
+def _json_ld(data: dict) -> str:
+    return f'<script type="application/ld+json">{json.dumps(data, ensure_ascii=False)}</script>'
+
+
+_LOCAL_BUSINESS = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "name": "推廣教育中心",
+    "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "濟南路一段321號",
+        "addressLocality": "中正區",
+        "addressRegion": "台北市",
+    },
+}
+
+
+class SharedAddressTests(SimpleTestCase):
+    def test_address_locations(self):
+        html = (
+            "<p>地址：臺北市中正區濟南路一段３２１號</p>"
+            "<!-- 舊址 台北市大安區復興南路二段100號 -->"
+            + _json_ld(
+                {"@graph": [{"@type": "Organization", "address": "高雄市前鎮區成功二路88號"}]}
+            )
+        )
+        found = {
+            (c.kind, c.normalized): c.location
+            for c in contacts.collect_contacts("https://site.example/", html)
+            if c.kind == contacts.ADDRESS
+        }
+        self.assertEqual(
+            found,
+            {
+                ("address", "台北市中正區濟南路一段321號"): contacts.LOCATION_CONTENT,
+                ("address", "台北市大安區復興南路二段100號"): contacts.LOCATION_COMMENT,
+                # JSON-LD 裡的地址記為結構化資料，不被當成頁面內容
+                ("address", "高雄市前鎮區成功二路88號"): contacts.LOCATION_STRUCTURED,
+            },
+        )
+
+    def test_postal_address_uses_street_and_skips_broken_blocks(self):
+        html = '<script type="application/ld+json">{壞掉</script>' + _json_ld(_LOCAL_BUSINESS)
+        self.assertEqual(contacts.structured_addresses(html), ["濟南路一段321號"])
+
+    def test_aeo_reuses_the_answer_pattern(self):
+        from apps.scans.aeo import answers
+
+        self.assertIs(answers._ADDRESS, contacts.ADDRESS_PATTERN)
+
+    def test_address_only_in_json_ld_is_explained(self):
+        url = "https://center.example/contact"
+        html = _page(
+            url,
+            "<h2>交通與地址</h2><p>歡迎親自到中心洽詢課程，我們就在捷運站附近，交通方便。</p>",
+            outside=_json_ld(_LOCAL_BUSINESS),
+        )
+        result = _contact_result([SitePage(url, html)], "address")
+
+        self.assertNotEqual(result.verdict, "answered")
+        self.assertIn("結構化資料（JSON-LD）", result.reason)
+        self.assertIn("搜尋引擎讀得到", result.reason)
+        self.assertIn("結構化資料檢查讀到的地址", result.reason)
+
+    def test_structured_street_written_on_page_is_answered(self):
+        """頁面只寫在短標題裡（被當成標題略過）時，以結構化資料的街道比對找回答案。"""
+        url = "https://center.example/contact"
+        html = _page(
+            url,
+            "<h2>交通與地址</h2><h3>台北市中正區濟南路一段 321 號</h3>",
+            outside=_json_ld(_LOCAL_BUSINESS),
+        )
+        result = _contact_result([SitePage(url, html)], "address")
+
+        self.assertEqual(result.verdict, "answered")
+        self.assertIn("濟南路一段 321 號", result.evidence[0].quote)
+
+    def test_summary_counts_addresses(self):
+        url = "https://center.example/contact"
+        html = _page(url, "<p>地址：台北市中正區濟南路一段321號，歡迎來訪。</p>",
+                     outside=_json_ld(_LOCAL_BUSINESS))
+        summary = evaluate_site([SitePage(url, html)]).summary
+        # 頁面上的完整地址與結構化資料的街道寫法不同，各記一筆
+        self.assertEqual(summary["shared_contacts"]["address"], 2)
