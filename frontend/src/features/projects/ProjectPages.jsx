@@ -44,7 +44,7 @@ import {
   PlayIcon,
 } from "../../shared/LineIcons";
 import { useArgusStore } from "../../store";
-import { ScanJobForm, ScanList, scanProgress } from "../scans/ScanExperience.jsx";
+import { ScanJobForm, scanProgress } from "../scans/ScanExperience.jsx";
 import { projectPath } from "./ProjectWorkspace.jsx";
 
 const OVERVIEW_POLL_MS = 5000;
@@ -408,7 +408,11 @@ function ProjectScansPage() {
 
   return (
     <div className="project-page">
-      <ProjectHeader project={project} section="掃描" description="建立新的掃描，或查看這個網站的歷次掃描與進度。" />
+      <ProjectHeader
+        project={project}
+        section="掃描與報告"
+        description="建立新的掃描，查看這個網站的歷次掃描、分數變化與實際扣點，並下載 PDF 報告。"
+      />
       <div className="project-scans-page">
         {project.is_demo ? (
           <section className="panel project-demo-scan-note">
@@ -425,7 +429,7 @@ function ProjectScansPage() {
         {scans === null ? (
           <section className="panel"><p className="hint-text">載入掃描中…</p></section>
         ) : (
-          <ScanList scans={scans} onRefresh={reload} />
+          <ScanHistoryPanel project={project} scans={scans} onRefresh={reload} />
         )}
       </div>
     </div>
@@ -1293,9 +1297,8 @@ function coinsChargedText(scan) {
   return `${coins} 點`;
 }
 
-function ProjectHistoryPage() {
-  const { project } = useOutletContext();
-  const { scans } = useProjectScans(project.id);
+/** 掃描紀錄（2026-10-08 合併原「歷史報告」分頁）：歷次掃描、分數變化、扣點、問題分析與 PDF 報告。 */
+function ScanHistoryPanel({ project, scans, onRefresh }) {
   const [downloading, setDownloading] = useState(null);
   const [error, setError] = useState("");
 
@@ -1317,9 +1320,8 @@ function ProjectHistoryPage() {
     }
   }
 
-  if (scans === null) return <section className="panel"><p className="hint-text">載入歷史中…</p></section>;
-
   const completed = scans.filter((scan) => scan.status === "completed");
+  const running = scans.filter((scan) => isInProgress(scan.status)).length;
   // 每次完成掃描與「前一次完成掃描」的分數差
   const deltaById = new Map();
   // 評分與規則版本不同（或舊掃描版本不明）的兩次不算分數差
@@ -1336,31 +1338,28 @@ function ProjectHistoryPage() {
   });
 
   return (
-    <div className="project-page">
-      <ProjectHeader
-        project={project}
-        section="歷史報告"
-        description={`共 ${scans.length} 次掃描，其中 ${completed.length} 次完成。完成的掃描可查看問題分析並下載 PDF 報告。`}
-      />
-      {completed.length > 1 && (
-        <section className="panel">
-          <h2 className="project-section-title">分數趨勢</h2>
-          <LineChart
-            data={completed.slice().reverse().map((scan) => ({ label: formatDate(scan.completed_at).slice(5), value: scan.overall_score }))}
-            ariaLabel={`${project.name} 歷次分數`}
-          />
-        </section>
-      )}
-      {error && <p className="error-text" role="alert">{error}</p>}
+    <div className="project-scans-side">
       <section className="panel">
+        <div className="scan-list-head">
+          <div>
+            <h2 className="project-section-title">掃描紀錄</h2>
+            <p className="hint-text">
+              共 {scans.length} 次，{completed.length} 次完成
+              {running > 0 && `，${running} 次進行中（自動更新）`}。完成的掃描可查看問題分析並下載 PDF 報告。
+            </p>
+          </div>
+          <button className="secondary-button" type="button" onClick={onRefresh}>重新整理</button>
+        </div>
+        {error && <p className="error-text" role="alert">{error}</p>}
         {scans.length === 0 ? (
-          <p className="hint-text">還沒有掃描紀錄。</p>
+          <p className="hint-text">這個網站還沒有掃描；用表單建立第一次掃描。</p>
         ) : (
           <div className="project-table-wrap">
             <table className="project-table">
               <thead>
                 <tr>
                   <th scope="col">建立時間</th>
+                  <th scope="col">範圍</th>
                   <th scope="col">狀態</th>
                   <th scope="col">分數</th>
                   <th scope="col">變化</th>
@@ -1374,7 +1373,11 @@ function ProjectHistoryPage() {
                   const done = scan.status === "completed";
                   return (
                     <tr key={scan.id}>
-                      <td>{formatDateTime(scan.created_at)}</td>
+                      <td><Link className="project-text-link" to={`/scans/${scan.id}`}>{formatDateTime(scan.created_at)}</Link></td>
+                      <td>
+                        {scan.max_pages > 1 ? "整個網站" : "單一頁面"}
+                        {scan.scan_mode === "active" && <span className="scan-ledger-tag">主動</span>}
+                      </td>
                       <td><ScanStatusBadge status={scan.status} /></td>
                       <td><ScoreBadge score={scan.overall_score} /></td>
                       <td>
@@ -1388,7 +1391,6 @@ function ProjectHistoryPage() {
                       <td>{coinsChargedText(scan)}</td>
                       <td>
                         <div className="project-table-actions">
-                          <Link className="project-text-link" to={`/scans/${scan.id}`}>查看結果</Link>
                           {done && (
                             <Link className="project-text-link" to={`${projectPath(project.id, "issues")}?scan=${scan.id}`}>問題分析</Link>
                           )}
@@ -1412,6 +1414,15 @@ function ProjectHistoryPage() {
           </div>
         )}
       </section>
+      {completed.length > 1 && (
+        <section className="panel">
+          <h2 className="project-section-title">分數趨勢</h2>
+          <LineChart
+            data={completed.slice().reverse().map((scan) => ({ label: formatDate(scan.completed_at).slice(5), value: scan.overall_score }))}
+            ariaLabel={`${project.name} 歷次分數`}
+          />
+        </section>
+      )}
     </div>
   );
 }
@@ -1598,8 +1609,8 @@ function ProjectSettingsPage() {
 export {
   FilterChips,
   ScanTimeCard,
+  SeverityChip,
   useProjectScans,
-  ProjectHistoryPage,
   ProjectIssuesPage,
   ProjectOverviewPage,
   ProjectPagesPage,

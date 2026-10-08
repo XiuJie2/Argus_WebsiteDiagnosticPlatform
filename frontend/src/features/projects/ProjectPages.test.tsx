@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   issuesToCsv,
-  ProjectHistoryPage,
   ProjectIssuesPage,
   ProjectPagesPage,
   ProjectScansPage,
@@ -250,7 +249,7 @@ describe("ProjectScansPage 示範專案", () => {
   });
 });
 
-describe("ProjectHistoryPage 扣點", () => {
+describe("ProjectScansPage 掃描紀錄（原歷史報告）", () => {
   it("每次掃描列出實際扣的點數；免費、失敗與進行中各自說明", async () => {
     const scan = (id: number, overrides: Record<string, unknown>) => ({
       id, status: "completed", overall_score: 80, pages_count: 3, findings_count: 2,
@@ -266,10 +265,10 @@ describe("ProjectHistoryPage 扣點", () => {
       ] },
     } : { data: { results: [] } }));
     render(
-      <MemoryRouter initialEntries={["/projects/7/history"]}>
+      <MemoryRouter initialEntries={["/projects/7/scans"]}>
         <Routes>
-          <Route path="/projects/:projectId" element={<Outlet context={{ project: PROJECT }} />}>
-            <Route path="history" element={<ProjectHistoryPage />} />
+          <Route path="/projects/:projectId" element={<Outlet context={{ project: { ...PROJECT, is_demo: true, summary: {} } }} />}>
+            <Route path="scans" element={<ProjectScansPage />} />
           </Route>
         </Routes>
       </MemoryRouter>,
@@ -279,5 +278,8 @@ describe("ProjectHistoryPage 扣點", () => {
     expect(screen.getByText("30 點")).toBeInTheDocument();
     expect(screen.getByText("已全額退回")).toBeInTheDocument();
     expect(screen.getByText("免費")).toBeInTheDocument();
+    // 完成的掃描可直接下載報告與看問題分析
+    expect(screen.getAllByRole("button", { name: "下載報告" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "問題分析" })[0]).toHaveAttribute("href", "/projects/7/issues?scan=3");
   });
 });

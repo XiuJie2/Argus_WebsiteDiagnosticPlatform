@@ -75,7 +75,10 @@ const ProjectIssuesPage = lazyNamed(loadProjectPages, "ProjectIssuesPage");
 const ProjectPagesPage = lazyNamed(loadProjectPages, "ProjectPagesPage");
 const ProjectAeoPage = lazyNamed(loadProjectPages, "ProjectAeoPage");
 const ProjectSeoPage = lazyNamed(loadProjectSeoPage, "ProjectSeoPage");
-const ProjectHistoryPage = lazyNamed(loadProjectPages, "ProjectHistoryPage");
+const ProjectSecurityPage = lazyNamed(
+  () => import("./features/projects/ProjectSecurityPage.jsx"),
+  "ProjectSecurityPage",
+);
 const ProjectSettingsPage = lazyNamed(loadProjectPages, "ProjectSettingsPage");
 const PublicLayout = lazyNamed(loadPublicPages, "PublicLayout");
 const SharedOptimizationPage = lazy(() => import("./features/optimize/SharedOptimizationPage.jsx"));
@@ -177,7 +180,7 @@ function AppShell({ googleOAuthEnabled }) {
               /dashboard、/scans、/history 是舊入口，轉到目前專案的對應分頁 */}
           <Route path="/dashboard" element={<RequireAuth><ProjectHomeRedirect /></RequireAuth>} />
           <Route path="/scans" element={<RequireAuth><ProjectHomeRedirect section="scans" /></RequireAuth>} />
-          <Route path="/history" element={<RequireAuth><ProjectHomeRedirect section="history" /></RequireAuth>} />
+          <Route path="/history" element={<RequireAuth><ProjectHomeRedirect section="scans" /></RequireAuth>} />
           <Route
             path="/projects"
             element={
@@ -214,7 +217,9 @@ function AppShell({ googleOAuthEnabled }) {
             <Route path="issues" element={<ProjectIssuesPage />} />
             <Route path="pages" element={<ProjectPagesPage />} />
             <Route path="aeo" element={<ProjectAeoPage />} />
-            <Route path="history" element={<ProjectHistoryPage />} />
+            <Route path="security" element={<ProjectSecurityPage />} />
+            {/* 歷史報告 2026-10-08 併入「掃描與報告」 */}
+            <Route path="history" element={<Navigate to="../scans" replace />} />
             <Route path="settings" element={<ProjectSettingsPage />} />
           </Route>
           <Route

@@ -44,6 +44,7 @@ from apps.scans.projects import (
     project_issues,
     project_overview,
     project_pages,
+    project_security,
     project_summaries,
 )
 from apps.scans.report_render import RENDERER_VERSION
@@ -716,6 +717,12 @@ class SiteProjectViewSet(ProjectSeoActions, viewsets.ModelViewSet):
     def issues(self, request, pk=None):
         project = self.get_object()
         return Response(project_issues(project, self._requested_scan(project)))
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get"])
+    def security(self, request, pk=None):
+        project = self.get_object()
+        return Response(project_security(project, self._requested_scan(project)))
 
     @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["get"])

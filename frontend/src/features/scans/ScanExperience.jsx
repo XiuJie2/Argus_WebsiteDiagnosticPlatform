@@ -46,7 +46,6 @@ import {
 } from "../../shared/AppShared.jsx";
 
 const SCAN_POLL_INTERVAL_MS = 2000;
-const LIST_POLL_INTERVAL_MS = 3000;
 const MAX_SITE_SCAN_PAGES = 50;
 // 整站走訪深度（與後端 ARGUS_DEFAULT_MAX_DEPTH 一致）；頁數上限才是實際範圍，後端另讀 sitemap 補種子
 const SITE_SCAN_DEPTH = 6;
@@ -784,99 +783,6 @@ function ScanJobForm({ onCreated, project = null }) {
 // 網站專案「掃描」分頁的掃描列表：該網站的全部掃描（卡片多欄、顯示時間與頁數／發現數）。
 // 此網站的掃描：一列一次掃描的表格（時間、範圍與模式、頁數、發現、狀態、分數與變化）。
 // 不用卡片：同一個網站的歷次掃描本來就是要逐列比較的紀錄。
-function ScanList({ scans, onRefresh }) {
-  const navigate = useNavigate();
-  const inProgressCount = scans.filter((scan) => isInProgress(scan.status)).length;
-
-  // 每次掃描與「前一次有分數的掃描」比較（scans 已按 -created_at 排序，同一專案同一個 origin）
-  const deltaById = useMemo(() => {
-    const result = new Map();
-    const scored = scans.filter((scan) => scan.overall_score !== null && scan.overall_score !== undefined);
-    scored.forEach((scan, index) => {
-      const previous = scored[index + 1];
-      if (previous) result.set(scan.id, scan.overall_score - previous.overall_score);
-    });
-    return result;
-  }, [scans]);
-
-  function openRow(event, scanId) {
-    // 列本身可點；列內的連結自己處理
-    if (event.target.closest("a, button")) return;
-    navigate(`/scans/${scanId}`);
-  }
-
-  return (
-    <section className="panel scan-list-wide">
-      <div className="scan-list-head">
-        <div>
-          <h2 className="section-title">此網站的掃描</h2>
-          <p className="scan-list-sub">
-            共 {scans.length} 次
-            {inProgressCount > 0 && `，${inProgressCount} 次進行中（每 ${LIST_POLL_INTERVAL_MS / 1000} 秒自動更新）`}
-          </p>
-        </div>
-        <button className="secondary-button" type="button" onClick={onRefresh}>
-          重新整理
-        </button>
-      </div>
-      {scans.length ? (
-        <div className="scan-ledger-wrap">
-          <table className="scan-ledger">
-            <thead>
-              <tr>
-                <th scope="col">建立時間</th>
-                <th scope="col">範圍</th>
-                <th scope="col" className="is-num">頁數</th>
-                <th scope="col" className="is-num">發現</th>
-                <th scope="col">狀態</th>
-                <th scope="col" className="is-num">分數</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scans.map((scan) => {
-                const delta = deltaById.get(scan.id);
-                const running = isInProgress(scan.status);
-                return (
-                  <tr
-                    key={scan.id}
-                    className={running ? "is-running" : ""}
-                    onClick={(event) => openRow(event, scan.id)}
-                  >
-                    <th scope="row">
-                      <Link to={`/scans/${scan.id}`} className="scan-ledger-link">
-                        {formatDateTime(scan.created_at)}
-                      </Link>
-                    </th>
-                    <td>
-                      {scan.max_pages > 1 ? "整個網站" : "單一頁面"}
-                      {scan.scan_mode === "active" && <span className="scan-ledger-tag">主動</span>}
-                    </td>
-                    <td className="is-num">{scan.pages_count ?? "—"}</td>
-                    <td className="is-num">{scan.findings_count ?? "—"}</td>
-                    <td>
-                      <ScanStatusBadge status={scan.status} />
-                    </td>
-                    <td className="is-num">
-                      <ScoreBadge score={scan.overall_score} />
-                      {delta !== undefined && delta !== 0 && (
-                        <span className={`scan-ledger-delta ${delta > 0 ? "is-up" : "is-down"}`}>
-                          {delta > 0 ? `+${delta}` : delta}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="hint-text">這個網站還沒有掃描；用左側表單建立第一次掃描。</p>
-      )}
-    </section>
-  );
-}
-
 // ============================================================
 // Findings 分組列表（同分類、同標題的 finding 合併為一群組，例如 11 個「頁面未使用 HTTPS」併成一筆，展開後列出每個頁面）
 // ============================================================
@@ -2306,7 +2212,6 @@ export {
   scanProgress,
   ScanJobForm,
   ScanLayout,
-  ScanList,
   ScanDetailPage,
   ScanStrengthsPage,
   ScanArchitecturePage,

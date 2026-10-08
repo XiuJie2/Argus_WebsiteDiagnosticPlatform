@@ -261,4 +261,4 @@ function SiteArchitecture({ profile }) {
   );
 }
 
-export { EdgeNotice, SiteArchitecture, SiteStrengths };
+export { EdgeNotice, ObservatoryGrade, SiteArchitecture, SiteStrengths };
