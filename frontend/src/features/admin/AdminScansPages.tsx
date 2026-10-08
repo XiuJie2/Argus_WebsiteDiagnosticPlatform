@@ -209,6 +209,7 @@ type CrawlBudget = {
   elapsed_ms: number;
   page_ms_avg: number | null;
   slowest_pages: { url: string; ms: number }[];
+  render_readiness?: { ready: number; timeout: number; error: number; avg_ms: number; timeout_urls: string[] } | null;
 };
 
 type WarningSummary = {
@@ -235,6 +236,13 @@ function AdminCrawlBudget({ budget }: { budget: CrawlBudget }) {
     ["略過", `超過頁數上限 ${budget.links_dropped_limit}、超過深度 ${budget.skipped_depth}、robots.txt ${budget.skipped_robots}、擷取失敗 ${budget.failed}`],
     ["耗時", `共 ${seconds(budget.elapsed_ms)}${budget.page_ms_avg == null ? "" : `，每頁平均 ${seconds(budget.page_ms_avg)}`}；速率限制等待 ${budget.throttle_waits} 次（${seconds(budget.throttle_wait_ms)}）`],
   ];
+  const ready = budget.render_readiness;
+  if (ready) {
+    rows.push([
+      "內容穩定",
+      `平均等待 ${seconds(ready.avg_ms)}；${ready.timeout ? `${ready.timeout} 頁在上限內未穩定（照樣擷取，內容可能不完整）` : "全部頁面都在上限內穩定"}`,
+    ]);
+  }
   return (
     <dl className="admin-crawl-budget">
       {rows.map(([label, value]) => (

@@ -322,6 +322,57 @@ async def collect_element_boxes(page) -> dict[str, dict]:
 
 # 行動版量測的視窗寬度。375 是主流手機的 CSS 寬度（iPhone 6 以降的多數機型），
 # 破版在這個寬度看得最清楚。
+# ---------- 渲染就緒（roadmap「爬取」第 1 項） ----------
+# 不等 networkidle（分析工具、客服 widget、長輪詢讓網路永遠不安靜）；改看 DOM 是否穩定：
+# 每 250ms 量一次正文字數與元素數，至少等 _RENDER_GRACE_SECONDS（給前端框架 hydration），
+# 連續兩次幾乎不變就算就緒。輪播、跑馬燈會讓字數小幅變動，所以容許少量差異。
+_RENDER_POLL_MS = 250
+_RENDER_GRACE_SECONDS = 0.5
+_DOM_SAMPLE = """() => [
+    document.body ? document.body.innerText.length : 0,
+    document.getElementsByTagName("*").length,
+]"""
+
+
+def _dom_stable(previous: list, current: list) -> bool:
+    text_before, nodes_before = previous
+    text_now, nodes_now = current
+    return (
+        text_now > 0
+        and abs(text_now - text_before) <= max(20, text_before * 0.005)
+        and abs(nodes_now - nodes_before) <= 2
+    )
+
+
+async def wait_for_render_ready(page, max_seconds: float) -> dict:
+    """等頁面內容穩定，最多 max_seconds；回傳 {"status": ready|timeout|error, "ms": 等待毫秒}。
+
+    逾時不是失敗：照樣擷取當下的 DOM 與截圖，只記錄這頁可能還沒渲染完整。
+    """
+    started = time.perf_counter()
+    previous = None
+
+    def result(status: str) -> dict:
+        return {"status": status, "ms": round((time.perf_counter() - started) * 1000)}
+
+    while True:
+        try:
+            current = await page.evaluate(_DOM_SAMPLE)
+        except Exception:
+            return result("error")
+        elapsed = time.perf_counter() - started
+        if (
+            previous is not None
+            and elapsed >= _RENDER_GRACE_SECONDS
+            and _dom_stable(previous, current)
+        ):
+            return result("ready")
+        if elapsed >= max_seconds:
+            return result("timeout")
+        previous = current
+        await page.wait_for_timeout(_RENDER_POLL_MS)
+
+
 # 版面位移只回報位移最多的幾個元素
 _MAX_LAYOUT_SHIFT_ELEMENTS = 5
 
@@ -839,6 +890,7 @@ class _CrawlState:
     throttle_waits: int = 0
     throttle_wait_seconds: float = 0.0
     page_seconds: list = field(default_factory=list)  # [(秒數, 網址)]
+    render_ready: list = field(default_factory=list)  # [(狀態, 毫秒, 網址)]
 
     def take_accessibility_slot(self) -> bool:
         if not self.run_accessibility or self.accessibility_runs >= settings.ARGUS_AXE_MAX_PAGES:
@@ -922,6 +974,21 @@ class _CrawlState:
             "slowest_pages": [
                 {"url": url, "ms": round(seconds * 1000)} for seconds, url in timings[:3]
             ],
+            "render_readiness": self._render_summary(),
+        }
+
+    def _render_summary(self) -> dict | None:
+        if not self.render_ready:
+            return None
+        counts = {status: 0 for status in ("ready", "timeout", "error")}
+        for status, _ms, _url in self.render_ready:
+            counts[status] = counts.get(status, 0) + 1
+        return {
+            **counts,
+            "avg_ms": round(sum(ms for _s, ms, _u in self.render_ready) / len(self.render_ready)),
+            "timeout_urls": [
+                url for status, _ms, url in self.render_ready if status == "timeout"
+            ][:5],
         }
 
     def progress(self) -> tuple[int, int]:
@@ -1186,7 +1253,7 @@ async def _visit_page(
         js_errors = _attach_page_listeners(page, origin, state.api_endpoints)
         stage.name = "navigation"
         # 不等 networkidle：分析工具、客服 widget、長輪詢常讓網路永遠無法完全安靜；
-        # 後續 scroll_to_bottom 本身會讓動態內容有時間渲染。
+        # 之後由 wait_for_render_ready 等 DOM 穩定（有上限），scroll_to_bottom 再觸發延遲載入。
         response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         stage.name = "response_headers"
         headers = await response.all_headers() if response else {}
@@ -1195,10 +1262,17 @@ async def _visit_page(
         final_url = normalize_crawl_url(assert_public_http_url(page.url))
         final_url_origin = url_origin(final_url) if final_url else origin
 
+        ready_ms = 0
         if final_url_origin != origin:
             # 伺服器端 redirect 導去公開但非授權的網域：不分析其內容
             capture, blocked_reason = _empty_capture(js_errors), _CROSS_ORIGIN_REASON
         else:
+            stage.name = "render_ready"
+            readiness = await wait_for_render_ready(
+                page, settings.ARGUS_RENDER_READY_MAX_SECONDS
+            )
+            state.render_ready.append((readiness["status"], readiness["ms"], url))
+            ready_ms = readiness["ms"]
             capture, blocked_reason = await _capture_same_origin_page(
                 page,
                 response,
@@ -1227,7 +1301,8 @@ async def _visit_page(
             capture=capture,
             blocked_reason=blocked_reason,
             js_errors=js_errors,
-            load_time_ms=round((time.perf_counter() - started_at) * 1000),
+            # 等內容穩定的時間是 Argus 的量測動作，不算進頁面載入時間（SEO「載入慢」依此判斷）
+            load_time_ms=round((time.perf_counter() - started_at) * 1000) - ready_ms,
         )
     finally:
         await _close_playwright_resources(page)

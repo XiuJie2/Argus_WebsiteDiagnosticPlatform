@@ -559,10 +559,13 @@ def stage_crawl(ctx: ScanRunContext) -> None:
     _ensure_usable_pages(crawled_pages, warnings)
     # robots／範圍限制略過的頁面是使用者設定，不算不完整；擷取失敗才是
     failed = warnings.get("failed_urls") or []
-    ctx.coverage.mark(
-        "crawl", PARTIAL if failed else COMPLETED,
-        f"{len(failed)} 個頁面擷取失敗" if failed else "",
-    )
+    # 內容在上限內沒穩定的頁面照樣分析，只在說明註記（LIMITED），不改覆蓋狀態：
+    # 輪播或持續更新的頁面不該讓整次掃描變成部分評估
+    not_ready = ((budget or {}).get("render_readiness") or {}).get("timeout", 0)
+    notes = [f"{len(failed)} 個頁面擷取失敗"] if failed else []
+    if not_ready:
+        notes.append(f"{not_ready} 個頁面在等待上限內內容未穩定（render_readiness_timeout）")
+    ctx.coverage.mark("crawl", PARTIAL if failed else COMPLETED, "；".join(notes))
     _mark_axe_coverage(ctx)
     if discovered_endpoints:
         append_log(
@@ -674,6 +677,12 @@ def crawl_budget_text(budget: dict) -> str:
         parts.append(f"速率限制等待 {budget['throttle_waits']} 次共 {waited} 秒")
     if budget.get("page_ms_avg") is not None:
         parts.append(f"每頁平均 {round(budget['page_ms_avg'] / 1000, 1)} 秒")
+    ready = budget.get("render_readiness")
+    if ready:
+        text = f"等內容穩定平均 {round(ready['avg_ms'] / 1000, 1)} 秒"
+        if ready.get("timeout"):
+            text += f"，{ready['timeout']} 頁在上限內未穩定（照樣擷取，內容可能不完整）"
+        parts.append(text)
     return "；".join(parts)
 
 

@@ -5,14 +5,19 @@ crawler._CrawlState.budget_summary 整理數字、tasks.crawl_budget_text 寫成
 
 from __future__ import annotations
 
+import asyncio
+import os
+import unittest
+from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
 from django.test import SimpleTestCase
 
-from apps.scans.crawler import _CrawlState
+from apps.scans.crawler import _CrawlState, wait_for_render_ready
 from apps.scans.tasks import crawl_budget_text
 
 ORIGIN = "https://shop.example.tw"
+CHROMIUM = os.environ.get("ARGUS_TEST_CHROMIUM_PATH", "")
 
 
 def _allow_all() -> RobotFileParser:
@@ -76,3 +81,81 @@ class CrawlBudgetTests(SimpleTestCase):
         self.assertEqual([u for u, _ in state.queue], [f"{ORIGIN}/a", f"{ORIGIN}/b", f"{ORIGIN}/c"])
         self.assertEqual(state.links_queued, 1)
         self.assertEqual(state.links_dropped_limit, 0)
+
+    def test_render_readiness_summary_and_log(self):
+        state = _CrawlState(f"{ORIGIN}/", ORIGIN, max_depth=1, max_pages=3)
+        state.render_ready += [
+            ("ready", 500, f"{ORIGIN}/"), ("timeout", 5000, f"{ORIGIN}/spa"),
+            ("ready", 1000, f"{ORIGIN}/a"),
+        ]
+        ready = state.budget_summary("max_pages", 9)["render_readiness"]
+        self.assertEqual(ready, {
+            "ready": 2, "timeout": 1, "error": 0, "avg_ms": 2167,
+            "timeout_urls": [f"{ORIGIN}/spa"],
+        })
+        self.assertIsNone(_CrawlState(f"{ORIGIN}/", ORIGIN, 1, 1).budget_summary("x", 0)[
+            "render_readiness"
+        ])
+        text = crawl_budget_text({"stop_reason": "max_pages", "render_readiness": ready})
+        self.assertIn("等內容穩定平均 2.2 秒，1 頁在上限內未穩定（照樣擷取，內容可能不完整）", text)
+
+
+@unittest.skipUnless(
+    CHROMIUM and Path(CHROMIUM).exists(), "需要 Chromium（ARGUS_TEST_CHROMIUM_PATH）"
+)
+class RenderReadinessRealBrowserTests(SimpleTestCase):
+    # 1.2 秒後才把內容放進空的 root（模擬前端框架 hydration）
+    HYDRATES_LATE = """<html><body><div id="root"></div><script>
+      setTimeout(() => {
+        const root = document.getElementById("root");
+        root.innerHTML = "<h1>商品</h1>" + "<p>內容段落</p>".repeat(30);
+      }, 1200);</script></body></html>"""
+    # 輪播每 200ms 換一句長度差不多的文字：應視為穩定
+    CAROUSEL = """<html><body><main><p>""" + "固定內容。" * 200 + """</p>
+      <p id="slide">第 1 則公告</p></main><script>
+      let n = 1;
+      const slide = document.getElementById("slide");
+      setInterval(() => { n += 1; slide.textContent = `第 ${n} 則公告`; }, 200);
+      </script></body></html>"""
+    # 每 200ms 一直新增段落：永遠不穩定，必須在上限內放棄
+    NEVER_STABLE = """<html><body><main id="feed"></main><script>
+      setInterval(() => {
+        const p = document.createElement("p");
+        p.textContent = "新的動態消息內容，持續增加中。".repeat(3);
+        document.getElementById("feed").appendChild(p);
+      }, 200);</script></body></html>"""
+
+    def _ready(self, html: str, max_seconds: float = 5) -> tuple[dict, int]:
+        from playwright.async_api import async_playwright
+
+        async def run():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(executable_path=CHROMIUM)
+                page = await browser.new_page()
+                await page.route(
+                    "http://ready.test/",
+                    lambda route: route.fulfill(body=html, content_type="text/html; charset=utf-8"),
+                )
+                await page.goto("http://ready.test/", wait_until="domcontentloaded")
+                result = await wait_for_render_ready(page, max_seconds)
+                text = await page.evaluate("document.body.innerText.length")
+                await browser.close()
+                return result, text
+
+        return asyncio.run(run())
+
+    def test_waits_for_late_hydration(self):
+        result, text = self._ready(self.HYDRATES_LATE)
+        self.assertEqual(result["status"], "ready")
+        self.assertGreaterEqual(result["ms"], 1200)
+        self.assertGreater(text, 100)
+
+    def test_small_carousel_changes_count_as_stable(self):
+        result, _ = self._ready(self.CAROUSEL)
+        self.assertEqual(result["status"], "ready")
+        self.assertLess(result["ms"], 1500)
+
+    def test_never_stable_page_gives_up_at_the_limit(self):
+        result, _ = self._ready(self.NEVER_STABLE, max_seconds=1.5)
+        self.assertEqual(result["status"], "timeout")
+        self.assertLess(result["ms"], 2500)

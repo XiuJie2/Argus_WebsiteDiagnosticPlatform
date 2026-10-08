@@ -221,6 +221,7 @@ describe("AdminScanDetailPage", () => {
           skipped_depth: 2, skipped_robots: 1, failed: 0, throttle_waits: 49,
           throttle_wait_ms: 24500, elapsed_ms: 183000, page_ms_avg: 3200,
           slowest_pages: [{ url: "https://example.com/slow", ms: 12400 }],
+          render_readiness: { ready: 49, timeout: 1, error: 0, avg_ms: 700, timeout_urls: [] },
         },
       },
     });
@@ -230,5 +231,6 @@ describe("AdminScanDetailPage", () => {
     expect(screen.getByText(/超過頁數上限 120/)).toBeInTheDocument();
     expect(screen.getByText(/每頁平均 3.2 秒/)).toBeInTheDocument();
     expect(screen.getByText("https://example.com/slow")).toBeInTheDocument();
+    expect(screen.getByText(/1 頁在上限內未穩定/)).toBeInTheDocument();
   });
 });
