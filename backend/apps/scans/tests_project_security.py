@@ -84,3 +84,50 @@ class ProjectSecurityTests(TestCase):
         self.scan.status = ScanJob.Status.FAILED
         self.scan.save(update_fields=["status"])
         self.assertEqual(self._get(user=self.user).json(), {"scan": None})
+
+
+class OverviewSiteSummaryTests(TestCase):
+    """總覽的效能與網站架構摘要：只整理已保存的資料，沒量到時附原因。"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="site-summary", password="safe-test-password")
+        self.scan = ScanJob.objects.create(
+            user=self.user, original_url="https://example.com/",
+            normalized_url="https://example.com/", origin="https://example.com",
+            status=ScanJob.Status.COMPLETED, completed_at=timezone.now(),
+            category_scores={"ux": 80}, overall_score=80,
+            performance_report={"lab": {"scores": {"performance": 72}},
+                                "field": {"scope": "url", "overall": "AVERAGE"}},
+            coverage={"checks": {"pagespeed": {"status": "completed"}}, "categories": {}},
+            site_profile={
+                "observatory": OBSERVATORY,
+                "infrastructure": {"edge": {"provider": "Cloudflare"}},
+                "technologies": [{"name": f"Tech{i}", "category": "c"} for i in range(8)],
+            },
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _summary(self):
+        data = self.client.get(f"/api/projects/{self.scan.project_id}/overview/").json()
+        return data["latest_scan"]["site_summary"]
+
+    def test_summary_from_saved_reports(self):
+        summary = self._summary()
+        self.assertEqual(summary["performance"]["score"], 72)
+        self.assertEqual(summary["performance"]["field_overall_label"], "需改善")
+        self.assertEqual((summary["edge"], summary["observatory_grade"]), ("Cloudflare", "C"))
+        self.assertEqual((len(summary["technologies"]), summary["technologies_total"]), (6, 8))
+        self.assertTrue(summary["profile_available"])
+
+    def test_missing_performance_keeps_reason(self):
+        self.scan.performance_report = {}
+        self.scan.coverage = {"checks": {"pagespeed": {
+            "status": "skipped", "reason": "平台尚未設定 Google PageSpeed Insights 金鑰"}}}
+        self.scan.site_profile = {}
+        self.scan.save()
+        summary = self._summary()
+        self.assertIsNone(summary["performance"]["score"])
+        self.assertEqual(summary["performance"]["status"], "skipped")
+        self.assertEqual((summary["edge"], summary["technologies"]), ("", []))
+        self.assertFalse(summary["profile_available"])

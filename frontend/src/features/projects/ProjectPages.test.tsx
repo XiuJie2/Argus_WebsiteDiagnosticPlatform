@@ -8,6 +8,7 @@ import {
   ProjectIssuesPage,
   ProjectPagesPage,
   ProjectScansPage,
+  SiteSummaryPanel,
 } from "./ProjectPages";
 
 vi.mock("../../api", () => ({ api: { get: vi.fn() }, setAccessToken: vi.fn() }));
@@ -281,5 +282,41 @@ describe("ProjectScansPage 掃描紀錄（原歷史報告）", () => {
     // 完成的掃描可直接下載報告與看問題分析
     expect(screen.getAllByRole("button", { name: "下載報告" })).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: "問題分析" })[0]).toHaveAttribute("href", "/projects/7/issues?scan=3");
+  });
+});
+
+describe("SiteSummaryPanel 效能與網站架構", () => {
+  const scan = (summary: Record<string, unknown>, categories = ["ux", "security"]) => ({
+    id: 3, categories,
+    site_summary: {
+      performance: { score: 72, field_overall: "AVERAGE", field_overall_label: "需改善", status: "completed", reason: "" },
+      profile_available: true,
+      edge: "Cloudflare", technologies: ["WordPress", "jQuery"], technologies_total: 5, observatory_grade: "C",
+      ...summary,
+    },
+  });
+  const renderPanel = (value: ReturnType<typeof scan>) =>
+    render(<MemoryRouter><SiteSummaryPanel project={PROJECT} scan={value} /></MemoryRouter>);
+
+  it("列出效能分數、標頭等第、CDN 與技術，並連到對應分頁", () => {
+    renderPanel(scan({}));
+    expect(screen.getByText("真實使用者體驗：需改善")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /行動版效能/ })).toHaveAttribute("href", "/scans/3/performance");
+    expect(screen.getByRole("link", { name: /安全標頭參考等第/ })).toHaveAttribute("href", "/projects/7/security");
+    expect(screen.getByText("WordPress、jQuery")).toBeInTheDocument();
+    expect(screen.getByText("另有 3 項，查看網站架構")).toBeInTheDocument();
+  });
+
+  it("效能沒有數字時說明原因", () => {
+    renderPanel(scan({ performance: { score: null, field_overall: "", field_overall_label: "", status: "skipped", reason: "" } }));
+    expect(screen.getByText("平台尚未設定 PageSpeed 金鑰")).toBeInTheDocument();
+    renderPanel(scan({ performance: { score: null, status: "" } }, ["seo"]));
+    expect(screen.getByText("這次沒有勾選使用體驗")).toBeInTheDocument();
+  });
+
+  it("較早的掃描沒有網站概況時寫明沒有資料，不寫成未偵測到", () => {
+    renderPanel(scan({ profile_available: false, edge: "", technologies: [], technologies_total: 0 }));
+    expect(screen.getAllByText("較早的掃描沒有這項資料，重新掃描後會顯示")).toHaveLength(2);
+    expect(screen.queryByText("未偵測到")).not.toBeInTheDocument();
   });
 });
