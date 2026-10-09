@@ -91,6 +91,51 @@
   box-shadow: none;
 }
 
+/* 掃描流程圖：標題不發光；節點光暈減弱 */
+.public-shell .pl-title {
+  text-shadow: none;
+}
+.public-shell .pl-note {
+  box-shadow: none;
+}
+.public-shell .pl-stage:hover,
+.public-shell .pl-out:hover {
+  box-shadow: none;
+}
+/* 1540px 以下原本改成橫向捲動，看起來像被裁掉：
+   改成兩列——上面六個階段自動換行，下面四項交付物一排，不需要捲動。 */
+@media (min-width: 901px) and (max-width: 1540px) {
+  .public-shell .pl-flow {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: 1.25rem;
+    padding-bottom: 0;
+  }
+  .public-shell .pl-flow > * { flex: 0 1 auto; }
+  .public-shell .pl-stages {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    row-gap: 1rem;
+    justify-content: center;
+  }
+  .public-shell .pl-fan { display: none; }
+  .public-shell .pl-outputs {
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .public-shell .pl-out { width: auto; flex: 1 1 220px; max-width: 300px; }
+}
+/* 1180–1540px：六個階段仍放得下一排，讓節點寬度彈性縮放而不是換行 */
+@media (min-width: 1180px) and (max-width: 1540px) {
+  .public-shell .pl-stages { flex-wrap: nowrap; }
+  .public-shell .pl-stage-slot { flex: 1 1 0; min-width: 0; }
+  .public-shell .pl-stage-slot:has(.pl-stage-group) { flex: 1.6 1 0; }
+  .public-shell .pl-stage { width: auto; flex: 1 1 auto; min-width: 0; }
+  .public-shell .pl-arrow { width: 22px; }
+}
+
 /* 全棧現代化選型：維持改版前的左文右商標牆，只把面板背景壓淡 */
 .public-shell .project-stack {
   background: var(--pub-surface);
@@ -1164,109 +1209,4 @@
   .hx-cov-panel .hx-dashes li,
   .hx-status.is-running::before,
   .hx-verify-input.is-typing::after { animation: none; }
-}
-
-/* ── 掃描鏈路圖（ScanPipelineMap）：圖示方塊＋細灰連線，一小段亮色沿線流動；不用螢光外框 ── */
-.public-shell {
-  --pm-tile: #0d1630;
-  --pm-tile-border: rgba(148, 163, 184, 0.28);
-  --pm-line: rgba(148, 163, 184, 0.22);
-  --pm-beam: #67e8f9;
-  --pm-shadow: 0 6px 18px rgba(2, 6, 23, 0.45);
-}
-:root[data-theme="light"] .public-shell {
-  --pm-tile: #ffffff;
-  --pm-tile-border: rgba(15, 23, 42, 0.14);
-  --pm-line: rgba(15, 23, 42, 0.16);
-  --pm-beam: #0369a1;
-  --pm-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
-}
-.hx-pipe-wrap { margin-top: clamp(2.5rem, 5vw, 3.5rem); }
-.pm {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  align-items: center;
-  gap: 1.5rem;
-  min-height: 460px;
-  padding: 1rem 0;
-}
-.pm-beams { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
-.pm-path { fill: none; stroke: var(--pm-line); stroke-width: 1.25; }
-.pm-path-beam { fill: none; stroke-width: 1.5; stroke-linecap: round; }
-.pm-stop { stop-color: var(--pm-beam); }
-.pm-col { position: relative; display: grid; justify-items: center; gap: 1.6rem; }
-.pm-col.is-stack { gap: 1.1rem; }
-.pm-col-title {
-  margin: 0 0 0.2rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: var(--pub-muted);
-}
-.pm-node { display: grid; justify-items: center; gap: 0.55rem; text-align: center; }
-.pm-tile {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  border: 1.5px solid var(--pm-tile-border);
-  border-radius: 14px;
-  background: var(--pm-tile);
-  box-shadow: var(--pm-shadow);
-  color: var(--pub-heading);
-}
-.pm-tile svg { width: 30px; height: 30px; stroke-width: 1.25; }
-.pm-tile svg .ln-fill { fill-opacity: 0; }
-.pm-node.is-sm .pm-tile { width: 52px; height: 52px; border-radius: 12px; }
-.pm-node.is-sm .pm-tile svg { width: 24px; height: 24px; }
-.pm-label { display: grid; gap: 0.1rem; }
-.pm-label strong { font-size: 0.9rem; color: var(--pub-heading); }
-.pm-desc { font-size: 0.76rem; color: var(--pub-muted); }
-.pm-no {
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--pub-muted);
-}
-.pm-core { display: grid; justify-items: center; gap: 1rem; }
-.pm-core-tile {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  border: 1px solid var(--pm-tile-border);
-  border-radius: 20px;
-  background: rgba(148, 163, 184, 0.1);
-}
-.pm-core-inner {
-  display: grid;
-  place-items: center;
-  width: 104px;
-  height: 104px;
-  border: 1.5px solid var(--pub-accent-strong);
-  border-radius: 14px;
-  background: var(--pm-tile);
-  box-shadow: var(--pm-shadow);
-}
-.pm-core-inner img { width: 76px; height: auto; }
-.pm-core-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
-.pm-core-steps li { display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.8rem; color: var(--pub-text); white-space: nowrap; }
-
-@media (max-width: 1023px) {
-  .pm { grid-template-columns: minmax(0, 1fr); min-height: 0; gap: 0.9rem; max-width: 30rem; margin: 0 auto; }
-  .pm-beams { display: none; }
-  .pm-col,
-  .pm-col.is-stack { justify-items: stretch; gap: 0.6rem; }
-  .pm-col-title { margin-top: 0.6rem; }
-  .pm-node { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; text-align: left; gap: 0.9rem; }
-  .pm-node .pm-label { grid-template-columns: auto 1fr; column-gap: 0.5rem; }
-  .pm-node .pm-label .pm-desc { grid-column: 1 / -1; }
-  .pm-core { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; padding: 0.6rem 0; }
-  .pm-core-inner { width: 72px; height: 72px; }
-  .pm-core-inner img { width: 54px; }
-  .pm-core-steps li { white-space: normal; }
 }

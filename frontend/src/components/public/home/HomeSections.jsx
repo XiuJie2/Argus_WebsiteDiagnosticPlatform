@@ -28,13 +28,13 @@ import {
   SpiderIcon,
   TargetIcon,
 } from "../../../shared/LineIcons.jsx";
+import { ScanPipeline } from "../ScanPipeline.jsx";
 import CompareSlider from "./CompareSlider.jsx";
 import CoverageTabs from "./CoverageTabs.jsx";
 import { GlowCard, Reveal, useCardGlow } from "./HomeMotion.jsx";
 import LiveScanTable from "./LiveScanTable.jsx";
 import ProcessStack from "./ProcessStack.jsx";
 import ReportPreview from "./ReportPreview.jsx";
-import ScanPipelineMap from "./ScanPipelineMap.jsx";
 import VerifyPreview from "./VerifyPreview.jsx";
 
 const STEPS = [
@@ -227,17 +227,10 @@ export function HomeSections({ features }) {
         </Reveal>
       </section>
 
-      {/* 掃描鏈路圖：節點＋流動連線 */}
-      <section className="public-section hx-section" aria-labelledby="hx-pipe-title">
-        <SectionHead
-          id="hx-pipe-title"
-          center
-          eyebrow="掃描鏈路"
-          title="三種引擎交叉診斷"
-          desc="從網站掃描到可執行修正，一條鏈路完成；每一步都留下證據。"
-        />
-        <Reveal slide="none" duration={0.8} delay={0.2} className="hx-pipe-wrap">
-          <ScanPipelineMap />
+      {/* 掃描鏈路圖：沿用原本的「三種引擎交叉診斷」圖，已拿掉螢光外框與發光圖示 */}
+      <section className="public-section hx-section">
+        <Reveal slide="none" duration={0.8}>
+          <ScanPipeline />
         </Reveal>
       </section>
 

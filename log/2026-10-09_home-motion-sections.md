@@ -79,3 +79,17 @@
 - 驗證：
   - Playwright 截圖：夜間與日間 1440、1100、390 寬度。連線 11 條，各寬度 scrollWidth 都等於視窗寬，頁面沒有錯誤。
   - lint、typecheck、vitest 全部通過，build 通過。
+
+## 追加：改回原本的掃描鏈路圖，只拿掉螢光（同日）
+- 使用者不要新畫的節點圖，要加回原本的「三種引擎交叉診斷」鏈路圖，但不要螢光邊框與發光圖示。
+- 從 `ab5543f` 取回 `ScanPipeline.jsx`、`PipelineDiagram.jsx`、`styles/71-scan-pipeline.css`，並在 `styles.css` 重新匯入 71。73 裡原本的鏈路圖版面規則（901–1540px 換行、≥1180px 一列）一併取回。
+- 刪除 `ScanPipelineMap.jsx` 與 73 的 `.pm-*` 樣式；`HomeSections` 在同一位置改放 `<ScanPipeline />`。
+- `71-scan-pipeline.css` 拿掉螢光，版面與文字不變：
+  - 卡片、子卡、交付卡、編號圈、提示膠囊的邊框改成中性細線（`--pl-line`），hover 只把邊框調亮，不再有光暈。
+  - 圖示改成中性淺灰（`--pl-icon`），移除所有 `drop-shadow`。
+  - 標題移除 `text-shadow`；匯流點移除光暈與呼吸動畫；箭頭與扇出線改成灰色、不發光。
+  - 強調色只留在編號與徽章文字，徽章底色與邊框調淡。
+- 原圖文字是舊版內容，依「用原本的」照留，尚未更新：「可驗證報告 DOCX・SHA-256 防偽」（報告已改成只出 PDF）、「可執行修正 JSON-LD・llms.txt・FAQ」（2026-10-06 已由頁面優化取代）。
+- 驗證：
+  - lint（0 error）、typecheck、vitest 260 項、vite build 全部通過。
+  - Playwright 截圖：夜間與日間 1440、夜間 1100、390；各寬度 scrollWidth 等於視窗寬，頁面沒有錯誤。
