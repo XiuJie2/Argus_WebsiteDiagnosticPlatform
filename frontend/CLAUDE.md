@@ -47,7 +47,7 @@ Dev server（`npm.cmd run dev`）兩種 Node 都能跑，因為 dev 不走 Rollu
 ## 樣式規範
 
 - **品牌規範**：見 [`docs/brand-guidelines.md`](../docs/brand-guidelines.md)（Night Watch：虹膜青主色、守望琥珀點綴、Sora／Noto Sans TC／JetBrains Mono）。
-- **公開頁（`.public-shell`）例外**：視覺維持改版前版本（系統字、深藍＋科技青），樣式在 `21-public.css`、`35-public-legacy.css`（取回的改版前日間／響應式規則）、`70-home.css`、`71-scan-pipeline.css`，最後由 `73-public-refine.css` 做克制整理（區塊節奏、減少外框與光暈）。公開頁新增樣式寫在 `73`，並限縮在 `.public-shell` 內；不要把 Night Watch 的 `--ag-*` 風格套回公開頁。
+- **公開頁（`.public-shell`）例外**：視覺維持改版前版本（系統字、深藍＋科技青），樣式在 `21-public.css`、`35-public-legacy.css`（取回的改版前日間／響應式規則）、`70-home.css`，最後由 `73-public-refine.css` 做克制整理（區塊節奏、減少外框與光暈）。**首頁 `/project` 的範圍（使用者指定）**：最上面的品牌 hero 與「技術棧／全棧現代化選型」以下（FAQ、結尾 CTA）**維持原樣不要動**；兩者之間的段落 2026-10-09 改版為動態版（`components/public/home/`，樣式 `73` 的 `.hx-*`）。公開頁新增樣式寫在 `73`，並限縮在 `.public-shell` 內；不要把 Night Watch 的 `--ag-*` 風格套回公開頁。
 - **會員區舊版樣式範圍（2026-09-28 起）**：網站專案工作區（`/projects/*`，含掃描建立表單與列表）、掃描詳情（`/scans/:id` 全部子路由：互動報告、網站優勢、網站架構、頁面優化成果頁）、`/optimized/:token` 分享頁、網域驗證、購點使用 `462848b`（Night Watch 改版前）的 JSX 與外觀；設定頁、MCP 接入中心維持改版後版本。原本的 Dashboard 與歷史頁已由網站專案工作區取代（2026-10-02，見下「網站專案工作區」）。
   - 舊版樣式在 `src/styles/legacy-member/`（由 `main.jsx` 在 `styles.css` 之後匯入）：`NN-*.css` 是當時同名檔過濾出這些頁面用得到的規則，照舊版原樣書寫；`90-compat.css` 補共用元件（`shared/AppShared.jsx`）改版後的差異；`00-tailwind.css` 以 `@config` 指定 `tailwind.member-legacy.config.js`（當時的設定，系統字型）。
   - 範圍限制由 `postcss-member-legacy.js`（掛在 `postcss.config.js` 的 tailwind 之後）在 build 時處理：規則一律加上 `:is(.member-legacy, #…)` 前綴（ID 等級特異度），範圍內元素先 `all: revert` 擋掉新版同名 class；`:root`／`html`／`body` 規則改掛在包裝上，`.argus-app`／`.argus-main` 規則改為 `:has(.member-legacy)`，keyframes 加 `ml-` 前綴。包裝是 `App.jsx` 的 `MemberLegacy`（`display: contents`）。
@@ -118,7 +118,7 @@ D:\nodejs\npm.cmd install 套件名
 |---|---|---|
 | `/login` | `LoginPage` | 兩個分頁「登入／註冊」（`?tab=register` 直接開註冊）。登入：Google 登入（未註冊的 Google 帳號回 409 → 直接切到註冊第二步）＋「Email 或用戶名」＋密碼，後端啟用 Turnstile 時顯示驗證元件（`login`）。註冊（2026-10-04）：一律先 Google 授權（`/auth/register/google/`）→ 第二步 `RegisterDetailsForm` 設定用戶名（預填 `suggested_handle`）與密碼並同意條款（`/auth/register/`）；沒有 Google Client ID 時註冊分頁顯示無法註冊。`?deleted=1` 顯示「帳號已刪除」 |
 | `/account/setup` | `AccountSetupPage`（`AuthPages.jsx`） | 舊帳號缺用戶名或密碼時的補設頁；`RequireAuth` 讀 store 的 `profile`（`fetchProfile` → `/api/auth/me/`），`needs_setup` 時其他會員頁一律導到這裡（帶 `next`） |
-| `/project` | `ProjectPage` | 公開行銷頁：hero、產品預覽、檢測面向與方法、掃描流程、交付物與證據、核心功能、安全邊界、技術棧、FAQ（團隊頁、平台規模與開發歷程已於 2026-09-28 移除） |
+| `/project` | `ProjectPage` | 公開行銷頁：品牌 hero（維持原樣）→ hero 與技術棧之間的動態段落（2026-10-09，`components/public/home/HomeSections.jsx`：運作方式堆疊卡片輪播、即時掃描表格、檢測面向分頁、你會拿到什麼（互動報告／報告查驗／前後對照三個可操作預覽）、核心功能（CMS `/content/features/`）、安全邊界；捲入畫面依序淡入、滑鼠跟隨卡片光暈，偏好減少動態時全部停用）→ 技術棧、FAQ、結尾 CTA（維持原樣） |
 | `/free-tools` | `FreeToolsPage` | 公開免費分析（測速 / URL 風險 / 郵件風險），呼叫 `/api/insights/*` |
 | `/purchase` | `PurchasePage` | 購買點數（3 步驟結帳 wizard） |
 | `/download` | `DownloadPage` | 下載報告 |
@@ -242,6 +242,7 @@ npm run typecheck
 | `src/features/account/AuthenticatedPages.jsx` | 會員區入口：re-export `TopNav`／`BillingPage`（＋`SubscriptionPanel`）／`SettingsPage`，各頁實作在同目錄同名檔；購點為 462848b 舊版 |
 | `src/features/reviews/ReviewsPage.jsx` | 公開評論、評分分布、本人評論、逐則按讚／檢舉（樣式 `50-reviews.css`＋`51-reviews-dark.css`＋`52-reviews-layout-v2.css`） |
 | `src/features/public/PublicPages.jsx` | 公開頁 layout（導覽＋分組頁尾）與專案、免費工具、購買介紹、下載、報告查驗頁 |
+| `src/components/public/home/` | 首頁 hero 與技術棧之間的段落（2026-10-09）：`HomeSections`（段落與文案）、`HomeMotion`（`Reveal` 捲入淡入、`useCardGlow`／`GlowCard` 卡片光暈、`useInView`、`usePrefersReducedMotion`）、`ProcessStack`、`LiveScanTable`、`CoverageTabs`、`ReportPreview`、`VerifyPreview`、`CompareSlider`。參考 TradingGoose 首頁的做法自行實作（該專案為 AGPL-3.0，未複製程式碼），不引入動畫套件；輪播與即時表格在不在畫面內、滑鼠移入或偏好減少動態時暫停 |
 | `src/features/public/PartnersPage.jsx` | 商業合作頁與洽談表單（樣式在 `73-public-refine.css` 的 `partners-*`）|
 | `src/components/navigation/SiteNav.jsx` | 公開頁與登入後共用的頂部導覽列外殼＋日夜切換鈕 |
 | `src/features/public/NotFoundPage.jsx` | 未匹配路由的 404 頁面 |

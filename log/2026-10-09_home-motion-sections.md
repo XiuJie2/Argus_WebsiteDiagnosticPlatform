@@ -1,0 +1,62 @@
+# 首頁中段改為動態版（hero 與技術棧之間）
+
+**日期**：2026-10-09  
+**操作者**：Claude
+
+## 背景
+- 使用者指定範圍：首頁最上面的品牌 hero 不動；「技術棧／全棧現代化選型」以及下面的 FAQ、結尾 CTA 不動；只改兩者之間的區塊。
+- 要求參考 https://www.tradinggoose.ai/zh 的「動態做法」，不是只看截圖，並提供它的 repo（XiuJie2/TradingGoose-Studio）。
+- 前一次改版（38a4587／5adad8c）動到 hero、範圍過大，已整頁撤回（e95f9e4）。
+
+## 參考 repo 的做法（已閱讀原始碼）
+- `MotionPreset`：進入畫面時淡入、`blur(10px)`→0、位移約 50px，只播一次。同一段落依 0／0.15／0.3／0.45＋0.1·i 秒依序出現。
+- `ProcessFlow`：每 2.5 秒輪替順序的堆疊卡片。第 i 張的 `bottom = i×16px`、`scale = 1−0.1i`（以上緣中心為基準），0.4 秒 ease-in-out，每張錯開 0.05 秒。
+- `useCardGlow`：卡片外框 1px，模糊光暈跟著滑鼠只從外框透出；滑過時卡片內部在滑鼠位置有淡光點。
+- `MonitorPreview`：每 1.5–7 秒在最上方插入一列，狀態依 pending→running→success／failed 推進，最多 20 列，底部漸層淡出。
+- `Feature`：文字卡與可操作預覽從兩側滑入，清單逐項出現。
+- 該 repo 為 AGPL-3.0，**只參考做法，沒有複製程式碼**；以 React＋CSS 自行實作，不新增套件。
+
+## 變更內容
+- **新增 `components/public/home/`**：
+  - `HomeMotion.jsx`：`Reveal`、`useCardGlow`／`GlowCard`、`useInView`、`useInViewOnce`、`usePrefersReducedMotion`。
+  - `ProcessStack.jsx`：運作方式堆疊卡片輪播，四個步驟。下方有步驟按鈕可直接切換。滑鼠移入、聚焦、不在畫面內時暫停。
+  - `LiveScanTable.jsx`：即時掃描表格（示意）。新的檢查從上方插入，狀態依「排隊中→檢查中→通過／高中低」推進，檢查項目都對應實際規則。
+  - `CoverageTabs.jsx`：五個檢測面向，用 tablist 呈現，支援方向鍵、Home、End。
+  - `ReportPreview.jsx`：點問題就在頁面示意圖上框出位置並顯示證據；沒有操作時自動輪播。
+  - `VerifyPreview.jsx`：報告查驗動畫。編號以「•」遮住，不示範任何編號格式。
+  - `CompareSlider.jsx`：前後對照，拖曳或用鍵盤操作，實作是蓋在畫面上的透明 range input。
+  - `HomeSections.jsx`：段落組合與文案。
+    - 核心功能仍讀 CMS（`/content/features/`），後台可編輯。
+    - 安全邊界的「授權勾選」改成「授權聲明全文」：2026-10-08 已移除勾選框。
+- **`PublicPages.jsx`**：
+  - hero 與技術棧之間的六個舊區塊改用 `<HomeSections features={features} />`。舊的六個區塊是：產品預覽、檢測面向與方法、三種引擎交叉診斷、你會拿到什麼與證據、核心功能、安全邊界。
+  - hero、技術棧、FAQ、結尾 CTA 的程式碼與改版前逐字相同（已比對）。
+- **樣式**：`73-public-refine.css` 新增 `.hx-*`。
+  - 顏色沿用公開頁 `--pub-*`，日間與夜間都可用。
+  - 偏好減少動態時，捲入淡入、輪播、即時表格、各種動畫全部停用。
+- **移除只有舊中段使用的檔案與樣式**：
+  - 元件與檔案：`ScanPipeline.jsx`、`PipelineDiagram.jsx`、整個 `71-scan-pipeline.css`。
+  - `70-home.css`：demo-win 產品預覽、統一面板（public-panel）。hero 樣式保留。
+  - `73`：面板覆寫、產品預覽、鏈路圖、檢測面向、交付物、證據說明。商業合作頁仍在用的 `home-evidence-sample` 系列保留。
+- **文件**：`frontend/CLAUDE.md`（公開頁樣式範圍、`/project` 路由說明、核心檔案）。
+
+## 驗證方式
+- `npm run lint`：0 error，1 個既有 warning（AdminPages）。
+- `npm run typecheck`：通過。
+- `npx vitest run`：40 個檔案、260 項全部通過。
+  - 新增 `HomeSections.test.jsx`，涵蓋步驟按鈕切換、方向鍵切分頁、點問題顯示證據、滑桿可調。
+- `vite build`：通過。
+- `vite preview` 加 Playwright：
+  - 夜間與日間，1440 與 390 兩種寬度：捲到底後沒有未出現的元素，沒有水平捲動。
+  - 頁面本身沒有錯誤。主控台只有預覽環境沒有後端造成的 `/api` 500，以及沙箱擋外部字型的憑證錯誤。
+  - 輪播：最前面一張在 2.7 秒後由 01 換到 02；點步驟 04 會換到最前面。
+  - 即時表格：5 秒內列數由 6 增為 8，最上方是新的一列。
+  - 分頁：點「資安」顯示被動資安，按下方向鍵換到使用體驗。
+  - 互動報告：點第三個問題，證據換成對應的 `<input>`。
+  - 前後對照：在 20% 位置點一下，值變成 22。
+  - 報告查驗：播完停在「內容與原始報告一致」。
+  - 依截圖修正：預覽在左時欄寬顛倒、手機版表格「面向」欄被截斷。
+
+## 尚未做／觀察
+- 「核心功能」的內容來自正式環境的 CMS，目前資料仍有過時說明，例如「四維安全掃描」「Hermes AI Agent 提供主動式漏洞驗證」。要到後台「網站內容 → 專案特色」更新。
+- 沒有在正式環境實機看過；推送並部署後要再到 /project 看一次。
