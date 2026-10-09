@@ -47,7 +47,7 @@ Dev server（`npm.cmd run dev`）兩種 Node 都能跑，因為 dev 不走 Rollu
 ## 樣式規範
 
 - **品牌規範**：見 [`docs/brand-guidelines.md`](../docs/brand-guidelines.md)（Night Watch：虹膜青主色、守望琥珀點綴、Sora／Noto Sans TC／JetBrains Mono）。
-- **公開頁（`.public-shell`）例外**：視覺維持改版前版本（系統字、深藍＋科技青），樣式在 `21-public.css`、`35-public-legacy.css`（取回的改版前日間／響應式規則）、`70-home.css`，最後由 `73-public-refine.css` 做克制整理（區塊節奏、減少外框與光暈）。**首頁 `/project` 例外（2026-10-09 依使用者要求改版）**：**最上面的品牌 hero（會動的之眼＋ARGUS 藝術字＋標語、`.public-hero--console`）維持原樣，使用者只指定改它以下的區塊——不要再動 hero**；以下段落參考成熟產品首頁——近黑底＋淡網格、單一強調色（虹膜青）、1px 細線框、小字距眉標＋大標題、左文右卡；樣式是 `73-public-refine.css` 的 `.home2-*`，顏色用 `.home2` 上的 `--h-*` 區域變數（日間另一組），整頁背景由 `.public-shell:has(.home2)` 換成平底。公開頁新增樣式寫在 `73`，並限縮在 `.public-shell` 內；不要把 Night Watch 的 `--ag-*` 風格套回公開頁。
+- **公開頁（`.public-shell`）例外**：視覺維持改版前版本（系統字、深藍＋科技青），樣式在 `21-public.css`、`35-public-legacy.css`（取回的改版前日間／響應式規則）、`70-home.css`、`71-scan-pipeline.css`，最後由 `73-public-refine.css` 做克制整理（區塊節奏、減少外框與光暈）。公開頁新增樣式寫在 `73`，並限縮在 `.public-shell` 內；不要把 Night Watch 的 `--ag-*` 風格套回公開頁。
 - **會員區舊版樣式範圍（2026-09-28 起）**：網站專案工作區（`/projects/*`，含掃描建立表單與列表）、掃描詳情（`/scans/:id` 全部子路由：互動報告、網站優勢、網站架構、頁面優化成果頁）、`/optimized/:token` 分享頁、網域驗證、購點使用 `462848b`（Night Watch 改版前）的 JSX 與外觀；設定頁、MCP 接入中心維持改版後版本。原本的 Dashboard 與歷史頁已由網站專案工作區取代（2026-10-02，見下「網站專案工作區」）。
   - 舊版樣式在 `src/styles/legacy-member/`（由 `main.jsx` 在 `styles.css` 之後匯入）：`NN-*.css` 是當時同名檔過濾出這些頁面用得到的規則，照舊版原樣書寫；`90-compat.css` 補共用元件（`shared/AppShared.jsx`）改版後的差異；`00-tailwind.css` 以 `@config` 指定 `tailwind.member-legacy.config.js`（當時的設定，系統字型）。
   - 範圍限制由 `postcss-member-legacy.js`（掛在 `postcss.config.js` 的 tailwind 之後）在 build 時處理：規則一律加上 `:is(.member-legacy, #…)` 前綴（ID 等級特異度），範圍內元素先 `all: revert` 擋掉新版同名 class；`:root`／`html`／`body` 規則改掛在包裝上，`.argus-app`／`.argus-main` 規則改為 `:has(.member-legacy)`，keyframes 加 `ml-` 前綴。包裝是 `App.jsx` 的 `MemberLegacy`（`display: contents`）。
@@ -58,7 +58,7 @@ Dev server（`npm.cmd run dev`）兩種 Node 都能跑，因為 dev 不走 Rollu
 - 全域樣式入口是 `src/styles.css`，依序 `@import` `src/styles/*.css`；**匯入順序＝覆寫優先序，不可隨意重排**。
 - **顏色一律用 `--ag-*` 語意 token**（`03-tokens.css`）：深色值在 `:root`（預設主題），日間值在 `:root[data-theme="light"]`。規則只寫一次、兩個主題自動正確；**不要再寫 `:root[data-theme="light"] .xxx` 的逐條覆寫**，也不要寫死 Tailwind `slate-*`／`blue-*`／`indigo-*` 或青→紫漸層。
 - 品牌元件樣式在 `05-brand.css`（`ArgusMark`／`ArgusLogo`、`.ag-eyebrow`、`.ag-viewfinder`、`.ag-surface-grid`）；核心元件（`.panel`、`.primary-button`、`.secondary-button`、`.input`、`.severity`、`.status-badge`、`.category-pill`…）在 `10-components-core.css`，已全面 token 化。
-- 標誌一律用原品牌圖：`ArgusLogo`（`brand-logo.webp`）與 `ArgusMark`（`argus-eye-still.webp`），元件在 `components/brand/ArgusMark.tsx`；動態之眼 `argus-eye.webp` 用於首頁 hero 與掃描進行中的畫面（`ScanExperience.jsx`）。圖示用 `shared/LineIcons.jsx`／`shared/ActionIcons.jsx`，不用 emoji。
+- 標誌一律用原品牌圖：`ArgusLogo`（`brand-logo.webp`）與 `ArgusMark`（`argus-eye-still.webp`），元件在 `components/brand/ArgusMark.tsx`；動態之眼 `argus-eye.webp` 只用於首頁 hero。圖示用 `shared/LineIcons.jsx`／`shared/ActionIcons.jsx`，不用 emoji。
 - 後台 `--admin-*` token 定義在 `18-admin.css` 開頭，由 `--ag-*` 衍生，深／淺主題自動切換；側欄恆為深色（`--admin-sidebar-*`）。後台樣式一律用 `--admin-*` 或 `--ag-*`。
 - 多數 `10`–`22` 號檔包在 `@layer components` 內（Tailwind 會提到 `@tailwind components` 的位置輸出）。
 - 命名採 BEM-like：`.頁面名-元素名`（例如 `.admin-panel`、`.scan-card`）。
@@ -118,7 +118,7 @@ D:\nodejs\npm.cmd install 套件名
 |---|---|---|
 | `/login` | `LoginPage` | 兩個分頁「登入／註冊」（`?tab=register` 直接開註冊）。登入：Google 登入（未註冊的 Google 帳號回 409 → 直接切到註冊第二步）＋「Email 或用戶名」＋密碼，後端啟用 Turnstile 時顯示驗證元件（`login`）。註冊（2026-10-04）：一律先 Google 授權（`/auth/register/google/`）→ 第二步 `RegisterDetailsForm` 設定用戶名（預填 `suggested_handle`）與密碼並同意條款（`/auth/register/`）；沒有 Google Client ID 時註冊分頁顯示無法註冊。`?deleted=1` 顯示「帳號已刪除」 |
 | `/account/setup` | `AccountSetupPage`（`AuthPages.jsx`） | 舊帳號缺用戶名或密碼時的補設頁；`RequireAuth` 讀 store 的 `profile`（`fetchProfile` → `/api/auth/me/`），`needs_setup` 時其他會員頁一律導到這裡（帶 `next`） |
-| `/project` | `ProjectPage`（`features/public/ProjectPage.jsx`，獨立 lazy chunk） | 公開首頁：最上面是原本的品牌 hero（會動的之眼、ARGUS 藝術字、標語、登入進行詳細檢查／免登入先試單頁檢查，維持原樣）；以下 2026-10-09 改版、內容精簡：運作方式（四步驟）→ 即時進度（掃描示意）→ 你會拿到什麼（互動報告、PDF 報告與查驗、頁面優化，各配示意卡）→ 安全邊界 → 技術（品牌 logo 牆，`components/public/brandMarks.jsx`）→ 常見問題 → 結尾 CTA。內容寫在元件內並以程式核對；不再讀 CMS「專案特色」（`/content/features/`）。原本的掃描鏈路圖、技術 marquee 元件與樣式已移除 |
+| `/project` | `ProjectPage` | 公開行銷頁：hero、產品預覽、檢測面向與方法、掃描流程、交付物與證據、核心功能、安全邊界、技術棧、FAQ（團隊頁、平台規模與開發歷程已於 2026-09-28 移除） |
 | `/free-tools` | `FreeToolsPage` | 公開免費分析（測速 / URL 風險 / 郵件風險），呼叫 `/api/insights/*` |
 | `/purchase` | `PurchasePage` | 購買點數（3 步驟結帳 wizard） |
 | `/download` | `DownloadPage` | 下載報告 |
@@ -241,8 +241,7 @@ npm run typecheck
 | `src/components/billing/BuyerInvoiceFields.jsx` | 購點與訂閱共用：買受人／發票欄位、`validateBuyer`、`buyerPayload`、`submitEcpayForm`（只允許綠界測試／正式兩個結帳網址）。`live`（`payment_mode === "ecpay"`）切換正式與測試文案 |
 | `src/features/account/AuthenticatedPages.jsx` | 會員區入口：re-export `TopNav`／`BillingPage`（＋`SubscriptionPanel`）／`SettingsPage`，各頁實作在同目錄同名檔；購點為 462848b 舊版 |
 | `src/features/reviews/ReviewsPage.jsx` | 公開評論、評分分布、本人評論、逐則按讚／檢舉（樣式 `50-reviews.css`＋`51-reviews-dark.css`＋`52-reviews-layout-v2.css`） |
-| `src/features/public/PublicPages.jsx` | 公開頁 layout（導覽＋分組頁尾）與免費工具、購買介紹、下載、報告查驗頁 |
-| `src/features/public/ProjectPage.jsx` | 公開首頁 `/project`（品牌 hero 維持原樣；以下段落 2026-10-09 改版，樣式 `73-public-refine.css` 的 `.home2-*`） |
+| `src/features/public/PublicPages.jsx` | 公開頁 layout（導覽＋分組頁尾）與專案、免費工具、購買介紹、下載、報告查驗頁 |
 | `src/features/public/PartnersPage.jsx` | 商業合作頁與洽談表單（樣式在 `73-public-refine.css` 的 `partners-*`）|
 | `src/components/navigation/SiteNav.jsx` | 公開頁與登入後共用的頂部導覽列外殼＋日夜切換鈕 |
 | `src/features/public/NotFoundPage.jsx` | 未匹配路由的 404 頁面 |

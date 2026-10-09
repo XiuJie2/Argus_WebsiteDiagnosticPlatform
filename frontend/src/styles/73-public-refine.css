@@ -1,7 +1,7 @@
 /* ========================================
    公開頁：在「改版前樣式」之上做的克制整理
    ----------------------------------------
-   基準是 462848b 的公開頁樣式（21-public / 35-public-legacy / 70-home）。
+   基準是 462848b 的公開頁樣式（21-public / 35-public-legacy / 70-home / 71-scan-pipeline）。
    這一層只做三件事，全部限縮在 .public-shell 內，不影響會員區與後台：
      1. 字體回到改版前的系統字（不套 Sora），並統一區塊節奏與分隔，讓整頁連續。
      2. 降低螢光、光暈、漸層：強調色只留給主要操作、關鍵數據與狀態。
@@ -42,12 +42,19 @@
 .public-shell .public-page > * + * {
   margin-top: 0;
 }
-.public-shell .public-page > .public-section {
+.public-shell .public-page > .public-section,
+.public-shell .public-page > .project-stack {
   margin-top: 0;
   padding-block: clamp(3rem, 6vw, 4.5rem);
 }
-.public-shell .public-page > .public-section + .public-section {
+.public-shell .public-page > .public-section + .public-section,
+.public-shell .public-page > .public-section + .project-stack,
+.public-shell .public-page > .project-stack + .public-section {
   border-top: 1px solid var(--pub-line);
+}
+/* 產品預覽緊接 hero，不需要分隔線與大留白 */
+.public-shell .public-page > .public-section-demo {
+  padding-top: clamp(2rem, 4vw, 3rem);
 }
 .public-shell .public-page > .public-final-cta-wrap {
   border-top: 0;
@@ -76,6 +83,53 @@
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
 }
 
+/* 面板：改成開放式排版——頂端一條細線＋內容，不再是發光卡片 */
+.public-shell .public-panel-grid {
+  gap: 0 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.public-shell .public-panel {
+  padding: 1.25rem 0 1.5rem;
+  border: 0;
+  border-top: 1px solid var(--pub-line-strong);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.public-shell .public-panel:hover {
+  transform: none;
+  border-top-color: rgba(var(--pl), 0.55);
+  box-shadow: none;
+}
+.public-shell .public-panel-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  filter: none;
+  background: rgba(var(--pl), 0.08);
+  border-color: rgba(var(--pl), 0.22);
+}
+.public-shell .public-panel-icon::after { display: none; }
+.public-shell .public-panel-icon svg { width: 20px; height: 20px; }
+.public-shell .public-panel-title { color: var(--pub-heading); }
+.public-shell .public-panel-desc { color: var(--pub-muted); font-size: 0.86rem; }
+:root[data-theme="light"] .public-shell .public-panel {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--pub-line-strong);
+  box-shadow: none;
+}
+/* 核心功能數量來自 CMS：依 data-cols 固定欄數，避免最後一列只剩一張 */
+@media (min-width: 1024px) {
+  .public-shell .home-feature-grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .public-shell .home-feature-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 產品預覽視窗：保留外框（它本身是產品畫面），收掉外發光 */
+.public-shell .demo-win {
+  box-shadow: inset 0 1px 0 rgba(103, 232, 249, 0.12), 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+}
+
 /* 收尾 CTA：拿掉青→紫→粉漸層與大陰影，改成安定的淡底 */
 .public-shell .public-final-cta {
   background: linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(15, 23, 42, 0.4));
@@ -88,8 +142,203 @@
   box-shadow: none;
 }
 
+/* 掃描流程圖：標題不發光；節點光暈減弱 */
+.public-shell .pl-title {
+  text-shadow: none;
+}
+.public-shell .pl-note {
+  box-shadow: none;
+}
+.public-shell .pl-stage:hover,
+.public-shell .pl-out:hover {
+  box-shadow: none;
+}
+/* 1540px 以下原本改成橫向捲動，看起來像被裁掉：
+   改成兩列——上面六個階段自動換行，下面四項交付物一排，不需要捲動。 */
+@media (min-width: 901px) and (max-width: 1540px) {
+  .public-shell .pl-flow {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: 1.25rem;
+    padding-bottom: 0;
+  }
+  .public-shell .pl-flow > * { flex: 0 1 auto; }
+  .public-shell .pl-stages {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    row-gap: 1rem;
+    justify-content: center;
+  }
+  .public-shell .pl-fan { display: none; }
+  .public-shell .pl-outputs {
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .public-shell .pl-out { width: auto; flex: 1 1 220px; max-width: 300px; }
+}
+/* 1180–1540px：六個階段仍放得下一排，讓節點寬度彈性縮放而不是換行 */
+@media (min-width: 1180px) and (max-width: 1540px) {
+  .public-shell .pl-stages { flex-wrap: nowrap; }
+  .public-shell .pl-stage-slot { flex: 1 1 0; min-width: 0; }
+  .public-shell .pl-stage-slot:has(.pl-stage-group) { flex: 1.6 1 0; }
+  .public-shell .pl-stage { width: auto; flex: 1 1 auto; min-width: 0; }
+  .public-shell .pl-arrow { width: 22px; }
+}
+
+/* 全棧現代化選型：維持改版前的左文右商標牆，只把面板背景壓淡 */
+.public-shell .project-stack {
+  background: var(--pub-surface);
+  border-color: var(--pub-line);
+}
+
 /* ── 3. 新增內容的樣式 ── */
 
+/* 檢測涵蓋的面向：一張以分隔線組成的對照表，不用卡片 */
+.home-coverage-list {
+  margin: 0;
+  border-top: 1px solid var(--pub-line-strong);
+}
+.home-coverage-row {
+  --cat: #67e8f9;
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--pub-line);
+}
+.home-coverage-row[data-cat="seo"] { --cat: #818cf8; }
+.home-coverage-row[data-cat="aeo"] { --cat: #a78bfa; }
+.home-coverage-row[data-cat="geo"] { --cat: #22d3ee; }
+.home-coverage-row[data-cat="security"] { --cat: #f87171; }
+.home-coverage-row[data-cat="ux"] { --cat: #34d399; }
+.home-coverage-row dt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.home-coverage-code {
+  min-width: 3.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--cat);
+}
+.home-coverage-name {
+  font-weight: 700;
+  color: var(--pub-heading);
+}
+.home-coverage-row dd {
+  margin: 0;
+  color: var(--pub-muted);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+.home-methods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.home-methods h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--pub-heading);
+}
+.home-methods h3::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin: 0 0.6rem 0.3rem 0;
+  background: var(--pub-accent-strong);
+  vertical-align: middle;
+}
+.home-methods p {
+  margin: 0;
+  color: var(--pub-muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* 你會拿到什麼：編號＋標題＋說明，四欄並排 */
+.home-deliver-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-deliver-list li {
+  padding-top: 1rem;
+  border-top: 1px solid var(--pub-line-strong);
+}
+.home-deliver-no {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--pub-accent);
+  font-variant-numeric: tabular-nums;
+}
+.home-deliver-list h3 {
+  margin: 0.4rem 0 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--pub-heading);
+}
+.home-deliver-list p {
+  margin: 0;
+  color: var(--pub-muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* 證據：左文右示意，示意區是全頁少數保留外框的地方 */
+.home-evidence {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: start;
+  margin-top: clamp(2.5rem, 5vw, 3.5rem);
+}
+.home-evidence-copy h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--pub-heading);
+}
+.home-evidence-copy > p {
+  margin: 0 0 1.25rem;
+  color: var(--pub-muted);
+  line-height: 1.75;
+}
+.home-evidence-fields {
+  margin: 0;
+}
+.home-evidence-fields > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--pub-line);
+}
+.home-evidence-fields dt {
+  font-weight: 700;
+  color: var(--pub-text);
+  font-size: 0.9rem;
+}
+.home-evidence-fields dd {
+  margin: 0;
+  color: var(--pub-muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
 .home-evidence-sample {
   margin: 0;
   padding: 1.25rem 1.35rem;
@@ -198,7 +447,15 @@
 .public-footer-copy { grid-column: 1 / -1; }
 
 /* ── 響應式 ── */
+@media (max-width: 1023px) {
+  .home-deliver-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-evidence { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 720px) {
+  .home-coverage-row { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+  .home-methods { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .home-deliver-list { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .home-evidence-fields > div { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; }
   .public-footer-inner { grid-template-columns: minmax(0, 1fr); }
   .public-footer-groups { justify-content: flex-start; }
 }
@@ -545,502 +802,4 @@
 }
 .public-shell .scanner-error p {
   margin: 0;
-}
-
-/* ========================================
-   首頁 v2（/project，features/public/ProjectPage.jsx，2026-10-09）
-   hero 以下的段落：參考成熟產品首頁——近黑底＋淡網格、單一強調色（虹膜青）、
-   1px 細線框、小字距眉標＋大標題、左文右卡。沒有彩色左邊條；狀態用徽章＋文字。
-   最上面的品牌 hero 維持原樣（.public-hero--console）。
-   ======================================== */
-.public-shell:has(.home2),
-:root[data-theme="light"] .public-shell:has(.home2) {
-  background: var(--h-bg);
-}
-.public-shell:has(.home2),
-.home2 {
-  --h-bg: #05070d;
-  --h-surface: #0b0f19;
-  --h-surface-2: #10151f;
-  --h-line: rgba(148, 163, 184, 0.14);
-  --h-line-strong: rgba(148, 163, 184, 0.26);
-  --h-grid: rgba(148, 163, 184, 0.06);
-  --h-text: #e8edf5;
-  --h-heading: #f8fafc;
-  --h-muted: #8b97ab;
-  --h-accent: #3fdcee;
-  --h-accent-soft: rgba(63, 220, 238, 0.12);
-  --h-on-accent: #04121a;
-  --h-logo-tile: #eef2f7;
-}
-:root[data-theme="light"] .public-shell:has(.home2),
-:root[data-theme="light"] .home2 {
-  --h-bg: #f7f8fb;
-  --h-surface: #ffffff;
-  --h-surface-2: #f2f4f8;
-  --h-line: rgba(15, 23, 42, 0.1);
-  --h-line-strong: rgba(15, 23, 42, 0.18);
-  --h-grid: rgba(15, 23, 42, 0.05);
-  --h-text: #1f2937;
-  --h-heading: #0b1220;
-  --h-muted: #5b6577;
-  --h-accent: #0a7b91;
-  --h-accent-soft: rgba(10, 123, 145, 0.1);
-  --h-on-accent: #ffffff;
-  --h-logo-tile: #f2f4f8;
-}
-.home2 {
-  color: var(--h-text);
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.home2 :where(h1, h2, h3, p, ul, ol, dl, figure) { margin: 0; }
-.home2 :where(ul, ol) { padding: 0; list-style: none; }
-.home2-muted { color: var(--h-muted); }
-
-/* 淡網格（結尾 CTA 的背景），中央較明顯、四周淡出 */
-.home2-grid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(var(--h-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--h-grid) 1px, transparent 1px);
-  background-size: 64px 64px;
-  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 75%);
-  mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 75%);
-  pointer-events: none;
-}
-
-.home2-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 1.8rem;
-}
-.home2-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 1.4rem;
-  border: 1px solid var(--h-line-strong);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--h-heading);
-  font-weight: 700;
-  font-size: 0.95rem;
-  text-decoration: none;
-  transition: background-color 0.15s, border-color 0.15s;
-}
-.home2-btn:hover { border-color: var(--h-accent); background: var(--h-accent-soft); }
-.home2-btn.is-primary {
-  border-color: var(--h-accent);
-  background: var(--h-accent);
-  color: var(--h-on-accent);
-}
-.home2-btn.is-primary:hover { filter: brightness(1.08); background: var(--h-accent); }
-.home2-btn:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 3px; }
-
-/* ── 段落共用 ── */
-.home2-section {
-  padding-block: clamp(3.5rem, 8vw, 6rem);
-  border-top: 1px solid var(--h-line);
-}
-.home2 > .home2-section:first-child { border-top: 0; }
-.home2 > .home2-section:last-child { padding-bottom: 1rem; border-top: 0; }
-.home2-eyebrow {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.24em;
-  color: var(--h-muted);
-}
-.home2-h2 {
-  margin-top: 0.7rem;
-  font-size: clamp(1.7rem, 3.4vw, 2.4rem);
-  line-height: 1.25;
-  font-weight: 700;
-  color: var(--h-heading);
-}
-.home2-h2.is-large { font-size: clamp(2rem, 4.4vw, 3rem); }
-.home2-h3 {
-  font-size: clamp(1.35rem, 2.4vw, 1.7rem);
-  line-height: 1.3;
-  font-weight: 700;
-  color: var(--h-heading);
-}
-.home2-p {
-  margin-top: 0.9rem;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: var(--h-muted);
-}
-.home2-center-head {
-  max-width: 44rem;
-  margin: 0 auto;
-  text-align: center;
-}
-.home2-card {
-  border: 1px solid var(--h-line);
-  border-radius: 14px;
-  background: var(--h-surface);
-}
-.home2-card-cap {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  color: var(--h-muted);
-}
-.home2-icon-box {
-  display: inline-grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border: 1px solid var(--h-line-strong);
-  border-radius: 10px;
-  background: var(--h-surface-2);
-  color: var(--h-accent);
-}
-.home2-icon-box svg { width: 20px; height: 20px; }
-.home2-dashes {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 1.4rem;
-}
-.home2-dashes li {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  font-size: 0.95rem;
-  color: var(--h-text);
-}
-.home2-dash {
-  width: 14px;
-  height: 2px;
-  flex-shrink: 0;
-  background: var(--h-accent);
-}
-
-/* 左文右卡 */
-.home2-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  align-items: center;
-  gap: clamp(2rem, 5vw, 4.5rem);
-}
-.home2-split-text { max-width: 34rem; }
-
-/* 運作方式：四步驟 */
-.home2-steps { padding: 0.5rem 1.5rem; }
-.home2-steps li {
-  display: flex;
-  gap: 1.1rem;
-  padding: 1.15rem 0;
-}
-.home2-steps li + li { border-top: 1px solid var(--h-line); }
-.home2-steps strong {
-  display: block;
-  font-size: 1.02rem;
-  color: var(--h-heading);
-}
-.home2-steps .home2-muted { display: block; margin-top: 0.25rem; font-size: 0.9rem; line-height: 1.6; }
-.home2-step-no {
-  font-family: var(--ag-font-mono, ui-monospace, monospace);
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--h-accent);
-  padding-top: 0.15rem;
-}
-
-/* 嚴重度徽章：顏色＋文字 */
-.home2-sev {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.6rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 800;
-}
-.home2-sev.is-high { background: rgba(255, 138, 61, 0.16); color: #ff9a57; }
-.home2-sev.is-medium { background: rgba(255, 192, 77, 0.16); color: #f5b53d; }
-.home2-sev.is-low { background: rgba(108, 182, 255, 0.16); color: #6cb6ff; }
-.home2-sev.is-info { background: rgba(148, 163, 184, 0.16); color: #a3b0c2; }
-:root[data-theme="light"] .home2-sev.is-high { color: #b4500f; }
-:root[data-theme="light"] .home2-sev.is-medium { color: #8a5a00; }
-:root[data-theme="light"] .home2-sev.is-low { color: #1d5fa8; }
-:root[data-theme="light"] .home2-sev.is-info { color: #475569; }
-
-/* 產品預覽 */
-.home2-demo {
-  border: 1px solid var(--h-line);
-  border-radius: 14px;
-  background: var(--h-surface);
-  overflow: hidden;
-}
-.home2-demo-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.1rem;
-  border-bottom: 1px solid var(--h-line);
-  background: var(--h-surface-2);
-}
-.home2-demo-url {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: var(--ag-font-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-  color: var(--h-muted);
-}
-.home2-demo-url svg { width: 13px; height: 13px; }
-.home2-demo-tag {
-  padding: 0.1rem 0.5rem;
-  border: 1px solid var(--h-line-strong);
-  border-radius: 999px;
-  font-size: 0.7rem;
-  color: var(--h-muted);
-}
-.home2-demo-phase {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  padding: 1.1rem 1.1rem 0.8rem;
-}
-.home2-demo-phase strong { display: block; color: var(--h-heading); }
-.home2-demo-phase .home2-muted { font-size: 0.82rem; }
-.home2-demo-phase-icon { color: var(--h-accent); }
-.home2-demo-phase-icon svg { width: 22px; height: 22px; }
-.home2-demo-live {
-  margin-left: auto;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  background: var(--h-accent-soft);
-  color: var(--h-accent);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-.home2-demo-progress {
-  height: 4px;
-  margin: 0 1.1rem 0.6rem;
-  border-radius: 999px;
-  background: var(--h-surface-2);
-  overflow: hidden;
-}
-.home2-demo-progress span {
-  display: block;
-  width: 24%;
-  height: 100%;
-  background: var(--h-accent);
-}
-.home2-demo-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.85rem 1.1rem;
-  border-top: 1px solid var(--h-line);
-}
-.home2-demo-main { flex: 1; min-width: 0; }
-.home2-demo-title { display: block; font-size: 0.92rem; font-weight: 600; color: var(--h-heading); }
-.home2-demo-main .home2-muted { font-size: 0.78rem; }
-.home2-demo-cat { font-size: 0.75rem; font-weight: 700; color: var(--h-muted); }
-
-/* 你會拿到什麼：交錯的圖＋說明卡 */
-.home2-features {
-  display: grid;
-  gap: clamp(2rem, 5vw, 4rem);
-  margin-top: clamp(2.5rem, 5vw, 4rem);
-}
-.home2-feature {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(1.5rem, 4vw, 3rem);
-}
-.home2-feature.is-reverse > :first-child { order: 2; }
-.home2-feature-card { padding: clamp(1.4rem, 3vw, 2rem); }
-.home2-feature-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.1rem;
-}
-.home2-feature > figure { padding: 1.5rem; }
-
-.home2-evidence-title {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 1rem;
-  font-weight: 700;
-  color: var(--h-heading);
-}
-.home2-kv { display: grid; gap: 0.7rem; margin-top: 1.1rem; }
-.home2-kv div {
-  display: grid;
-  grid-template-columns: 3rem minmax(0, 1fr);
-  gap: 0.75rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--h-line);
-  font-size: 0.88rem;
-}
-.home2-kv dt { color: var(--h-muted); }
-.home2-kv dd { margin: 0; color: var(--h-text); overflow-wrap: anywhere; }
-
-.home2-verify-row {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  margin-top: 1.1rem;
-  padding: 1rem;
-  border: 1px solid var(--h-line);
-  border-radius: 10px;
-  background: var(--h-surface-2);
-}
-.home2-verify-row svg { width: 28px; height: 28px; color: var(--h-accent); flex-shrink: 0; }
-.home2-verify-row strong { display: block; color: var(--h-heading); }
-.home2-verify-row .home2-muted { font-size: 0.82rem; }
-.home2-verify-ok {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin-top: 1rem;
-  padding: 0.35rem 0.8rem;
-  border-radius: 999px;
-  background: rgba(46, 229, 157, 0.12);
-  color: #2ee59d;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-.home2-verify-ok::before { content: "✓"; }
-:root[data-theme="light"] .home2-verify-ok { color: #0f7a4f; }
-
-.home2-compare-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.9rem;
-  margin-top: 1.1rem;
-}
-.home2-compare-pane {
-  display: grid;
-  gap: 0.55rem;
-  padding: 0.9rem;
-  border: 1px solid var(--h-line);
-  border-radius: 10px;
-  background: var(--h-surface-2);
-}
-.home2-compare-pane.is-after { border-color: var(--h-accent); }
-.home2-compare-label { font-size: 0.75rem; font-weight: 700; color: var(--h-muted); }
-.home2-compare-pane.is-after .home2-compare-label { color: var(--h-accent); }
-.home2-compare-block {
-  height: 14px;
-  border-radius: 4px;
-  background: var(--h-line-strong);
-}
-.home2-compare-block.is-hero { height: 54px; }
-.home2-compare-block.is-short { width: 60%; }
-.home2-compare-pane:not(.is-after) .home2-compare-block.is-hero { background: rgba(255, 92, 122, 0.22); }
-.home2-compare-pane.is-after .home2-compare-block.is-hero { background: var(--h-accent-soft); }
-
-/* 安全邊界 */
-.home2-safety {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: clamp(2rem, 4vw, 3rem);
-  border: 1px solid var(--h-line);
-  border-radius: 14px;
-  background: var(--h-surface);
-}
-.home2-safety li {
-  display: grid;
-  gap: 0.6rem;
-  align-content: start;
-  padding: 1.5rem;
-}
-.home2-safety li + li { border-left: 1px solid var(--h-line); }
-.home2-safety strong { margin-top: 0.4rem; color: var(--h-heading); }
-.home2-safety .home2-muted { font-size: 0.88rem; line-height: 1.65; }
-
-/* 技術 logo 牆 */
-.home2-logos {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-.home2-logos li {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 1rem 0.5rem;
-  border: 1px solid var(--h-line);
-  border-radius: 12px;
-  background: var(--h-surface);
-  font-size: 0.78rem;
-  color: var(--h-muted);
-  text-align: center;
-}
-.home2-logos svg {
-  width: 44px;
-  height: 44px;
-  padding: 9px;
-  border-radius: 10px;
-  background: var(--h-logo-tile);
-}
-
-/* 常見問題 */
-.home2-faq {
-  max-width: 48rem;
-  margin: 1.5rem auto 0;
-  border-top: 1px solid var(--h-line);
-}
-.home2-faq details { border-bottom: 1px solid var(--h-line); }
-.home2-faq summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.15rem 0;
-  font-weight: 700;
-  color: var(--h-heading);
-  cursor: pointer;
-  list-style: none;
-}
-.home2-faq summary::-webkit-details-marker { display: none; }
-.home2-faq summary::after { content: "+"; color: var(--h-muted); font-weight: 400; }
-.home2-faq details[open] summary::after { content: "−"; }
-.home2-faq summary:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 2px; }
-.home2-faq p { padding-bottom: 1.15rem; line-height: 1.8; color: var(--h-muted); }
-
-/* 結尾 CTA */
-.home2-cta {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: clamp(2.2rem, 5vw, 3rem) 1.5rem;
-  border: 1px solid var(--h-line);
-  border-radius: 16px;
-  background: var(--h-surface);
-  text-align: center;
-}
-.home2-cta .home2-muted { margin-top: 0.6rem; }
-.home2-cta .home2-actions { margin-top: 1.4rem; }
-
-@media (max-width: 960px) {
-  .home2-split,
-  .home2-feature { grid-template-columns: minmax(0, 1fr); }
-  .home2-feature.is-reverse > :first-child { order: 0; }
-  .home2-split.is-reverse > .home2-demo { order: 2; }
-  .home2-safety { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .home2-safety li:nth-child(3) { border-left: 0; }
-  .home2-safety li:nth-child(n + 3) { border-top: 1px solid var(--h-line); }
-}
-@media (max-width: 640px) {
-  .home2-logos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .home2-safety { grid-template-columns: minmax(0, 1fr); }
-  .home2-safety li + li { border-left: 0; border-top: 1px solid var(--h-line); }
 }

@@ -78,3 +78,13 @@
   - hero 內容與排版一致，只有動畫進行到的時間點不同。
   - lint、typecheck、build 通過。
 - `frontend/CLAUDE.md` 已註明「最上面的品牌 hero 維持原樣，不要再動」。
+
+## 最終結果：整頁還原（同日）
+- 使用者決定整個首頁先還原。
+- 以 `git revert` 撤回 38a4587（改版）與 5adad8c（hero 還原）。`frontend/` 與 `docs/` 已和改版前的 ab5543f 完全相同（`git diff ab5543f -- frontend docs` 無差異）。
+- 恢復原狀的項目：
+  - 舊的 `ProjectPage`（在 `PublicPages.jsx`）。
+  - CMS「專案特色」再次顯示在首頁。
+  - 掃描鏈路圖、技術 marquee 等元件與樣式。
+- 本 log 保留，作為這次改版與撤回的紀錄。
+- 驗證：lint、typecheck、vite build 通過。

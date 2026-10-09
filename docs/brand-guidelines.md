@@ -24,7 +24,7 @@ Argus 替使用者「看見」網站在 SEO／AEO／GEO／資安／UX 上的所�
 
 - **Logo `ArgusLogo`**：`assets/brand-logo.webp`（之眼＋ARGUS 字標）——導覽列、頁尾、後台側欄、登入頁。
 - **之眼圖示 `ArgusMark`**：`assets/argus-eye-still.webp`——登入頁、狀態圖示、空狀態等；`scanning` 屬性加呼吸光暈。
-- **動態之眼**：`assets/argus-eye.webp`——專案介紹頁 hero 與掃描進行中的畫面（原版掃描動畫）。
+- **動態之眼**：`assets/argus-eye.webp`——專案介紹頁 hero（原版掃描動畫，樣式在 `34-classic-hero.css`）。
 - 日間主題下 logo 以 filter 壓暗以便在淺底上辨識；後台側欄恆為深色，維持原色。
 - 不要：拉伸、改色、加額外外框。
 

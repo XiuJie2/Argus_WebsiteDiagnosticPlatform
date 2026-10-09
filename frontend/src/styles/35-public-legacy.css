@@ -597,6 +597,22 @@
 :root[data-theme="light"] .public-footer-inner,
 :root[data-theme="light"] .public-footer-sub { color: #475569; }
 :root[data-theme="light"] .public-footer-copy { color: #64748b; }
+:root[data-theme="light"] .project-stack {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(15, 23, 42, 0.12);
+}
+:root[data-theme="light"] .project-stack-eyebrow { color: #0369A1; }
+:root[data-theme="light"] .project-stack-title { color: #0F172A; }
+:root[data-theme="light"] .project-stack-points p { color: #334155; }
+:root[data-theme="light"] .project-stack-dash { background: #0284C7; }
+:root[data-theme="light"] .tech-tile-mark {
+  background: rgba(248, 250, 252, 1);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+:root[data-theme="light"] .tech-tile:hover .tech-tile-mark {
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), 0 0 16px rgba(2, 132, 199, 0.25);
+}
+:root[data-theme="light"] .tech-tile-label { color: #334155; }
 :root[data-theme="light"] .insight-risk-badge.risk-minimal {
   color: #047857;
   background: rgba(4, 120, 87, 0.10);

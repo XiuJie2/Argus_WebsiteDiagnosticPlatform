@@ -26,7 +26,6 @@ const loadDomainPages = () => import("./features/domains/DomainVerifyPage.jsx");
 const loadAuthenticatedPages = () => import("./features/account/AuthenticatedPages.jsx");
 const loadReviewsPage = () => import("./features/reviews/ReviewsPage.jsx");
 const loadPublicPages = () => import("./features/public/PublicPages.jsx");
-const loadHomePage = () => import("./features/public/ProjectPage.jsx");
 const loadPartnersPage = () => import("./features/public/PartnersPage.jsx");
 const loadLegalPages = () => import("./features/public/LegalPages.jsx");
 const loadScannerInfoPage = () => import("./features/public/ScannerInfoPage.jsx");
@@ -83,7 +82,7 @@ const ProjectSecurityPage = lazyNamed(
 const ProjectSettingsPage = lazyNamed(loadProjectPages, "ProjectSettingsPage");
 const PublicLayout = lazyNamed(loadPublicPages, "PublicLayout");
 const SharedOptimizationPage = lazy(() => import("./features/optimize/SharedOptimizationPage.jsx"));
-const ProjectPage = lazyNamed(loadHomePage, "ProjectPage");
+const ProjectPage = lazyNamed(loadPublicPages, "ProjectPage");
 const PurchasePage = lazyNamed(loadPublicPages, "PurchasePage");
 const FreeToolsPage = lazyNamed(loadPublicPages, "FreeToolsPage");
 const DownloadPage = lazyNamed(loadPublicPages, "DownloadPage");

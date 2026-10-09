@@ -44,7 +44,12 @@
 .public-cta-ghost,
 .public-plan-cta{ font-size: 1.05rem !important; padding: 0.8rem 1.7rem !important; }
 
-/* install 卡片 */
+/* tech stack tile 與 install 卡片 */
+.tech-tile-label{ font-size: 0.8125rem !important; }
+/* 並排但欄位很窄的區段，字級要跟著降，否則長標籤會撐爆欄寬 */
+@media (max-width: 639px), (min-width: 768px) and (max-width: 1023px) {
+  .tech-tile-label { font-size: 0.6875rem !important; }
+}
 .public-install-icon{ font-size: 2.75rem !important; }
 .public-install-title{ font-size: 1.25rem !important; }
 .public-install-card ol{ font-size: 1rem !important; }
