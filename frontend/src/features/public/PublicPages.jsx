@@ -93,7 +93,7 @@ function PublicFooter() {
           ))}
         </nav>
         <div className="public-footer-copy">
-          © Argus · 僅供授權測試的網站健檢工具
+          © Argus 網站健檢平台
         </div>
       </div>
     </footer>
@@ -123,11 +123,11 @@ const PROJECT_STACK_POINTS = [
 const HOME_FAQ = [
   {
     q: "快速檢查和完整掃描差在哪？",
-    a: "快速檢查免登入、不扣點，只分析單一頁面的 HTML 與回應標頭；完整掃描會以真實瀏覽器爬取整站、逐頁截圖，並產出互動報告與可直接貼上的修正內容。",
+    a: "快速檢查免登入、不扣點，只分析單一頁面的 HTML 與回應標頭；完整掃描會以真實瀏覽器爬取整站、逐頁截圖，產出互動報告與防偽 PDF 報告，還能針對單一頁面產出優化後的版本。",
   },
   {
     q: "完整掃描怎麼計費？",
-    a: "按維度計費：每頁每維度 2 coin，只勾需要的維度就好。建立時依最大頁數預扣，完成後依實際頁數退回；掃描失敗或被取消會全額退回。登入後每月自動贈 200 coin。",
+    a: "按維度計費：每頁每維度 2 coin，只勾需要的維度就好。建立時依最大頁數預扣，完成後依實際頁數退回；掃描失敗或被取消會全額退回。註冊後第一次完整掃描（被動、整站、五個面向全選）免費，之後每月自動贈 200 coin。",
   },
   {
     q: "可以掃描不是我的網站嗎？",
@@ -222,7 +222,7 @@ function ProjectPage() {
         <div className="public-final-cta">
           <div>
             <h2 className="public-final-cta-title">準備好健檢你的網站了嗎？</h2>
-            <p className="public-final-cta-sub">想先試用？「快速檢查」免登入、不扣點；登入後每月自動贈 200 coin，掃描依實際頁數計點。</p>
+            <p className="public-final-cta-sub">註冊後第一次完整掃描免費，之後每月贈 200 coin；也可先用免登入的「快速檢查」。</p>
           </div>
           <NavLink to="/purchase" className="public-cta-primary public-final-cta-btn">
             查看方案 →
