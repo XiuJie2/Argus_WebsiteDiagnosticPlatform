@@ -96,10 +96,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 27px;
-  height: 27px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
-  font-size: .68rem;
+  font-size: .76rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: rgb(var(--pl));
@@ -114,12 +114,12 @@
 }
 .pl-stage-icon svg { width: 100%; height: 100%; }
 .pl-stage-title {
-  font-size: .95rem;
+  font-size: 1.02rem;
   font-weight: 700;
   color: #f0f9ff;
   letter-spacing: .01em;
 }
-.pl-stage-line { font-size: .7rem; line-height: 1.5; color: #8fa3bd; }
+.pl-stage-line { font-size: .82rem; line-height: 1.5; color: #8fa3bd; }
 
 .pl-badge {
   margin-top: 7px;
@@ -127,10 +127,11 @@
   align-items: center;
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: .62rem;
+  max-width: 100%;
+  font-size: .74rem;
   font-weight: 600;
   letter-spacing: .02em;
-  white-space: nowrap;
+  text-align: center;
   color: rgb(var(--pl));
   background: rgba(var(--pl), .08);
   border: 1px solid rgba(var(--pl), .22);
@@ -182,8 +183,8 @@
 }
 .pl-sub-icon svg { width: 100%; height: 100%; }
 .pl-sub-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.pl-sub-title { font-size: .88rem; font-weight: 700; color: #f0f9ff; }
-.pl-sub-desc { font-size: .68rem; color: #8fa3bd; }
+.pl-sub-title { font-size: .95rem; font-weight: 700; color: #f0f9ff; }
+.pl-sub-desc { font-size: .8rem; color: #8fa3bd; }
 .pl-sub .pl-badge { margin-top: 5px; align-self: flex-start; }
 
 /* --- 階段之間的箭頭 --- */
@@ -279,8 +280,8 @@
 }
 .pl-out-icon svg { width: 100%; height: 100%; }
 .pl-out-body { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-.pl-out-title { font-size: .9rem; font-weight: 700; color: #f0f9ff; }
-.pl-out-desc { font-size: .68rem; color: #8fa3bd; }
+.pl-out-title { font-size: .98rem; font-weight: 700; color: #f0f9ff; }
+.pl-out-desc { font-size: .8rem; color: #8fa3bd; }
 .pl-out-chevron {
   display: inline-flex;
   width: 16px; height: 16px;

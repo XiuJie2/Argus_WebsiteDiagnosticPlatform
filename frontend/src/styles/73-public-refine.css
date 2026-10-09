@@ -691,9 +691,9 @@
 .hx-head.is-center { max-width: 44rem; margin: 0 auto; text-align: center; }
 .hx-eyebrow {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   color: var(--pub-muted);
 }
 .hx-title {
@@ -786,7 +786,7 @@
 .hx-stack-card { padding: 1.6rem 1.75rem; display: grid; align-content: start; gap: 0.5rem; }
 .hx-stack-icon { color: var(--pub-accent); }
 .hx-stack-icon svg { width: 34px; height: 34px; }
-.hx-stack-step { margin: 0.6rem 0 0; font-size: 0.75rem; letter-spacing: 0.16em; color: var(--pub-muted); }
+.hx-stack-step { margin: 0.6rem 0 0; font-size: 0.85rem; letter-spacing: 0.16em; color: var(--pub-muted); }
 .hx-stack-title { margin: 0; font-size: clamp(1.4rem, 2.4vw, 1.8rem); font-weight: 700; color: var(--pub-heading); }
 .hx-stack-desc { margin: 0; font-size: 1rem; line-height: 1.75; color: var(--pub-muted); }
 .hx-stack-dots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
@@ -820,7 +820,7 @@
   gap: 0.35rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -870,13 +870,13 @@
   padding: 0.05rem 0.5rem;
   border: 1px solid var(--pub-line-strong);
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
 }
 .hx-live-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.85rem; }
 .hx-live-table th {
   padding: 0.6rem 1rem;
   text-align: left;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--pub-muted);
   border-bottom: 1px solid var(--pub-line);
@@ -893,8 +893,8 @@
   white-space: nowrap;
 }
 .hx-live-table .is-right { text-align: right; }
-.hx-live-page { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--pub-muted) !important; }
-.hx-live-dim { font-weight: 700; color: var(--pub-muted) !important; font-size: 0.78rem; }
+.hx-live-page { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.85rem; color: var(--pub-muted) !important; }
+.hx-live-dim { font-weight: 700; color: var(--pub-muted) !important; font-size: 0.85rem; }
 .hx-live-table tr.is-new { animation: hx-row-in 0.45s ease-out; }
 @keyframes hx-row-in {
   from { opacity: 0; transform: translateY(-12px); }
@@ -909,7 +909,8 @@
 }
 
 /* ── 檢測面向分頁 ── */
-.hx-cov-wrap { margin-top: clamp(2rem, 4vw, 3rem); }
+.hx-cov-wrap,
+.hx-pipe-wrap { margin-top: clamp(2rem, 4vw, 3rem); }
 .hx-cov { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 2fr); gap: 1.25rem; align-items: stretch; }
 .hx-cov-tabs { display: grid; gap: 0.5rem; }
 .hx-cov-tab {
@@ -958,7 +959,7 @@
   background: rgba(var(--hx-accent-rgb), 0.08);
 }
 .hx-cov-panel-icon svg { width: 28px; height: 28px; }
-.hx-cov-panel-code { margin: 0; font-size: 0.75rem; letter-spacing: 0.2em; color: var(--pub-muted); }
+.hx-cov-panel-code { margin: 0; font-size: 0.82rem; letter-spacing: 0.2em; color: var(--pub-muted); }
 .hx-cov-panel-title { margin: 0.2rem 0 0; font-size: 1.5rem; font-weight: 700; color: var(--pub-heading); }
 .hx-cov-panel-desc { margin: 1rem 0 0; color: var(--pub-muted); line-height: 1.75; }
 .hx-cov-panel .hx-dashes li { animation: hx-panel-in 0.4s ease-out both; animation-delay: calc(var(--i) * 0.07s); }
@@ -1037,7 +1038,7 @@
 .hx-report-item.is-active { border-color: rgba(var(--hx-accent-rgb), 0.6); background: rgba(var(--hx-accent-rgb), 0.08); }
 .hx-report-item:focus-visible { outline: 2px solid var(--pub-accent-strong); outline-offset: 2px; }
 .hx-report-item-text { display: grid; gap: 0.1rem; font-size: 0.85rem; }
-.hx-report-item-text small { color: var(--pub-muted); font-size: 0.72rem; }
+.hx-report-item-text small { color: var(--pub-muted); font-size: 0.82rem; }
 .hx-report-shot {
   position: relative;
   min-height: 220px;
@@ -1093,7 +1094,7 @@
   padding: 0.15rem 0.45rem;
   border: 1px solid var(--pub-line-strong);
   border-radius: 4px;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: 800;
   color: var(--pub-muted);
 }
@@ -1150,7 +1151,7 @@
   top: 0.6rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
   background: var(--hx-card);
   color: var(--pub-muted);

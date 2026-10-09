@@ -228,8 +228,15 @@ export function HomeSections({ features }) {
       </section>
 
       {/* 掃描鏈路圖：沿用原本的「三種引擎交叉診斷」圖，已拿掉螢光外框與發光圖示 */}
-      <section className="public-section hx-section">
-        <Reveal slide="none" duration={0.8}>
+      <section className="public-section hx-section" aria-labelledby="hx-pipe-title">
+        <SectionHead
+          id="hx-pipe-title"
+          center
+          eyebrow="掃描鏈路"
+          title="三種引擎交叉診斷"
+          desc="從授權、爬取到交叉診斷，每一步都留下證據，最後交付報告與修正後的頁面。"
+        />
+        <Reveal slide="none" duration={0.8} delay={0.2} className="hx-pipe-wrap">
           <ScanPipeline />
         </Reveal>
       </section>
@@ -273,7 +280,7 @@ export function HomeSections({ features }) {
 
       {/* 核心功能：內容來自 CMS */}
       <section className="public-section hx-section" aria-labelledby="hx-core-title">
-        <SectionHead id="hx-core-title" eyebrow="核心功能" title="從爬取到修正產出，一條龍完成" />
+        <SectionHead id="hx-core-title" center eyebrow="核心功能" title="從爬取到修正產出，一條龍完成" desc="爬取、診斷、報告與計費，都在同一個平台完成。" />
         <div className="hx-card-grid">
           {features.map((feature, i) => {
             const Icon = FEATURE_ICON_BY_EMOJI[feature.icon] || MagnifierIcon;
@@ -293,7 +300,7 @@ export function HomeSections({ features }) {
 
       {/* 安全邊界 */}
       <section className="public-section hx-section" aria-labelledby="hx-safe-title">
-        <SectionHead id="hx-safe-title" eyebrow="安全邊界" title="只檢查你有權限的網站" desc="每一項都對應實際程式碼，不是文宣。" />
+        <SectionHead id="hx-safe-title" center eyebrow="安全邊界" title="只檢查你有權限的網站" desc="每一項都對應實際程式碼，不是文宣。" />
         <div className="hx-card-grid is-four">
           {SAFETY.map(({ Icon, title, desc }, i) => (
             <Reveal key={title} slide="up" delay={i * 0.1}>
