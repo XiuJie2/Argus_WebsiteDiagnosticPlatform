@@ -132,3 +132,17 @@
   - lint（0 error）、typecheck、vitest 260 項、vite build 全部通過。
   - Playwright 截圖：鏈路圖夜間 1700／1440／1100／390、日間 1440；首頁整頁夜間與日間各 1440／390。各寬度 scrollWidth 等於視窗寬，頁面沒有錯誤。
 - 更正審查時的一個觀察：日間模式的 hero 其實是淺色，審查時說「仍是深色區塊」是看錯了。
+
+## 追加：精簡重複段落：移除「核心功能」（同日）
+- 依審查第 3 項詢問使用者後，使用者選擇移除「核心功能」。
+- 移除原因：
+  - 這 6 張卡片讀的是 CMS 的 `/content/features/`，內容過時，例如「四維安全掃描」與五個面向矛盾、「Hermes AI Agent 提供主動式漏洞驗證」與預設被動矛盾。
+  - 內容也和鏈路圖、「你會拿到什麼」重複。
+- 改動：
+  - `HomeSections` 移除該段、emoji 對應表與 `features` 參數，也刪掉只有這段使用的圖示 import。
+  - `PublicPages` 的 `ProjectPage` 移除 `/content/features/` 請求與 fallback 陣列。
+  - 後台「專案特色」分頁標題加註「首頁已不顯示」，並拿掉「預覽 /project」按鈕，避免誤導。資料與 API 都保留沒刪。
+  - 同步 `frontend/CLAUDE.md` 與 `ONBOARDING.md` 的 API 表。
+- 驗證：
+  - lint（0 error）、typecheck、vitest 260 項、vite build 全部通過。
+  - Playwright 截圖首頁整頁（夜間與日間各 1440／390）。scrollWidth 等於視窗寬，頁面沒有錯誤。

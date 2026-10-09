@@ -4,28 +4,23 @@
  * 堆疊卡片輪播、即時更新的掃描表格、掃描鏈路圖（流動連線）、左右交錯的功能列與可操作的預覽、
  * 滑鼠跟隨的卡片光暈。
  * 最上面的品牌 hero 與「技術棧」以下（FAQ、結尾 CTA）不在這裡，維持原樣。
- * 內容都以現有程式核對；「核心功能」仍讀 CMS（/content/features/），後台可編輯。
+ * 內容都以現有程式核對；原本讀 CMS 的「核心功能」與其他段落重複且內容過時，2026-10-09 移除。
  */
 import { useRef } from "react";
 
 import {
   BrowserIcon,
-  ChartIcon,
   ChatIcon,
-  CoinIcon,
   DocIcon,
   EyeIcon,
-  FlagIcon,
   GlobeIcon,
   LayersIcon,
   LockIcon,
   MagnifierIcon,
   PhoneIcon,
-  RobotIcon,
   ScoreIcon,
   ShieldIcon,
   SparkIcon,
-  SpiderIcon,
   TargetIcon,
 } from "../../../shared/LineIcons.jsx";
 import { ScanPipeline } from "../ScanPipeline.jsx";
@@ -137,20 +132,6 @@ const SAFETY = [
 ];
 
 // 核心功能的內容來自 CMS，管理員在後台填的是 emoji，這裡對映成描邊圖示
-const FEATURE_ICON_BY_EMOJI = {
-  "🕷️": SpiderIcon, "🕷": SpiderIcon,
-  "🔍": MagnifierIcon, "🔎": MagnifierIcon,
-  "🤖": RobotIcon,
-  "📊": ChartIcon, "📈": ChartIcon,
-  "📝": DocIcon, "📄": DocIcon, "📃": DocIcon,
-  "💎": CoinIcon, "💰": CoinIcon, "🪙": CoinIcon,
-  "🔐": LockIcon, "🔒": LockIcon,
-  "🛡️": ShieldIcon, "🛡": ShieldIcon,
-  "🌐": GlobeIcon,
-  "👀": EyeIcon, "👁": EyeIcon,
-  "🚀": FlagIcon, "🎯": FlagIcon,
-};
-
 function SectionHead({ eyebrow, title, desc, center = false, id }) {
   return (
     <header className={`hx-head${center ? " is-center" : ""}`}>
@@ -174,7 +155,7 @@ function Dashes({ items, delay = 0.45, slide = "down" }) {
   );
 }
 
-export function HomeSections({ features }) {
+export function HomeSections() {
   const rootRef = useRef(null);
   useCardGlow(rootRef);
 
@@ -275,26 +256,6 @@ export function HomeSections({ features }) {
               </div>
             );
           })}
-        </div>
-      </section>
-
-      {/* 核心功能：內容來自 CMS */}
-      <section className="public-section hx-section" aria-labelledby="hx-core-title">
-        <SectionHead id="hx-core-title" center eyebrow="核心功能" title="從爬取到修正產出，一條龍完成" desc="爬取、診斷、報告與計費，都在同一個平台完成。" />
-        <div className="hx-card-grid">
-          {features.map((feature, i) => {
-            const Icon = FEATURE_ICON_BY_EMOJI[feature.icon] || MagnifierIcon;
-            return (
-              <Reveal key={feature.id} slide="up" delay={(i % 3) * 0.1}>
-                <GlowCard className="hx-mini-card">
-                  <span className="hx-icon-box"><Icon /></span>
-                  <h3 className="hx-mini-title">{feature.title}</h3>
-                  <p className="hx-mini-desc">{feature.description}</p>
-                </GlowCard>
-              </Reveal>
-            );
-          })}
-          {features.length === 0 && <p className="public-empty">尚未設定功能介紹。</p>}
         </div>
       </section>
 

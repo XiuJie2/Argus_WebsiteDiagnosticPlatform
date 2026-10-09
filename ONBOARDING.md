@@ -360,7 +360,7 @@ Argus/
 ### 7.5 公開內容 CMS
 | Method | 端點 | 權限 | 說明 |
 |---|---|---|---|
-| GET | `/api/content/features/` | open | /project 用 |
+| GET | `/api/content/features/` | open | 前台目前未使用（2026-10-09 首頁移除「核心功能」段落） |
 | GET | `/api/content/team/` | open | 公開團隊頁已移除，端點與 CMS 資料保留（含 skill_levels + contributions） |
 | GET | `/api/content/releases/` | open | /download 用 |
 | GET | `/api/content/milestones/` | open | /project timeline 用 |

@@ -120,15 +120,6 @@ const PROJECT_STACK_POINTS = [
 ];
 
 
-const PROJECT_FEATURES_FALLBACK = [
-  { id: -1, icon: "🕷️", title: "BFS 深度爬蟲", description: "以 Playwright 驅動的 BFS 爬蟲，自動探索整站結構。" },
-  { id: -2, icon: "🔍", title: "四維安全掃描", description: "涵蓋 SEO、AEO、GEO、Security 四個維度的全面分析。" },
-  { id: -3, icon: "🤖", title: "Hermes AI Agent", description: "LLM 驅動的智慧代理人，提供主動式漏洞驗證。" },
-  { id: -4, icon: "📊", title: "即時進度追蹤", description: "掃描進度即時更新，支援多任務並行管理。" },
-  { id: -5, icon: "📝", title: "PDF 報告匯出", description: "一鍵產生專業 PDF 掃描報告，方便交付客戶。" },
-  { id: -6, icon: "💎", title: "點數計費系統", description: "靈活的 Coin 計費模式，按頁計費，精準控制成本。" },
-];
-
 const HOME_FAQ = [
   {
     q: "快速檢查和完整掃描差在哪？",
@@ -149,15 +140,6 @@ const HOME_FAQ = [
 ];
 
 function ProjectPage() {
-  const [features, setFeatures] = useState(PROJECT_FEATURES_FALLBACK);
-  useEffect(() => {
-    api.get("/content/features/")
-      .then((r) => {
-        const list = r.data.features || [];
-        if (list.length) setFeatures(list);
-      })
-      .catch(() => {});
-  }, []);
   return (
     <div className="public-page">
       <section className="public-hero public-hero--console">
@@ -204,7 +186,7 @@ function ProjectPage() {
       </section>
 
       {/* hero 與技術棧之間的段落（2026-10-09 改版，見 components/public/home/） */}
-      <HomeSections features={features} />
+      <HomeSections />
 
       <section className="project-stack">
         <div className="project-stack-intro">
