@@ -146,6 +146,11 @@
 :root[data-theme="light"] .public-shell .pl-out-chevron { color: #94a3b8; }
 /* 1540px 以下原本改成橫向捲動，看起來像被裁掉：
    改成兩列——上面六個階段自動換行，下面四項交付物一排，不需要捲動。 */
+/* 橫排時一般階段卡等高（03 群組卡較高、其餘垂直置中對齊箭頭），避免 01～06 高低不齊 */
+@media (min-width: 901px) {
+  .public-shell .pl-stage:not(.pl-stage-group) { min-height: 13.5rem; justify-content: flex-start; }
+  .public-shell .pl-stage:not(.pl-stage-group) .pl-badge { margin-top: auto; }
+}
 @media (min-width: 901px) and (max-width: 1540px) {
   .public-shell .pl-flow {
     flex-wrap: wrap;
@@ -161,13 +166,14 @@
     justify-content: center;
   }
   .public-shell .pl-fan { display: none; }
+  /* 交付列與上方階段列同寬：四欄平均分配，不再置中縮窄 */
   .public-shell .pl-outputs {
     flex: 1 1 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
   }
-  .public-shell .pl-out { width: auto; flex: 1 1 220px; max-width: 300px; }
+  .public-shell .pl-out { width: auto; }
 }
 /* 1180–1540px：六個階段仍放得下一排，讓節點寬度彈性縮放而不是換行 */
 @media (min-width: 1180px) and (max-width: 1540px) {
@@ -941,7 +947,7 @@
 .hx-cov-tab-text { display: grid; gap: 0.1rem; }
 .hx-cov-tab-text strong { color: var(--pub-heading); font-size: 0.95rem; }
 .hx-cov-tab-text span { color: var(--pub-muted); font-size: 0.8rem; }
-.hx-cov-panel { padding: clamp(1.5rem, 3vw, 2.2rem); }
+.hx-cov-panel { padding: clamp(1.5rem, 3vw, 2.2rem); display: flex; flex-direction: column; justify-content: center; }
 .hx-cov-panel-inner { animation: hx-panel-in 0.4s ease-out; }
 @keyframes hx-panel-in {
   from { opacity: 0; transform: translateX(16px); filter: blur(6px); }
@@ -988,10 +994,10 @@
 .hx-feature.is-preview-left { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .hx-feature.is-preview-left > .hx-feature-text { order: 2; }
 .hx-feature-text .hx-card { height: 100%; }
-.hx-feature-card { padding: clamp(1.4rem, 3vw, 2rem); display: flex; flex-direction: column; }
+.hx-feature-card { padding: clamp(1.4rem, 3vw, 2rem); display: flex; flex-direction: column; justify-content: center; }
 .hx-feature-head { display: flex; align-items: center; gap: 0.8rem; margin: 0 0 1.2rem; }
 .hx-feature-card .hx-desc { margin-top: 0.8rem; }
-.hx-feature-card .hx-dashes { margin-top: auto; padding-top: 1.5rem; }
+.hx-feature-card .hx-dashes { margin-top: 1.25rem; }
 
 /* 預覽外框 */
 .hx-preview {
