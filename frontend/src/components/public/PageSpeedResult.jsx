@@ -66,20 +66,26 @@ function usePageSpeed(initial) {
   return state;
 }
 
+const FIELD_TONE = { FAST: "good", AVERAGE: "warn", SLOW: "bad" };
+
 export default function PageSpeedResult({ pagespeed }) {
   const state = usePageSpeed(pagespeed);
   if (!state || state.status === "unavailable") return null;
-
+  if (state.status === "done") return <PageSpeedReport report={state.report} cached={state.cached} />;
   return (
-    <section className="insight-psi" aria-live="polite">
-      <h3 className="insight-psi-title">Google PageSpeed Insights（行動版）</h3>
-      {state.status === "pending" && (
-        <p className="insight-note">Google 正在量測，約需 20～60 秒，結果出來會自動顯示。</p>
+    <section className="speed-panel speed-panel-wide" aria-live="polite">
+      <header className="speed-panel-head">
+        <h3>Google PageSpeed Insights</h3>
+        <span className="speed-tag">行動版</span>
+      </header>
+      {state.status === "pending" ? (
+        <p className="speed-pending">
+          <span className="speed-spinner" aria-hidden="true" />
+          Google 正在量測，約需 20～60 秒，結果出來會自動顯示。
+        </p>
+      ) : (
+        <p className="speed-lead">這次沒有取得 Google 量測結果：{state.reason || "原因不明"}</p>
       )}
-      {state.status === "failed" && (
-        <p className="insight-note">這次沒有取得 Google 量測結果：{state.reason || "原因不明"}</p>
-      )}
-      {state.status === "done" && <PageSpeedReport report={state.report} cached={state.cached} />}
     </section>
   );
 }
@@ -92,67 +98,78 @@ function PageSpeedReport({ report, cached }) {
   const fieldMetrics = Object.entries(field.metrics || {});
   return (
     <>
-      <p className="insight-note">
-        Lighthouse {lab.version || ""} 以模擬行動裝置量測一次，數值會隨網路與伺服器狀況浮動。
-        {cached && "（10 分鐘內測過同一網址，沿用上次結果。）"}
-      </p>
-      {lab.error ? (
-        <p className="insight-note">Lighthouse 無法完成量測（{lab.error}）。</p>
-      ) : (
-        <div className="insight-metrics-grid">
-          {SCORE_LABELS.filter(([key]) => scores[key] != null).map(([key, label]) => (
-            <div key={key} className={`insight-psi-score is-${scoreTone(scores[key])}`}>
-              <span>{label}</span>
-              <strong>{scores[key]}</strong>
-            </div>
-          ))}
-        </div>
-      )}
-      {metrics.length > 0 && (
-        <div className="insight-metrics-grid">
-          {metrics.map((metric) => (
-            <div key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.display || "—"}</strong>
-            </div>
-          ))}
-        </div>
-      )}
-      <h4 className="insight-psi-subtitle">Chrome 真實使用者體驗（CrUX）</h4>
-      {fieldMetrics.length > 0 ? (
-        <>
-          <p className="insight-note">
-            過去 28 天的第 75 百分位。
-            {field.scope === "origin" && "這個網址的資料不足，以下是整個網站的資料。"}
-          </p>
-          <div className="insight-metrics-grid">
-            {fieldMetrics.map(([name, item]) => (
-              <div key={name}>
-                <span>{name}</span>
-                <strong>
-                  {formatField(name, item.p75)}
-                  {item.category_label && `（${item.category_label}）`}
-                </strong>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <p className="insight-note">{field.reason || "這個網站的真實使用者資料不足。"}</p>
-      )}
-      {lab.opportunities?.length > 0 && (
-        <>
-          <h4 className="insight-psi-subtitle">最值得改善的項目</h4>
-          <ul className="insight-finding-list">
-            {lab.opportunities.map((item) => (
-              <li key={item.id}>
-                <strong>{item.title}</strong>
-                {item.display && <span>{item.display}</span>}
+      <section className="speed-panel" aria-live="polite">
+        <header className="speed-panel-head">
+          <h3>Lighthouse 實驗室量測</h3>
+          <span className="speed-tag">Google PageSpeed Insights・行動版</span>
+        </header>
+        <p className="speed-lead">
+          Google 以模擬行動裝置量測一次（Lighthouse {lab.version || ""}），數值會隨網路與伺服器狀況浮動。
+          {cached && "10 分鐘內測過同一網址，沿用上次結果。"}
+        </p>
+        {lab.error ? (
+          <p className="speed-lead">Lighthouse 無法完成量測（{lab.error}）。</p>
+        ) : (
+          <ul className="speed-scores">
+            {SCORE_LABELS.filter(([key]) => scores[key] != null).map(([key, label]) => (
+              <li key={key} className={`speed-score is-${scoreTone(scores[key])}`}>
+                <strong>{scores[key]}</strong>
+                <span>{label}</span>
               </li>
             ))}
           </ul>
-        </>
-      )}
+        )}
+        {metrics.length > 0 && (
+          <dl className="speed-metrics">
+            {metrics.map((metric) => (
+              <div key={metric.label}>
+                <dt>{metric.label}</dt>
+                <dd>{metric.display || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {lab.opportunities?.length > 0 && (
+          <>
+            <h4 className="speed-subtitle">最值得改善的項目</h4>
+            <ul className="speed-opportunities">
+              {lab.opportunities.map((item) => (
+                <li key={item.id}>
+                  <span>{item.title}</span>
+                  {item.display && <span className="speed-muted">{item.display}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+      <section className="speed-panel">
+        <header className="speed-panel-head">
+          <h3>真實使用者體驗</h3>
+          <span className="speed-tag">Chrome CrUX</span>
+        </header>
+        {fieldMetrics.length > 0 ? (
+          <>
+            <p className="speed-lead">
+              Chrome 使用者過去 28 天的實際體驗（第 75 百分位）。
+              {field.scope === "origin" && "這個網址的資料不足，以下是整個網站的資料。"}
+            </p>
+            <dl className="speed-metrics is-field">
+              {fieldMetrics.map(([name, item]) => (
+                <div key={name} className={`is-${FIELD_TONE[item.category] || "none"}`}>
+                  <dt>{name}</dt>
+                  <dd>
+                    {formatField(name, item.p75)}
+                    {item.category_label && <span className="speed-muted">{item.category_label}</span>}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        ) : (
+          <p className="speed-lead">{field.reason || "這個網站的真實使用者資料不足。"}</p>
+        )}
+      </section>
     </>
   );
 }

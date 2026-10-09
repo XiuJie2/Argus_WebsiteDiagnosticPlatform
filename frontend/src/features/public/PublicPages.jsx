@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api";
-import PageSpeedResult from "../../components/public/PageSpeedResult.jsx";
+import SpeedTestResult from "../../components/public/SpeedTestResult.jsx";
 import { useArgusStore } from "../../store";
 import brandLogo from "../../assets/brand-logo.webp";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
@@ -585,9 +585,9 @@ function FreeToolsPage() {
           <h2>網站測速分析</h2>
           <p>單一 URL、單次請求，不扣 coin，不啟動全站爬蟲</p>
         </header>
-        <div className="insight-tool-layout">
-          <form className="insight-tool-card" onSubmit={runSpeedTest}>
-            <label className="insight-field">
+        <form className="speed-form" onSubmit={runSpeedTest}>
+          <div className="speed-form-row">
+            <label className="speed-form-field">
               <span>網址</span>
               <input
                 value={speedForm.url}
@@ -596,61 +596,28 @@ function FreeToolsPage() {
                 required
               />
             </label>
-            <label className="insight-check">
-              <input
-                type="checkbox"
-                checked={speedForm.authorization_confirmed}
-                onChange={(e) => setSpeedForm((f) => ({ ...f, authorization_confirmed: e.target.checked }))}
-              />
-              <span>我確認此頁面可公開測速，或我擁有分析授權。</span>
-            </label>
-            {speed.error && <div className="insight-error">{speed.error}</div>}
             <button type="submit" className="public-cta-primary" disabled={speed.loading}>
               {speed.loading ? "測速中..." : "開始測速"}
             </button>
-          </form>
-
-          <div className="insight-result-card">
-            {!speed.result ? (
-              <div className="insight-empty">
-                <strong>會輸出哪些結果</strong>
-                <span>分數、TTFB、傳輸量、阻塞 script、圖片 lazy loading、快取與壓縮建議；平台啟用時另附 Google PageSpeed Insights 的 Lighthouse 分數與真實使用者資料。</span>
-              </div>
-            ) : (
-              <>
-                <div className="insight-score-row">
-                  <div className={`insight-score score-${speed.result.grade}`}>
-                    {speed.result.score}
-                  </div>
-                  <div>
-                    <div className="insight-result-title">{speed.result.final_url}</div>
-                    <div className="insight-result-sub">{speed.result.source}</div>
-                  </div>
-                </div>
-                <div className="insight-metrics-grid">
-                  <div><span>TTFB</span><strong>{speed.result.metrics.ttfb_ms} ms</strong></div>
-                  <div><span>傳輸量</span><strong>{speed.result.metrics.transfer_kb} KB</strong></div>
-                  <div><span>阻塞 script</span><strong>{speed.result.metrics.blocking_scripts}</strong></div>
-                  <div><span>圖片</span><strong>{speed.result.metrics.images}</strong></div>
-                </div>
-                <p className="insight-note">{speed.result.core_web_vitals_note}</p>
-                {speed.result.findings.length > 0 ? (
-                  <ul className="insight-finding-list">
-                    {speed.result.findings.map((f, idx) => (
-                      <li key={`${f.title}-${idx}`}>
-                        <strong>{f.title}</strong>
-                        <span>{f.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="insight-success">未發現明顯效能風險。</div>
-                )}
-                <PageSpeedResult pagespeed={speed.result.pagespeed} />
-              </>
-            )}
           </div>
-        </div>
+          <label className="insight-check">
+            <input
+              type="checkbox"
+              checked={speedForm.authorization_confirmed}
+              onChange={(e) => setSpeedForm((f) => ({ ...f, authorization_confirmed: e.target.checked }))}
+            />
+            <span>我確認此頁面可公開測速，或我擁有分析授權。</span>
+          </label>
+          {speed.error && <div className="insight-error">{speed.error}</div>}
+        </form>
+        {speed.result ? (
+          <SpeedTestResult result={speed.result} />
+        ) : (
+          <p className="speed-hint">
+            會輸出：Argus 測速分數、伺服器回應時間、傳輸量、阻塞 script 與圖片延遲載入等檢查；
+            平台啟用時另附 Google PageSpeed Insights 的 Lighthouse 分數與 Chrome 真實使用者資料。
+          </p>
+        )}
       </section>
       )}
 

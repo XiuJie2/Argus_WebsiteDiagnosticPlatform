@@ -40,3 +40,24 @@
 - 前端：lint（0 error）、typecheck、vitest 263 項（新增 PageSpeedResult 3 項）、vite build 全部通過。
 - Playwright：攔截 API 模擬「pending → done」完整流程，在夜間 1440、日間 1440 與手機 390 截圖，畫面正確，scrollWidth 等於視窗寬。手機版指標改成兩欄。
 - 未做：沙盒沒有 PSI 金鑰，沒有對真實 Google 實測。部署後需要在正式站 `/free-tools` 測一次，確認 worker 有收到 `apps.insights.tasks.run_public_pagespeed`，約一分鐘內出現分數。
+
+## 追加：測速頁重新編排（同日）
+- 使用者反映：測速頁和會員頁的效能分頁相比，版面粗糙、不好看。
+- 原本的問題：
+  - 表單在左欄只佔一小塊，下方大片空白，所有結果擠在右欄的小格子裡。
+  - 分數圓圈的漸層底色被舊樣式蓋掉，只剩一個數字。
+  - 來源字樣是英文「Argus lightweight timing」。
+  - Google 量測的結果直接接在 Argus 結果下面，沒有分區。
+- 重排（比照會員頁 `PerformancePanel`）：
+  - 輸入改成上方一整列：網址欄＋開始測速按鈕，下面是確認勾選；手機版改成直排。
+  - 結果改成全寬分區：
+    - 第一塊「Argus 快速測速」：分數圓圈附等級文字（良好／需改善／不佳），6 項指標（伺服器回應、HTML 傳輸量、阻塞 script／總數、延遲載入圖片／總數、樣式表、第三方網域），以及附嚴重度徽章（高／中／低）的問題清單。
+    - 下方是 Google PageSpeed Insights 的兩塊：
+      - 「Lighthouse 實驗室量測」：四個分數置中大字、五個實驗室指標、最值得改善的項目，項目與可省時間左右對齊。
+      - 「真實使用者體驗」：CrUX 指標依良好／需改善／不佳上色，並附文字。
+    - 兩塊在寬螢幕（1100px 以上）並排；等待中或失敗時顯示單一整列，等待中有轉圈。
+  - 新元件 `components/public/SpeedTestResult.jsx`，`PageSpeedResult.jsx` 改成輸出上述兩塊。
+  - 樣式 `.speed-*` 寫在 `73-public-refine.css`，夜間與日間各有一組狀態色。
+- 驗證：
+  - lint（0 error）、typecheck、vitest 263 項、vite build 全部通過。
+  - Playwright 攔截 API 模擬 pending → done，在夜間與日間 1440、手機 390 截圖，scrollWidth 等於視窗寬。
