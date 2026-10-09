@@ -144,6 +144,35 @@
 :root[data-theme="light"] .public-shell .pl-sub-desc,
 :root[data-theme="light"] .public-shell .pl-out-desc { color: #475569; }
 :root[data-theme="light"] .public-shell .pl-out-chevron { color: #94a3b8; }
+/* 三種引擎子卡：標題與說明一律靠左對齊（原本標題置中、說明靠左，兩行對不齊） */
+.public-shell .pl-sub-body { text-align: left; }
+/* 手機版（≤900px）鏈路圖精簡：階段卡改成「圖示左、文字右」的橫列，箭頭縮短，整段約縮成原本一半高 */
+@media (max-width: 900px) {
+  .public-shell .pl-stage:not(.pl-stage-group) {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 2px;
+    align-items: start;
+    padding: 18px 16px 14px;
+    text-align: left;
+  }
+  .public-shell .pl-stage:not(.pl-stage-group) > * { grid-column: 2; }
+  .public-shell .pl-stage:not(.pl-stage-group) .pl-num { left: 16px; transform: none; }
+  .public-shell .pl-stage:not(.pl-stage-group) .pl-stage-icon {
+    grid-column: 1;
+    grid-row: 1 / span 4;
+    width: 34px;
+    height: 34px;
+    margin: 4px 0 0;
+  }
+  .public-shell .pl-stage:not(.pl-stage-group) .pl-badge { justify-self: start; margin-top: 6px; }
+  .public-shell .pl-stage-group { padding: 18px 14px 14px; gap: 8px; }
+  .public-shell .pl-sub { padding: 9px 12px; }
+  .public-shell .pl-arrow { height: 16px; margin: 4px auto; }
+  .public-shell .pl-outputs { gap: 8px; }
+  .public-shell .pl-out { padding: 10px 14px; }
+}
 /* 1540px 以下原本改成橫向捲動，看起來像被裁掉：
    改成兩列——上面六個階段自動換行，下面四項交付物一排，不需要捲動。 */
 /* 橫排時一般階段卡等高（03 群組卡較高、其餘垂直置中對齊箭頭），避免 01～06 高低不齊 */
@@ -720,6 +749,9 @@
 .hx-dashes { display: grid; gap: 0.7rem; margin: 1.4rem 0 0; padding: 0; list-style: none; }
 .hx-dashes li { display: flex; align-items: center; gap: 0.85rem; font-size: 0.95rem; color: var(--pub-text); }
 .hx-dash { width: 16px; height: 2px; flex-shrink: 0; background: var(--pub-accent-strong); }
+/* 首頁圖示統一中性色（與鏈路圖 --pl-icon 相同），強調色只留給選中狀態、小標與 CTA（2026-10-09） */
+.public-shell { --hx-icon: #cbd5e1; --hx-icon-bg: rgba(148, 163, 184, 0.08); }
+:root[data-theme="light"] .public-shell { --hx-icon: #334155; --hx-icon-bg: rgba(15, 23, 42, 0.04); }
 .hx-icon-box {
   display: inline-grid;
   place-items: center;
@@ -728,8 +760,8 @@
   flex-shrink: 0;
   border: 1px solid var(--pub-line-strong);
   border-radius: 10px;
-  background: rgba(var(--hx-accent-rgb), 0.08);
-  color: var(--pub-accent);
+  background: var(--hx-icon-bg);
+  color: var(--hx-icon);
 }
 .hx-icon-box svg { width: 21px; height: 21px; }
 
@@ -790,7 +822,7 @@
 .hx-stack-item[aria-hidden="true"] .hx-stack-card > * { opacity: 0; transition: opacity 0.2s; }
 .hx-stack-item .hx-card { height: 100%; }
 .hx-stack-card { padding: 1.6rem 1.75rem; display: grid; align-content: start; gap: 0.5rem; }
-.hx-stack-icon { color: var(--pub-accent); }
+.hx-stack-icon { color: var(--hx-icon); }
 .hx-stack-icon svg { width: 34px; height: 34px; }
 .hx-stack-step { margin: 0.6rem 0 0; font-size: 0.85rem; letter-spacing: 0.16em; color: var(--pub-muted); }
 .hx-stack-title { margin: 0; font-size: clamp(1.4rem, 2.4vw, 1.8rem); font-weight: 700; color: var(--pub-heading); }
@@ -906,13 +938,6 @@
   from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: none; }
 }
-.hx-live-fade {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 35%;
-  background: linear-gradient(to top, var(--hx-card), transparent);
-  pointer-events: none;
-}
 
 /* ── 檢測面向分頁 ── */
 .hx-cov-wrap,
@@ -920,7 +945,6 @@
 .hx-cov { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 2fr); gap: 1.25rem; align-items: stretch; }
 .hx-cov-tabs { display: grid; gap: 0.5rem; }
 .hx-cov-tab {
-  --cat: var(--pub-accent);
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -934,15 +958,11 @@
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s;
 }
-.hx-cov-tab[data-cat="seo"] { --cat: #818cf8; }
-.hx-cov-tab[data-cat="aeo"] { --cat: #a78bfa; }
-.hx-cov-tab[data-cat="geo"] { --cat: #22d3ee; }
-.hx-cov-tab[data-cat="security"] { --cat: #f87171; }
-.hx-cov-tab[data-cat="ux"] { --cat: #34d399; }
 .hx-cov-tab:hover { border-color: var(--pub-line-strong); }
 .hx-cov-tab.is-active { border-color: rgba(var(--hx-accent-rgb), 0.55); background: rgba(var(--hx-accent-rgb), 0.08); }
 .hx-cov-tab:focus-visible { outline: 2px solid var(--pub-accent-strong); outline-offset: 2px; }
-.hx-cov-tab-icon { color: var(--cat); }
+.hx-cov-tab-icon { color: var(--hx-icon); }
+.hx-cov-tab.is-active .hx-cov-tab-icon { color: var(--pub-accent); }
 .hx-cov-tab-icon svg { width: 22px; height: 22px; }
 .hx-cov-tab-text { display: grid; gap: 0.1rem; }
 .hx-cov-tab-text strong { color: var(--pub-heading); font-size: 0.95rem; }
@@ -961,8 +981,8 @@
   height: 54px;
   border-radius: 14px;
   border: 1px solid var(--pub-line-strong);
-  color: var(--pub-accent);
-  background: rgba(var(--hx-accent-rgb), 0.08);
+  color: var(--hx-icon);
+  background: var(--hx-icon-bg);
 }
 .hx-cov-panel-icon svg { width: 28px; height: 28px; }
 .hx-cov-panel-code { margin: 0; font-size: 0.82rem; letter-spacing: 0.2em; color: var(--pub-muted); }
@@ -1244,6 +1264,7 @@
   .hx-live-table td { padding-inline: 0.6rem; }
   .hx-live-table th:nth-child(3) { width: 18%; }
   .hx-live-table th:nth-child(4) { width: 28%; }
+  .hx-live-table td.hx-live-check { white-space: normal; overflow: visible; line-height: 1.5; }
   .hx-cov-tab-icon svg { width: 20px; height: 20px; }
   .hx-cov-tab-text strong { font-size: 0.8rem; }
 }
