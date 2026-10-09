@@ -102,6 +102,48 @@
 .public-shell .pl-out:hover {
   box-shadow: none;
 }
+/* 日間：鏈路圖改淺色卡片；強調色換成在白底上讀得清楚的深色版 */
+:root[data-theme="light"] .public-shell .pl-wrap {
+  --pl-line: rgba(15, 23, 42, 0.12);
+  --pl-line-hover: rgba(15, 23, 42, 0.26);
+  --pl-icon: #334155;
+  --pl-track: rgba(15, 23, 42, 0.13);
+  --pl-flow: #0284c7;
+}
+:root[data-theme="light"] .public-shell .pl-wrap,
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="cyan"] { --pl: 3, 105, 161; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="teal"],
+:root[data-theme="light"] .public-shell .pl-badge.tone-teal { --pl: 15, 118, 110; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="amber"],
+:root[data-theme="light"] .public-shell .pl-badge.tone-amber { --pl: 180, 83, 9; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="violet"],
+:root[data-theme="light"] .public-shell .pl-badge.tone-violet { --pl: 109, 40, 217; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="sky"] { --pl: 2, 132, 199; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="rose"] { --pl: 190, 18, 60; }
+:root[data-theme="light"] .public-shell .pl-wrap [data-tone="slate"] { --pl: 71, 85, 105; }
+:root[data-theme="light"] .public-shell .pl-title {
+  background-image: linear-gradient(100deg, #0369a1 0%, #0e7490 100%);
+}
+:root[data-theme="light"] .public-shell .pl-subtitle { color: var(--pub-muted); }
+:root[data-theme="light"] .public-shell .pl-note {
+  color: var(--pub-heading);
+  background: #ffffff;
+}
+:root[data-theme="light"] .public-shell .pl-stage,
+:root[data-theme="light"] .public-shell .pl-out,
+:root[data-theme="light"] .public-shell .pl-num {
+  background: #ffffff;
+}
+:root[data-theme="light"] .public-shell .pl-stage { box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.35); }
+:root[data-theme="light"] .public-shell .pl-sub { background: #f8fafc; }
+:root[data-theme="light"] .public-shell .pl-stage-title,
+:root[data-theme="light"] .public-shell .pl-group-title,
+:root[data-theme="light"] .public-shell .pl-sub-title,
+:root[data-theme="light"] .public-shell .pl-out-title { color: var(--pub-heading); }
+:root[data-theme="light"] .public-shell .pl-stage-line,
+:root[data-theme="light"] .public-shell .pl-sub-desc,
+:root[data-theme="light"] .public-shell .pl-out-desc { color: #475569; }
+:root[data-theme="light"] .public-shell .pl-out-chevron { color: #94a3b8; }
 /* 1540px 以下原本改成橫向捲動，看起來像被裁掉：
    改成兩列——上面六個階段自動換行，下面四項交付物一排，不需要捲動。 */
 @media (min-width: 901px) and (max-width: 1540px) {

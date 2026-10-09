@@ -10,6 +10,8 @@
   --pl-line: rgba(148, 163, 184, .22);
   --pl-line-hover: rgba(148, 163, 184, .42);
   --pl-icon: #cbd5e1;
+  --pl-track: rgba(148, 163, 184, .26);   /* 連線底色 */
+  --pl-flow: #38bdf8;                     /* 沿線流動的亮段（實色、不發光） */
   position: relative;
   padding: 4px 0 8px;
 }
@@ -189,7 +191,7 @@
   position: relative;
   flex: 0 0 auto;
   width: 34px;
-  height: 2px;
+  height: 3px;
   margin: 0 3px;
   display: flex;
   align-items: center;
@@ -199,15 +201,15 @@
   inset: 0 7px 0 0;
   border-radius: 999px;
   background: linear-gradient(90deg,
-    rgba(148, 163, 184, .25) 0%, rgba(203, 213, 225, .85) 50%, rgba(148, 163, 184, .25) 100%);
-  background-size: 240% 100%;
-  animation: pl-flow 2.2s linear infinite;
+    var(--pl-track) 0 34%, var(--pl-flow) 42% 58%, var(--pl-track) 66% 100%);
+  background-size: 300% 100%;
+  animation: pl-flow 1.6s linear infinite;
 }
 .pl-arrow-head {
   position: absolute;
   right: 0;
   width: 0; height: 0;
-  border-left: 7px solid rgba(203, 213, 225, .7);
+  border-left: 7px solid var(--pl-flow);
   border-top: 4.5px solid transparent;
   border-bottom: 4.5px solid transparent;
 }
@@ -226,25 +228,25 @@
   transform: translate(-50%, -50%);
   width: 11px; height: 11px;
   border-radius: 999px;
-  background: #94a3b8;
+  background: var(--pl-flow);
 }
 .pl-fan-wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .pl-wire-base {
   fill: none;
-  stroke: rgba(148, 163, 184, .3);
-  stroke-width: 1.1;
+  stroke: var(--pl-track);
+  stroke-width: 1.4;
   vector-effect: non-scaling-stroke;
 }
 /* pathLength=100 正規化，長短線的脈衝速度與長度一致 */
 .pl-wire-pulse {
   fill: none;
-  stroke: rgba(203, 213, 225, .85);
-  stroke-width: 1.6;
+  stroke: var(--pl-flow);
+  stroke-width: 2.6;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
-  stroke-dasharray: 10 90;
+  stroke-dasharray: 18 82;
   stroke-dashoffset: 100;
-  animation: pl-pulse 2.4s linear infinite;
+  animation: pl-pulse 1.8s linear infinite;
 }
 
 /* --- 交付物 --- */
@@ -287,9 +289,14 @@
 }
 .pl-out-chevron svg { width: 100%; height: 100%; }
 
+/* 背景寬 300%：位置 100%→0% 剛好讓亮段從左端外移到右端外 */
 @keyframes pl-flow {
   0% { background-position: 100% 0; }
-  100% { background-position: -140% 0; }
+  100% { background-position: 0% 0; }
+}
+@keyframes pl-flow-y {
+  0% { background-position: 0 100%; }
+  100% { background-position: 0 0%; }
 }
 @keyframes pl-pulse { to { stroke-dashoffset: 0; } }
 
@@ -311,13 +318,19 @@
   .pl-stage-slot { flex-direction: column; align-items: stretch; }
   .pl-stage, .pl-stage-group { width: 100%; }
   .pl-sub { width: 100%; }
-  .pl-arrow { width: 2px; height: 22px; margin: 7px auto; }
-  .pl-arrow-line { inset: 0 0 7px 0; background: rgba(203, 213, 225, .6); animation: none; }
+  .pl-arrow { width: 3px; height: 26px; margin: 7px auto; }
+  .pl-arrow-line {
+    inset: 0 0 7px 0;
+    background: linear-gradient(180deg,
+      var(--pl-track) 0 34%, var(--pl-flow) 42% 58%, var(--pl-track) 66% 100%);
+    background-size: 100% 300%;
+    animation-name: pl-flow-y;
+  }
   .pl-arrow-head {
     right: auto; bottom: 0; left: 50%; transform: translateX(-50%);
     border-left: 4.5px solid transparent;
     border-right: 4.5px solid transparent;
-    border-top: 7px solid rgba(203, 213, 225, .7);
+    border-top: 7px solid var(--pl-flow);
     border-bottom: none;
   }
   .pl-fan { display: none; }
@@ -327,6 +340,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pl-arrow-line, .pl-wire-pulse, .pl-hub { animation: none; }
+  .pl-arrow-line { background: var(--pl-flow); }
   .pl-wire-pulse { stroke-dasharray: none; opacity: .75; }
   .pl-stage:hover, .pl-sub:hover, .pl-out:hover { transform: none; }
 }
