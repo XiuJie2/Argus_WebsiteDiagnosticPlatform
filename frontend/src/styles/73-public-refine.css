@@ -1253,3 +1253,22 @@
   .hx-status.is-running::before,
   .hx-verify-input.is-typing::after { animation: none; }
 }
+
+/* ── 快速檢查頁測速：Google PageSpeed Insights 結果（components/public/PageSpeedResult.jsx） ── */
+.insight-psi {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--pub-line-strong);
+}
+.insight-psi-title { margin: 0 0 0.4rem; font-size: 1.1rem; font-weight: 700; color: var(--pub-heading); }
+.insight-psi-subtitle { margin: 1.1rem 0 0.3rem; font-size: 0.98rem; font-weight: 700; color: var(--pub-heading); }
+.insight-psi-score strong { font-size: 1.5rem; }
+.insight-psi-score.is-good strong { color: #34d399; }
+.insight-psi-score.is-warn strong { color: #fbbf24; }
+.insight-psi-score.is-bad strong { color: #f87171; }
+:root[data-theme="light"] .insight-psi-score.is-good strong { color: #047857; }
+:root[data-theme="light"] .insight-psi-score.is-warn strong { color: #b45309; }
+:root[data-theme="light"] .insight-psi-score.is-bad strong { color: #b91c1c; }
+@media (max-width: 640px) {
+  .insight-psi .insight-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

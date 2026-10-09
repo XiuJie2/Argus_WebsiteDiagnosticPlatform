@@ -372,7 +372,7 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
   （全部可分析頁跑完＝completed、部分＝partial、全失敗＝failed）。報告來源標「外部工具（axe-core）」、
   依據 `reports.AXE_BASIS`（自動化檢查不等於符合 WCAG）。axe 檔案固定版本放 `vendor/axe/`（含 LICENSE），
   升級時換檔並更新 `tests_accessibility_axe.py` 的版本斷言。測試的真實瀏覽器案例需 `ARGUS_TEST_CHROMIUM_PATH`。
-- **PageSpeed Insights（2026-10-07，roadmap P1，`pagespeed.py`）**：勾 UX、`ARGUS_PAGESPEED_ENABLED` 且有
+- **PageSpeed Insights（2026-10-07，roadmap P1，`pagespeed.py`；2026-10-09 起快速檢查頁測速也共用 `fetch`，見 `apps/insights/CLAUDE.md`）**：勾 UX、`ARGUS_PAGESPEED_ENABLED` 且有
   `ARGUS_PAGESPEED_API_KEY` 時，`stage_pagespeed` 以 PSI v5（`strategy=mobile`，四個 category）**只測首頁**，結果寫
   `ScanJob.performance_report`（migration 0030）：`lab`＝Lighthouse 實驗室單次量測（四個分數、LCP／CLS／TBT／FCP／
   Speed Index、前 5 項改善機會，`runtimeError` 記在 `lab.error`），`field`＝CrUX 過去 28 天第 75 百分位（優先

@@ -119,7 +119,7 @@ D:\nodejs\npm.cmd install 套件名
 | `/login` | `LoginPage` | 兩個分頁「登入／註冊」（`?tab=register` 直接開註冊）。登入：Google 登入（未註冊的 Google 帳號回 409 → 直接切到註冊第二步）＋「Email 或用戶名」＋密碼，後端啟用 Turnstile 時顯示驗證元件（`login`）。註冊（2026-10-04）：一律先 Google 授權（`/auth/register/google/`）→ 第二步 `RegisterDetailsForm` 設定用戶名（預填 `suggested_handle`）與密碼並同意條款（`/auth/register/`）；沒有 Google Client ID 時註冊分頁顯示無法註冊。`?deleted=1` 顯示「帳號已刪除」 |
 | `/account/setup` | `AccountSetupPage`（`AuthPages.jsx`） | 舊帳號缺用戶名或密碼時的補設頁；`RequireAuth` 讀 store 的 `profile`（`fetchProfile` → `/api/auth/me/`），`needs_setup` 時其他會員頁一律導到這裡（帶 `next`） |
 | `/project` | `ProjectPage` | 公開行銷頁：品牌 hero（維持原樣）→ hero 與技術棧之間的動態段落（2026-10-09，`components/public/home/HomeSections.jsx`：運作方式堆疊卡片輪播、即時掃描表格、檢測面向分頁、掃描鏈路圖（沿用原本的 `ScanPipeline`／`PipelineDiagram`「三種引擎交叉診斷」，樣式 `styles/71-scan-pipeline.css`；2026-10-09 依使用者要求拿掉螢光：邊框改中性細線、圖示改中性色、移除所有光暈，強調色只留在編號與徽章文字；連線用實色亮段沿線流動（`--pl-flow`／`--pl-track`）；日間改淺色卡片，覆寫在 `73-public-refine.css`；首頁不顯示圖內標題，改用段落共用的置中 `SectionHead`，主標題與徽章用中文）、你會拿到什麼（互動報告／報告查驗／前後對照三個可操作預覽）、安全邊界（原本讀 CMS `/content/features/` 的「核心功能」與其他段落重複且內容過時，2026-10-09 移除；後台「專案特色」資料保留但前台不再顯示）；整頁跨欄段落的標題一律置中（左右分欄的段落標題才靠左），公開頁小字下限約 0.8rem；捲入畫面依序淡入、滑鼠跟隨卡片光暈，偏好減少動態時全部停用）→ 技術棧、FAQ、結尾 CTA（維持原樣） |
-| `/free-tools` | `FreeToolsPage` | 公開免費分析（測速 / URL 風險 / 郵件風險），呼叫 `/api/insights/*` |
+| `/free-tools` | `FreeToolsPage` | 公開免費分析（測速 / URL 風險 / 郵件風險），呼叫 `/api/insights/*`；測速結果下方的 Google PageSpeed Insights 由 `components/public/PageSpeedResult.jsx` 每 3 秒輪詢 `speed-test/pagespeed/<job>/`（最多 2.5 分鐘，平台未設金鑰時不顯示，2026-10-09） |
 | `/purchase` | `PurchasePage` | 購買點數（3 步驟結帳 wizard） |
 | `/download` | `DownloadPage` | 下載報告 |
 | `/verify` | `VerifyReportPage` | 報告查驗（公開導覽列有入口） |

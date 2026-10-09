@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api";
+import PageSpeedResult from "../../components/public/PageSpeedResult.jsx";
 import { useArgusStore } from "../../store";
 import brandLogo from "../../assets/brand-logo.webp";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
@@ -477,7 +478,7 @@ function FreeToolsPage() {
             先用<span className="hero-grad">快速檢查</span>初步判斷
           </h1>
           <p className="public-hero-sub">
-            <strong>免登入、不扣點數、即時出結果。</strong>單頁測速參考 PageSpeed / Lighthouse 的效能思路；
+            <strong>免登入、不扣點數、即時出結果。</strong>網站測速除了 Argus 的輕量量測，也會串接 Google PageSpeed Insights；
             釣魚網址與郵件判斷使用本機特徵分類器，不把內容送到大模型 API。
           </p>
         </div>
@@ -556,13 +557,12 @@ function FreeToolsPage() {
                   <div className="insight-success">單頁檢查未發現明顯問題。</div>
                 )}
                 <p className="insight-note">{quick.result.note}</p>
-                {/* 導流 CTA（修正產出票06）：只講完整掃描的加值與入口，
-                    不提供任何免費產生——修正產出對應的是一份付費掃描結果。 */}
+                {/* 導流 CTA：只講完整掃描的加值與入口（2026-10-09 依現況改寫：修正產出已由頁面優化取代） */}
                 <div className="insight-upsell">
-                  <strong>完整掃描可獲得可直接貼上的修正內容</strong>
+                  <strong>完整掃描看得更完整</strong>
                   <span>
-                    JSON-LD、Open Graph＋meta、llms.txt 與 FAQ Schema，
-                    以網站實際內容產生、可直接複製採用；付費掃描附贈 1 次產生額度。
+                    整站爬取與逐頁截圖、五個面向的問題與修正順序、防偽 PDF 報告，
+                    還能針對單一頁面產出優化後的版本；註冊後第一次完整掃描免費。
                   </span>
                   <button
                     type="button"
@@ -614,7 +614,7 @@ function FreeToolsPage() {
             {!speed.result ? (
               <div className="insight-empty">
                 <strong>會輸出哪些結果</strong>
-                <span>分數、TTFB、傳輸量、阻塞 script、圖片 lazy loading、快取與壓縮建議。</span>
+                <span>分數、TTFB、傳輸量、阻塞 script、圖片 lazy loading、快取與壓縮建議；平台啟用時另附 Google PageSpeed Insights 的 Lighthouse 分數與真實使用者資料。</span>
               </div>
             ) : (
               <>
@@ -646,6 +646,7 @@ function FreeToolsPage() {
                 ) : (
                   <div className="insight-success">未發現明顯效能風險。</div>
                 )}
+                <PageSpeedResult pagespeed={speed.result.pagespeed} />
               </>
             )}
           </div>
