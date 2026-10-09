@@ -1,45 +1,25 @@
 /**
- * 公開首頁（/project）。2026-10-09 依使用者要求重新編排與配色：
- * 參考成熟產品首頁的節奏——置中 hero＋中心節點圖、左文右卡的段落、單一強調色、細線框。
- * 內容精簡成「做什麼 → 怎麼做 → 拿到什麼 → 安全邊界 → 技術 → 常見問題」，每一句都對照現有程式。
- * 樣式在 styles/73-public-refine.css 的 .home2-*（限縮在 .public-shell 內）。
+ * 公開首頁（/project）。最上面的品牌 hero 維持原樣（樣式 21-public／35-public-legacy／70-home）；
+ * hero 以下 2026-10-09 依使用者要求重新編排與配色：參考成熟產品首頁的節奏——左文右卡、
+ * 單一強調色、細線框。內容精簡成「怎麼做 → 進度 → 拿到什麼 → 安全邊界 → 技術 → 常見問題」，
+ * 每一句都對照現有程式。樣式在 styles/73-public-refine.css 的 .home2-*（限縮在 .public-shell 內）。
  */
 import { NavLink } from "react-router-dom";
 
 import { useArgusStore } from "../../store";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
+import argusEye from "../../assets/argus-eye.webp";
 import { BRAND_MARKS } from "../../components/public/brandMarks";
 import {
-  ChatIcon,
   DocIcon,
   GlobeIcon,
   LockIcon,
-  MagnifierIcon,
-  PhoneIcon,
   ShieldIcon,
   SparkIcon,
   SpiderIcon,
   TargetIcon,
   EyeIcon,
 } from "../../shared/LineIcons.jsx";
-
-const DIMENSIONS = [
-  { key: "seo", code: "SEO", name: "搜尋可見度", Icon: MagnifierIcon },
-  { key: "aeo", code: "AEO", name: "AI 問答", Icon: ChatIcon },
-  { key: "geo", code: "GEO", name: "生成式搜尋", Icon: SparkIcon },
-  { key: "security", code: "資安", name: "被動資安", Icon: ShieldIcon },
-  { key: "ux", code: "UX", name: "使用體驗", Icon: PhoneIcon },
-];
-
-// hero 中心節點圖：左三右三，最後一個是交付的報告
-const HERO_NODES = [
-  { side: "left", row: 0, label: "SEO", Icon: MagnifierIcon },
-  { side: "left", row: 1, label: "AEO", Icon: ChatIcon },
-  { side: "left", row: 2, label: "GEO", Icon: SparkIcon },
-  { side: "right", row: 0, label: "資安", Icon: ShieldIcon },
-  { side: "right", row: 1, label: "UX", Icon: PhoneIcon },
-  { side: "right", row: 2, label: "報告", Icon: DocIcon },
-];
 
 const STEPS = [
   { no: "01", title: "授權與網域驗證", desc: "只檢查你有權限的網站；主動式測試要先驗證網域所有權。" },
@@ -98,30 +78,6 @@ function Dash({ children }) {
       <span className="home2-dash" aria-hidden="true" />
       {children}
     </li>
-  );
-}
-
-function HeroDiagram() {
-  return (
-    <div className="home2-diagram" aria-hidden="true">
-      <svg className="home2-diagram-lines" viewBox="0 0 1000 300" preserveAspectRatio="none">
-        <path d="M150 150 H440" />
-        <path d="M260 50 H330 L420 150" />
-        <path d="M260 250 H330 L420 150" />
-        <path d="M850 150 H560" />
-        <path d="M740 50 H670 L580 150" />
-        <path d="M740 250 H670 L580 150" />
-      </svg>
-      {HERO_NODES.map(({ side, row, label, Icon }) => (
-        <span className={`home2-node is-${side} row-${row}`} key={label}>
-          <span className="home2-node-box"><Icon /></span>
-          <span className="home2-node-label">{label}</span>
-        </span>
-      ))}
-      <span className="home2-core">
-        <img src={argusEyeStill} alt="" width="256" height="202" />
-      </span>
-    </div>
   );
 }
 
@@ -239,29 +195,54 @@ export function ProjectPage() {
   const accessToken = useArgusStore((s) => s.accessToken);
   const startTo = accessToken ? "/dashboard" : "/login";
   return (
-    <div className="home2">
-      <section className="home2-hero">
-        <span className="home2-grid" aria-hidden="true" />
-        <p className="home2-pill"><span className="home2-pill-dot" />授權式 AI 網站健檢平台</p>
-        <h1 className="home2-title">
-          看見網站的<span className="home2-underline">每一個問題</span>
-        </h1>
-        <p className="home2-lead">
-          輸入網址，一次檢查搜尋、AI 問答、資安與使用體驗；每個問題都附證據，並排好先修哪一個。
-        </p>
-        <ul className="home2-chips" aria-label="檢查面向">
-          {DIMENSIONS.map(({ key, code, name, Icon }) => (
-            <li key={key}><Icon />{code}<span className="home2-chip-sub">{name}</span></li>
-          ))}
-        </ul>
-        <div className="home2-actions">
-          <NavLink to={startTo} className="home2-btn is-primary">開始掃描</NavLink>
-          <NavLink to="/free-tools" className="home2-btn">免登入快速檢查</NavLink>
-        </div>
-        <p className="home2-note">第一次完整掃描免費 · 每月贈 200 coin</p>
-        <HeroDiagram />
-      </section>
+    <>
+      {/* 最上面的品牌 hero 維持改版前原樣（使用者指定只改下方區塊） */}
+      <div className="public-page">
+        <section className="public-hero public-hero--console">
+          <div className="public-hero-bg" aria-hidden="true">
+            <span className="hero-orb hero-orb-1" />
+            <span className="hero-orb hero-orb-2" />
+            <span className="hero-orb hero-orb-3" />
+            <span className="hero-grid" />
+            <span className="hero-scan" />
+            <span className="hero-corner tl" />
+            <span className="hero-corner tr" />
+            <span className="hero-corner bl" />
+            <span className="hero-corner br" />
+          </div>
+          <div className="public-hero-content">
+            {/* 品牌識別：會動的 Argus 之眼 ＋ 藝術字。
+                之眼用 <picture>，偏好減少動態者自動換靜態首幀且不下載動態版。 */}
+            <div className="public-hero-brand">
+              <picture className="public-hero-eye">
+                <source media="(prefers-reduced-motion: reduce)" srcSet={argusEyeStill} />
+                <img src={argusEye} alt="" width="256" height="202" />
+              </picture>
+              <span className="public-hero-wordmark" aria-label="ARGUS">
+                {"ARGUS".split("").map((ch, i) => (
+                  <span key={`${ch}-${i}`} style={{ animationDelay: `${i * 0.08}s` }}>{ch}</span>
+                ))}
+              </span>
+            </div>
+            <span className="public-hero-eyebrow">掃描 · 洞察 · 證據</span>
+            <h1 className="public-hero-title">
+              一鍵看見<span className="hero-grad">網站的所有問題</span>
+            </h1>
+            <p className="public-hero-sub">
+              輸入網址，找出網站在<strong>搜尋、體驗與資安</strong>上的問題，並排好該先處理哪一個。
+            </p>
+            <p className="public-hero-sub is-highlight">
+              不只列出問題——修正要用的檔案，直接生給你。
+            </p>
+            <div className="public-hero-actions">
+              <NavLink to="/login" className="public-cta-primary">登入進行詳細檢查 →</NavLink>
+              <NavLink to="/free-tools" className="public-cta-ghost">免登入先試單頁檢查</NavLink>
+            </div>
+          </div>
+        </section>
+      </div>
 
+    <div className="home2">
       <section className="home2-section home2-split">
         <div className="home2-split-text">
           <Eyebrow>運作方式</Eyebrow>
@@ -388,5 +369,6 @@ export function ProjectPage() {
         </div>
       </section>
     </div>
+    </>
   );
 }

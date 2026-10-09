@@ -549,8 +549,9 @@
 
 /* ========================================
    首頁 v2（/project，features/public/ProjectPage.jsx，2026-10-09）
-   參考成熟產品首頁：近黑底＋淡網格、單一強調色（虹膜青）、1px 細線框、
-   小字距眉標＋大標題、左文右卡。沒有彩色左邊條；狀態用徽章＋文字。
+   hero 以下的段落：參考成熟產品首頁——近黑底＋淡網格、單一強調色（虹膜青）、
+   1px 細線框、小字距眉標＋大標題、左文右卡。沒有彩色左邊條；狀態用徽章＋文字。
+   最上面的品牌 hero 維持原樣（.public-hero--console）。
    ======================================== */
 .public-shell:has(.home2),
 :root[data-theme="light"] .public-shell:has(.home2) {
@@ -597,7 +598,7 @@
 .home2 :where(ul, ol) { padding: 0; list-style: none; }
 .home2-muted { color: var(--h-muted); }
 
-/* 淡網格（hero 與 CTA 的背景），中央較明顯、四周淡出 */
+/* 淡網格（結尾 CTA 的背景），中央較明顯、四周淡出 */
 .home2-grid {
   position: absolute;
   inset: 0;
@@ -611,77 +612,6 @@
   pointer-events: none;
 }
 
-/* ── hero ── */
-.home2-hero {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: clamp(3.5rem, 8vw, 6rem) 0 clamp(2rem, 4vw, 3rem);
-}
-.home2-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.85rem;
-  border: 1px solid var(--h-line-strong);
-  border-radius: 999px;
-  background: var(--h-surface);
-  font-size: 0.82rem;
-  color: var(--h-text);
-}
-.home2-pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--h-accent);
-}
-.home2-title {
-  margin-top: 1.4rem;
-  font-size: clamp(2.3rem, 5.6vw, 4rem);
-  line-height: 1.12;
-  font-weight: 800;
-  color: var(--h-heading);
-  letter-spacing: -0.01em;
-}
-.home2-underline {
-  margin-left: 0.25em;
-  text-decoration: underline;
-  text-decoration-color: var(--h-accent);
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.16em;
-}
-.home2-lead {
-  max-width: 40rem;
-  text-wrap: balance;
-  margin-top: 1.1rem;
-  font-size: clamp(1rem, 1.6vw, 1.12rem);
-  line-height: 1.75;
-  color: var(--h-muted);
-}
-.home2-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.4rem;
-}
-.home2-chips li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--h-line);
-  border-radius: 8px;
-  background: var(--h-surface);
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--h-text);
-}
-.home2-chips svg { width: 15px; height: 15px; color: var(--h-accent); }
-.home2-chip-sub { font-weight: 400; color: var(--h-muted); }
 .home2-actions {
   display: flex;
   flex-wrap: wrap;
@@ -712,83 +642,13 @@
 }
 .home2-btn.is-primary:hover { filter: brightness(1.08); background: var(--h-accent); }
 .home2-btn:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 3px; }
-.home2-note { margin-top: 0.9rem; font-size: 0.82rem; color: var(--h-muted); }
-
-/* 中心節點圖：Argus 之眼在中間，左右各三個面向節點以細線相連 */
-.home2-diagram {
-  position: relative;
-  width: 100%;
-  max-width: 1000px;
-  height: 300px;
-  margin-top: clamp(2.5rem, 5vw, 4rem);
-}
-.home2-diagram-lines {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-.home2-diagram-lines path {
-  fill: none;
-  stroke: var(--h-line-strong);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-.home2-core {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: grid;
-  place-items: center;
-  width: 112px;
-  height: 112px;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--h-accent);
-  border-radius: 22px;
-  background: var(--h-surface);
-  box-shadow: 0 0 0 8px var(--h-accent-soft);
-}
-.home2-core img { width: 78px; height: auto; }
-.home2-node {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  transform: translate(-50%, -50%);
-}
-.home2-node-box {
-  display: grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  border: 1px solid var(--h-line-strong);
-  border-radius: 14px;
-  background: var(--h-surface);
-  color: var(--h-text);
-}
-.home2-node-box svg { width: 26px; height: 26px; }
-.home2-node-label {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--h-muted);
-  white-space: nowrap;
-}
-.home2-node.is-left.row-0 { left: 26%; top: 16.7%; }
-.home2-node.is-left.row-1 { left: 15%; top: 50%; }
-.home2-node.is-left.row-2 { left: 26%; top: 83.3%; }
-.home2-node.is-right.row-0 { left: 74%; top: 16.7%; }
-.home2-node.is-right.row-1 { left: 85%; top: 50%; }
-.home2-node.is-right.row-2 { left: 74%; top: 83.3%; }
 
 /* ── 段落共用 ── */
 .home2-section {
   padding-block: clamp(3.5rem, 8vw, 6rem);
   border-top: 1px solid var(--h-line);
 }
-.home2-hero + .home2-section { border-top: 0; }
+.home2 > .home2-section:first-child { border-top: 0; }
 .home2 > .home2-section:last-child { padding-bottom: 1rem; border-top: 0; }
 .home2-eyebrow {
   font-size: 0.75rem;
@@ -1180,15 +1040,7 @@
   .home2-safety li:nth-child(n + 3) { border-top: 1px solid var(--h-line); }
 }
 @media (max-width: 640px) {
-  .home2-diagram { height: auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 1.6rem 1rem; padding-bottom: 1.4rem; }
-  .home2-diagram-lines,
-  .home2-core { display: none; }
-  .home2-node { position: static; transform: none; }
-  .home2-node-label { position: static; }
-  .home2-node-box { width: 52px; height: 52px; }
   .home2-logos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .home2-safety { grid-template-columns: minmax(0, 1fr); }
   .home2-safety li + li { border-left: 0; border-top: 1px solid var(--h-line); }
-  .home2-chip-sub { display: none; }
-  .home2-underline { display: inline-block; margin-left: 0; }
 }
