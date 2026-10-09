@@ -129,76 +129,6 @@
 
 /* ── 取自改版前 33-intro-hero-brand.css（462848b） ── */
 @keyframes introHintPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.95; } }
-.public-hero--console {
-  position: relative;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(0, 60, 110, 0.45) 0%, rgba(6, 11, 31, 0) 60%),
-    radial-gradient(ellipse at center, #001a2e 0%, #050a1c 60%, #03060f 100%);
-  border-bottom: 1px solid rgba(0, 247, 255, 0.18);
-  overflow: hidden;
-}
-.public-hero--console .hero-grid {
-  position: absolute;
-  inset: -2px;
-  background-image:
-    linear-gradient(rgba(0, 200, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 200, 255, 0.06) 1px, transparent 1px);
-  background-size: 48px 48px;
-  animation: heroGridDrift 14s linear infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-@keyframes heroGridDrift {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(48px, 48px); }
-}
-.public-hero--console .hero-scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(0, 247, 255, 0.55) 50%, transparent);
-  box-shadow: 0 0 18px rgba(0, 247, 255, 0.6);
-  animation: heroScan 6s linear infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-@keyframes heroScan {
-  0% { top: -4px; }
-  100% { top: 100%; }
-}
-.public-hero--console .hero-corner {
-  position: absolute;
-  width: 46px;
-  height: 46px;
-  border: 2px solid rgba(0, 247, 255, 0.75);
-  box-shadow: 0 0 16px rgba(0, 247, 255, 0.4);
-  pointer-events: none;
-  z-index: 1;
-}
-.public-hero--console .hero-corner.tl { top: 18px; left: 18px; border-right: none; border-bottom: none; }
-.public-hero--console .hero-corner.tr { top: 18px; right: 18px; border-left: none; border-bottom: none; }
-.public-hero--console .hero-corner.bl { bottom: 18px; left: 18px; border-right: none; border-top: none; }
-.public-hero--console .hero-corner.br { bottom: 18px; right: 18px; border-left: none; border-top: none; }
-.public-hero--console .public-hero-content { position: relative; z-index: 2; }
-.public-hero--console .public-hero-title {
-  color: #f2feff;
-  text-shadow: 0 0 14px rgba(0, 247, 255, 0.55), 0 0 38px rgba(0, 247, 255, 0.35);
-  animation: heroTitleGlow 3.2s ease-in-out infinite;
-}
-@keyframes heroTitleGlow {
-  0%, 100% { text-shadow: 0 0 14px rgba(0, 247, 255, 0.55), 0 0 38px rgba(0, 247, 255, 0.35); }
-  50% { text-shadow: 0 0 22px rgba(0, 247, 255, 0.85), 0 0 60px rgba(0, 247, 255, 0.55); }
-}
-.public-hero--console .public-hero-eyebrow {
-  color: #67e8f9;
-  text-shadow: 0 0 10px rgba(0, 247, 255, 0.5);
-}
-@media (prefers-reduced-motion: reduce) {
-  .public-hero--console .hero-grid,
-  .public-hero--console .hero-scan,
-  .public-hero--console .public-hero-title { animation: none; }
-}
 .insight-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -371,18 +301,8 @@
   color: #ffffff;
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
 }
-:root[data-theme="light"] .hero-grid,
-:root[data-theme="light"] .hero-scan,
-:root[data-theme="light"] .hero-corner,
 :root[data-theme="light"] .hero-orb { display: none; }
-:root[data-theme="light"] .public-hero--console {
-  background:
-    linear-gradient(180deg, rgba(224, 242, 254, 0.72), rgba(248, 251, 253, 0.2)),
-    transparent;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-:root[data-theme="light"] .public-hero-title,
-:root[data-theme="light"] .public-hero--console .public-hero-title {
+:root[data-theme="light"] .public-hero-title {
   color: #132033;
   text-shadow: none;
   animation: none;
@@ -597,22 +517,6 @@
 :root[data-theme="light"] .public-footer-inner,
 :root[data-theme="light"] .public-footer-sub { color: #475569; }
 :root[data-theme="light"] .public-footer-copy { color: #64748b; }
-:root[data-theme="light"] .project-stack {
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(15, 23, 42, 0.12);
-}
-:root[data-theme="light"] .project-stack-eyebrow { color: #0369A1; }
-:root[data-theme="light"] .project-stack-title { color: #0F172A; }
-:root[data-theme="light"] .project-stack-points p { color: #334155; }
-:root[data-theme="light"] .project-stack-dash { background: #0284C7; }
-:root[data-theme="light"] .tech-tile-mark {
-  background: rgba(248, 250, 252, 1);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
-}
-:root[data-theme="light"] .tech-tile:hover .tech-tile-mark {
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), 0 0 16px rgba(2, 132, 199, 0.25);
-}
-:root[data-theme="light"] .tech-tile-label { color: #334155; }
 :root[data-theme="light"] .insight-risk-badge.risk-minimal {
   color: #047857;
   background: rgba(4, 120, 87, 0.10);
@@ -772,37 +676,13 @@
 :root[data-theme="light"] .hero-orb-3 {
   opacity: 0.1;
 }
-:root[data-theme="light"] .public-hero--console {
-  background:
-    radial-gradient(ellipse at 50% -10%, rgba(125, 211, 252, 0.26), transparent 58%),
-    linear-gradient(180deg, rgba(239, 246, 255, 0.92), rgba(248, 251, 255, 0.58));
-  border-bottom-color: rgba(37, 99, 235, 0.12);
-}
-:root[data-theme="light"] .public-hero--console .hero-grid {
-  display: block;
-  background-image:
-    linear-gradient(rgba(37, 99, 235, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 99, 235, 0.055) 1px, transparent 1px);
-}
-:root[data-theme="light"] .public-hero--console .hero-scan {
-  display: block;
-  opacity: 0.34;
-  background: linear-gradient(90deg, transparent, rgba(8, 126, 164, 0.52) 50%, transparent);
-  box-shadow: 0 0 16px rgba(14, 165, 233, 0.28);
-}
-:root[data-theme="light"] .public-hero--console .hero-corner {
-  display: block;
-  border-color: rgba(29, 78, 216, 0.34);
-  box-shadow: none;
-}
 :root[data-theme="light"] .public-hero-eyebrow {
   color: #0b5c83;
   border-color: rgba(8, 126, 164, 0.22);
   background: rgba(255, 255, 255, 0.62);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 9px 22px -20px rgba(29, 78, 216, 0.6);
 }
-:root[data-theme="light"] .public-hero-title,
-:root[data-theme="light"] .public-hero--console .public-hero-title {
+:root[data-theme="light"] .public-hero-title {
   color: var(--public-day-ink);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
 }

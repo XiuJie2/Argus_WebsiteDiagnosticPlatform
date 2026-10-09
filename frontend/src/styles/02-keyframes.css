@@ -33,27 +33,8 @@
   50% { opacity: 0.6; }
 }
 
-@keyframes tech-marquee-up {
-  from { transform: translateY(0); }
-  to { transform: translateY(-50%); }
-}
-@keyframes tech-marquee-down {
-  from { transform: translateY(-50%); }
-  to { transform: translateY(0); }
-}
-
-/* 偏好減少動態者：改成不捲動的靜態網格，並隱藏用來無縫循環的複製區塊 */
+/* 偏好減少動態者 */
 @media (prefers-reduced-motion: reduce) {
-  .tech-marquee {
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-  .tech-marquee-col {
-    height: auto;
-    overflow: visible;
-  }
-  .tech-marquee-track { animation: none; }
-  .tech-marquee-group.is-clone { display: none; }
   /* 進行中狀態改用靜態色點：脈動只是輔助訊號，狀態文字本身已經講清楚了 */
   .rebuild-dot { animation: none; }
 }
