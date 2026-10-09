@@ -61,3 +61,24 @@
 - 驗證：
   - lint（0 error）、typecheck、vitest 263 項、vite build 全部通過。
   - Playwright 攔截 API 模擬 pending → done，在夜間與日間 1440、手機 390 截圖，scrollWidth 等於視窗寬。
+
+## 追加：單頁檢查與釣魚偵測一起重排（同日）
+- 使用者要求比照測速頁，一併優化單頁檢查與釣魚偵測。
+- 單頁檢查（`components/public/QuickScanResult.jsx`）：
+  - 輸入改成上方一整列。
+  - 結果分兩區：
+    - 「單頁快速檢查」：分數圓圈附等級文字，三個面向分數置中大字（手機版一列三格），問題依嚴重度（高／中／低）排序並標出面向。
+    - 完整掃描導流：文字左、按鈕右。
+- 釣魚偵測（`components/public/PhishingResult.jsx`，網址與郵件共用）：
+  - 兩張卡片各自有標題與標籤，900px 以下改成單欄。
+  - 結果顯示：
+    - 風險分數／100、等級徽章（高風險／中風險／低風險／低訊號）、長條。長條寬度用 CSS 變數 `--risk` 帶入動態值，並加 `role="meter"`。
+    - 建議文字。
+    - 郵件另列寄件網域、Reply-To、Return-Path、信內連結數與附件，可疑訊號的證據用等寬字。
+  - 郵件輸入欄的標籤說明可以從郵件軟體「顯示原始碼」複製。
+  - 移除不再使用的 `RiskLevelBadge`／`RISK_LABELS`。
+- 後端：單頁檢查的 `note` 原本寫「完整多頁＋四維深掃＋互動報告請登入後到「掃描」功能」，改成「整站、五個面向與互動報告請登入後建立完整掃描」。
+- 驗證：
+  - `ruff` 與 `apps.insights` 測試通過。
+  - 前端 lint（0 error）、vitest 265 項（新增 2 項：問題排序與面向標示、郵件風險與寄件資訊）、vite build 全部通過。
+  - Playwright 攔截三個 API，在夜間與日間 1440、手機 390 截圖，scrollWidth 等於視窗寬。

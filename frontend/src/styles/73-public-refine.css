@@ -1420,11 +1420,76 @@
 @keyframes speed-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .speed-spinner { animation: none; } }
 
+/* 單頁檢查與釣魚偵測沿用同一套 .speed-* 版面（2026-10-09） */
+.speed-form-field textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--pub-line-strong);
+  border-radius: 12px;
+  background: var(--hx-card-2);
+  color: var(--pub-heading);
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+.speed-form-field textarea:focus-visible { outline: 2px solid rgba(var(--hx-accent-rgb), 0.6); outline-offset: 1px; }
+.speed-cat {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--pub-line-strong);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pub-muted);
+  vertical-align: 0.1em;
+}
+.speed-upsell { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; }
+.speed-upsell h3 { margin: 0 0 0.35rem; font-size: 1.1rem; color: var(--pub-heading); }
+.speed-upsell .speed-lead { margin: 0; }
+.speed-upsell .public-cta-primary { flex: 0 0 auto; white-space: nowrap; }
+
+.phish-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.phish-form { display: grid; gap: 0.75rem; }
+.phish-form .public-cta-primary { justify-self: start; min-height: 44px; padding: 0 1.5rem; }
+.phish-result { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--pub-line); }
+.phish-risk { display: grid; gap: 0.6rem; }
+.phish-risk-head { display: flex; align-items: baseline; gap: 0.4rem; }
+.phish-risk-head strong { font-size: 2.2rem; line-height: 1; }
+.phish-risk-max { color: var(--pub-muted); font-size: 0.95rem; }
+.phish-risk-level {
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.phish-risk.is-good .phish-risk-head strong,
+.phish-risk.is-good .phish-risk-level { color: var(--speed-good); }
+.phish-risk.is-warn .phish-risk-head strong,
+.phish-risk.is-warn .phish-risk-level { color: var(--speed-warn); }
+.phish-risk.is-bad .phish-risk-head strong,
+.phish-risk.is-bad .phish-risk-level { color: var(--speed-bad); }
+.phish-meter { height: 8px; border-radius: 999px; background: var(--hx-card-2); border: 1px solid var(--pub-line); overflow: hidden; }
+.phish-meter span { display: block; width: var(--risk); height: 100%; border-radius: inherit; }
+.phish-risk.is-good .phish-meter span { background: var(--speed-good); }
+.phish-risk.is-warn .phish-meter span { background: var(--speed-warn); }
+.phish-risk.is-bad .phish-meter span { background: var(--speed-bad); }
+.phish-advice { margin: 0; color: var(--pub-heading); font-size: 0.95rem; line-height: 1.7; }
+.phish-meta { margin-top: 1rem; }
+.phish-meta dd { font-size: 0.92rem; overflow-wrap: anywhere; }
+.phish-evidence { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.82rem !important; overflow-wrap: anywhere; }
+
 /* 寬螢幕：Lighthouse 與真實使用者並排（第一塊 Argus 量測與等待中的提示佔滿整列） */
 @media (min-width: 1100px) {
   .speed-results { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
   .speed-results > .speed-panel:first-child,
   .speed-results > .speed-panel-wide { grid-column: 1 / -1; }
+}
+@media (max-width: 900px) {
+  .phish-grid { grid-template-columns: minmax(0, 1fr); }
+  .speed-upsell { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 640px) {
   .speed-form-row { flex-direction: column; align-items: stretch; }
@@ -1434,4 +1499,5 @@
   .speed-grade strong { font-size: 1.6rem; }
   .speed-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .speed-scores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .speed-scores.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

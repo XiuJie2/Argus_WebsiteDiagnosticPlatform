@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api";
+import PhishingResult from "../../components/public/PhishingResult.jsx";
+import QuickScanResult from "../../components/public/QuickScanResult.jsx";
 import SpeedTestResult from "../../components/public/SpeedTestResult.jsx";
 import { useArgusStore } from "../../store";
 import brandLogo from "../../assets/brand-logo.webp";
@@ -392,21 +394,6 @@ function PurchasePage() {
   );
 }
 
-const RISK_LABELS = {
-  high: "高風險",
-  medium: "中風險",
-  low: "低風險",
-  minimal: "低訊號",
-};
-
-function RiskLevelBadge({ level }) {
-  return (
-    <span className={`insight-risk-badge risk-${level || "minimal"}`}>
-      {RISK_LABELS[level] || "未判定"}
-    </span>
-  );
-}
-
 function useInsightTool(endpoint) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -494,12 +481,11 @@ function FreeToolsPage() {
       <section className="public-section">
         <header className="public-section-head">
           <h2>單頁快速檢查</h2>
-          <p>輸入一個網址，立即看 SEO / 資安 / AEO·GEO 的單頁體檢分數與重點問題；完整多頁＋AI 深掃請登入後到「掃描」</p>
+          <p>輸入一個網址，立即看這一頁的 SEO、資安與 AEO／GEO 分數與重點問題；整站檢查請登入後建立完整掃描</p>
         </header>
-        <div className="insight-tool-layout">
-          <form className="insight-tool-card" onSubmit={runQuickScan}>
-            <h3 className="insight-card-title">單頁快速檢查</h3>
-            <label className="insight-field">
+        <form className="speed-form" onSubmit={runQuickScan}>
+          <div className="speed-form-row">
+            <label className="speed-form-field">
               <span>網址</span>
               <input
                 value={quickForm.url}
@@ -508,74 +494,25 @@ function FreeToolsPage() {
                 required
               />
             </label>
-            <label className="insight-check">
-              <input
-                type="checkbox"
-                checked={quickForm.authorization_confirmed}
-                onChange={(e) => setQuickForm((f) => ({ ...f, authorization_confirmed: e.target.checked }))}
-              />
-              <span>我確認此頁面可公開檢測，或我擁有分析授權。</span>
-            </label>
-            {quick.error && <div className="insight-error">{quick.error}</div>}
             <button type="submit" className="public-cta-primary" disabled={quick.loading}>
               {quick.loading ? "檢查中..." : "開始單頁檢查"}
             </button>
-          </form>
-
-          <div className="insight-result-card">
-            {!quick.result ? (
-              <div className="insight-empty">
-                <strong>會輸出哪些結果</strong>
-                <span>整體分數 + SEO / 資安 / AEO·GEO 三維單頁分數與重點問題清單。</span>
-              </div>
-            ) : (
-              <>
-                <div className="insight-score-row">
-                  <div className={`insight-score score-${quick.result.grade}`}>
-                    {quick.result.overall_score}
-                  </div>
-                  <div>
-                    <div className="insight-result-title">{quick.result.final_url}</div>
-                    <div className="insight-result-sub">單頁快速檢查（不含多頁爬蟲 / Playwright）</div>
-                  </div>
-                </div>
-                <div className="insight-metrics-grid">
-                  {quick.result.categories.map((c) => (
-                    <div key={c.key}><span>{c.label}</span><strong>{c.score}</strong></div>
-                  ))}
-                </div>
-                {quick.result.findings.length > 0 ? (
-                  <ul className="insight-finding-list">
-                    {quick.result.findings.map((f, idx) => (
-                      <li key={`${f.title}-${idx}`}>
-                        <strong>{f.title}</strong>
-                        <span>{f.detail}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="insight-success">單頁檢查未發現明顯問題。</div>
-                )}
-                <p className="insight-note">{quick.result.note}</p>
-                {/* 導流 CTA：只講完整掃描的加值與入口（2026-10-09 依現況改寫：修正產出已由頁面優化取代） */}
-                <div className="insight-upsell">
-                  <strong>完整掃描看得更完整</strong>
-                  <span>
-                    整站爬取與逐頁截圖、五個面向的問題與修正順序、防偽 PDF 報告，
-                    還能針對單一頁面產出優化後的版本；註冊後第一次完整掃描免費。
-                  </span>
-                  <button
-                    type="button"
-                    className="public-cta-primary"
-                    onClick={() => navigate("/login")}
-                  >
-                    登入建立完整掃描
-                  </button>
-                </div>
-              </>
-            )}
           </div>
-        </div>
+          <label className="insight-check">
+            <input
+              type="checkbox"
+              checked={quickForm.authorization_confirmed}
+              onChange={(e) => setQuickForm((f) => ({ ...f, authorization_confirmed: e.target.checked }))}
+            />
+            <span>我確認此頁面可公開檢測，或我擁有分析授權。</span>
+          </label>
+          {quick.error && <div className="insight-error">{quick.error}</div>}
+        </form>
+        {quick.result ? (
+          <QuickScanResult result={quick.result} onFullScan={() => navigate("/login")} />
+        ) : (
+          <p className="speed-hint">會輸出：整體分數與等級、SEO／資安／AEO·GEO 三個面向的分數，以及依嚴重度排序的問題清單。</p>
+        )}
       </section>
       )}
 
@@ -627,79 +564,53 @@ function FreeToolsPage() {
           <h2>可疑網址 / 詐騙郵件檢測</h2>
           <p>貼上一個網址或一封郵件內容，本機特徵分類器幫你判斷「是否可能是釣魚／詐騙」（不外送大模型 API）</p>
         </header>
-        <div className="insight-two-col">
-          <form className="insight-tool-card" onSubmit={runUrlCheck}>
-            <h3 className="insight-card-title">網址安全檢測（防釣魚）</h3>
-            <label className="insight-field">
-              <span>可疑連結</span>
-              <input
-                value={urlValue}
-                onChange={(e) => setUrlValue(e.target.value)}
-                placeholder="https://secure-login.example/verify"
-                required
-              />
-            </label>
-            {urlCheck.error && <div className="insight-error">{urlCheck.error}</div>}
-            <button type="submit" className="public-cta-primary" disabled={urlCheck.loading}>
-              {urlCheck.loading ? "分析中..." : "分析 URL"}
-            </button>
-            {urlCheck.result && (
-              <div className="insight-risk-result">
-                <div className="insight-risk-head">
-                  <strong>{urlCheck.result.risk_score}/100</strong>
-                  <RiskLevelBadge level={urlCheck.result.risk_level} />
-                </div>
-                <p>{urlCheck.result.recommendation}</p>
-                <ul className="insight-feature-list">
-                  {urlCheck.result.features.slice(0, 5).map((f, idx) => (
-                    <li key={`${f.title}-${idx}`}>
-                      <strong>{f.title}</strong>
-                      <span>{f.evidence}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </form>
+        <div className="phish-grid">
+          <section className="speed-panel">
+            <header className="speed-panel-head">
+              <h3>網址安全檢測</h3>
+              <span className="speed-tag">防釣魚連結</span>
+            </header>
+            <form className="phish-form" onSubmit={runUrlCheck}>
+              <label className="speed-form-field">
+                <span>可疑連結</span>
+                <input
+                  value={urlValue}
+                  onChange={(e) => setUrlValue(e.target.value)}
+                  placeholder="https://secure-login.example/verify"
+                  required
+                />
+              </label>
+              {urlCheck.error && <div className="insight-error">{urlCheck.error}</div>}
+              <button type="submit" className="public-cta-primary" disabled={urlCheck.loading}>
+                {urlCheck.loading ? "分析中..." : "分析網址"}
+              </button>
+            </form>
+            {urlCheck.result && <PhishingResult result={urlCheck.result} />}
+          </section>
 
-          <form className="insight-tool-card" onSubmit={runEmailCheck}>
-            <h3 className="insight-card-title">郵件詐騙檢測（防釣魚信）</h3>
-            <label className="insight-field">
-              <span>.eml / 原始信件內容</span>
-              <textarea
-                value={emailValue}
-                onChange={(e) => setEmailValue(e.target.value)}
-                placeholder={"From: notice@example.com\nAuthentication-Results: ...\n\n請立即驗證帳號..."}
-                rows={9}
-                required
-              />
-            </label>
-            {emailCheck.error && <div className="insight-error">{emailCheck.error}</div>}
-            <button type="submit" className="public-cta-primary" disabled={emailCheck.loading}>
-              {emailCheck.loading ? "分析中..." : "分析郵件"}
-            </button>
-            {emailCheck.result && (
-              <div className="insight-risk-result">
-                <div className="insight-risk-head">
-                  <strong>{emailCheck.result.risk_score}/100</strong>
-                  <RiskLevelBadge level={emailCheck.result.risk_level} />
-                </div>
-                <p>{emailCheck.result.recommendation}</p>
-                <div className="insight-email-meta">
-                  <span>From: {emailCheck.result.from_domain || "未解析"}</span>
-                  <span>連結數: {emailCheck.result.url_count}</span>
-                </div>
-                <ul className="insight-feature-list">
-                  {emailCheck.result.features.slice(0, 5).map((f, idx) => (
-                    <li key={`${f.title}-${idx}`}>
-                      <strong>{f.title}</strong>
-                      <span>{f.evidence}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </form>
+          <section className="speed-panel">
+            <header className="speed-panel-head">
+              <h3>郵件詐騙檢測</h3>
+              <span className="speed-tag">防釣魚信</span>
+            </header>
+            <form className="phish-form" onSubmit={runEmailCheck}>
+              <label className="speed-form-field">
+                <span>原始信件內容（含標頭，可從郵件軟體「顯示原始碼」複製）</span>
+                <textarea
+                  value={emailValue}
+                  onChange={(e) => setEmailValue(e.target.value)}
+                  placeholder={"From: notice@example.com\nAuthentication-Results: ...\n\n請立即驗證帳號..."}
+                  rows={8}
+                  required
+                />
+              </label>
+              {emailCheck.error && <div className="insight-error">{emailCheck.error}</div>}
+              <button type="submit" className="public-cta-primary" disabled={emailCheck.loading}>
+                {emailCheck.loading ? "分析中..." : "分析郵件"}
+              </button>
+            </form>
+            {emailCheck.result && <PhishingResult result={emailCheck.result} email />}
+          </section>
         </div>
       </section>
       )}
