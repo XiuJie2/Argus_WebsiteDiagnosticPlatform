@@ -118,7 +118,7 @@ D:\nodejs\npm.cmd install 套件名
 |---|---|---|
 | `/login` | `LoginPage` | 兩個分頁「登入／註冊」（`?tab=register` 直接開註冊）。登入：Google 登入（未註冊的 Google 帳號回 409 → 直接切到註冊第二步）＋「Email 或用戶名」＋密碼，後端啟用 Turnstile 時顯示驗證元件（`login`）。註冊（2026-10-04）：一律先 Google 授權（`/auth/register/google/`）→ 第二步 `RegisterDetailsForm` 設定用戶名（預填 `suggested_handle`）與密碼並同意條款（`/auth/register/`）；沒有 Google Client ID 時註冊分頁顯示無法註冊。`?deleted=1` 顯示「帳號已刪除」 |
 | `/account/setup` | `AccountSetupPage`（`AuthPages.jsx`） | 舊帳號缺用戶名或密碼時的補設頁；`RequireAuth` 讀 store 的 `profile`（`fetchProfile` → `/api/auth/me/`），`needs_setup` 時其他會員頁一律導到這裡（帶 `next`） |
-| `/project` | `ProjectPage` | 公開行銷頁：品牌 hero（維持原樣）→ hero 與技術棧之間的動態段落（2026-10-09，`components/public/home/HomeSections.jsx`：運作方式堆疊卡片輪播、即時掃描表格、檢測面向分頁、你會拿到什麼（互動報告／報告查驗／前後對照三個可操作預覽）、核心功能（CMS `/content/features/`）、安全邊界；捲入畫面依序淡入、滑鼠跟隨卡片光暈，偏好減少動態時全部停用）→ 技術棧、FAQ、結尾 CTA（維持原樣） |
+| `/project` | `ProjectPage` | 公開行銷頁：品牌 hero（維持原樣）→ hero 與技術棧之間的動態段落（2026-10-09，`components/public/home/HomeSections.jsx`：運作方式堆疊卡片輪播、即時掃描表格、檢測面向分頁、掃描鏈路圖（`ScanPipelineMap`：01 授權閘門→02 真實渲染爬取→03 三種引擎→Argus（04 覆蓋檢查・05 證據化・06 評分）→四項交付；圖示方塊＋細灰連線，連線依節點實際位置畫曲線、一小段亮色沿線流動，不用螢光外框；≤1023px 改直向清單）、你會拿到什麼（互動報告／報告查驗／前後對照三個可操作預覽）、核心功能（CMS `/content/features/`）、安全邊界；捲入畫面依序淡入、滑鼠跟隨卡片光暈，偏好減少動態時全部停用）→ 技術棧、FAQ、結尾 CTA（維持原樣） |
 | `/free-tools` | `FreeToolsPage` | 公開免費分析（測速 / URL 風險 / 郵件風險），呼叫 `/api/insights/*` |
 | `/purchase` | `PurchasePage` | 購買點數（3 步驟結帳 wizard） |
 | `/download` | `DownloadPage` | 下載報告 |
@@ -242,7 +242,7 @@ npm run typecheck
 | `src/features/account/AuthenticatedPages.jsx` | 會員區入口：re-export `TopNav`／`BillingPage`（＋`SubscriptionPanel`）／`SettingsPage`，各頁實作在同目錄同名檔；購點為 462848b 舊版 |
 | `src/features/reviews/ReviewsPage.jsx` | 公開評論、評分分布、本人評論、逐則按讚／檢舉（樣式 `50-reviews.css`＋`51-reviews-dark.css`＋`52-reviews-layout-v2.css`） |
 | `src/features/public/PublicPages.jsx` | 公開頁 layout（導覽＋分組頁尾）與專案、免費工具、購買介紹、下載、報告查驗頁 |
-| `src/components/public/home/` | 首頁 hero 與技術棧之間的段落（2026-10-09）：`HomeSections`（段落與文案）、`HomeMotion`（`Reveal` 捲入淡入、`useCardGlow`／`GlowCard` 卡片光暈、`useInView`、`usePrefersReducedMotion`）、`ProcessStack`、`LiveScanTable`、`CoverageTabs`、`ReportPreview`、`VerifyPreview`、`CompareSlider`。參考 TradingGoose 首頁的做法自行實作（該專案為 AGPL-3.0，未複製程式碼），不引入動畫套件；輪播與即時表格在不在畫面內、滑鼠移入或偏好減少動態時暫停 |
+| `src/components/public/home/` | 首頁 hero 與技術棧之間的段落（2026-10-09）：`HomeSections`（段落與文案）、`HomeMotion`（`Reveal` 捲入淡入、`useCardGlow`／`GlowCard` 卡片光暈、`useInView`、`usePrefersReducedMotion`）、`ProcessStack`、`LiveScanTable`、`CoverageTabs`、`ScanPipelineMap`、`ReportPreview`、`VerifyPreview`、`CompareSlider`。參考 TradingGoose 首頁的做法自行實作（該專案為 AGPL-3.0，未複製程式碼），不引入動畫套件；輪播與即時表格在不在畫面內、滑鼠移入或偏好減少動態時暫停 |
 | `src/features/public/PartnersPage.jsx` | 商業合作頁與洽談表單（樣式在 `73-public-refine.css` 的 `partners-*`）|
 | `src/components/navigation/SiteNav.jsx` | 公開頁與登入後共用的頂部導覽列外殼＋日夜切換鈕 |
 | `src/features/public/NotFoundPage.jsx` | 未匹配路由的 404 頁面 |

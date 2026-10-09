@@ -573,6 +573,8 @@
   --hx-card-2: rgba(241, 245, 249, 0.95);
 }
 
+/* 尚未出現的元素帶著 ±48px 位移，不能把頁面撐出水平捲動（clip 不會建立捲動容器） */
+.public-shell .hx { overflow-x: clip; }
 /* 段落節奏：與 .public-page > .public-section 一致（這些段落多包了一層 .hx） */
 .public-shell .hx > .hx-section {
   margin-top: 0;
@@ -1162,4 +1164,109 @@
   .hx-cov-panel .hx-dashes li,
   .hx-status.is-running::before,
   .hx-verify-input.is-typing::after { animation: none; }
+}
+
+/* ── 掃描鏈路圖（ScanPipelineMap）：圖示方塊＋細灰連線，一小段亮色沿線流動；不用螢光外框 ── */
+.public-shell {
+  --pm-tile: #0d1630;
+  --pm-tile-border: rgba(148, 163, 184, 0.28);
+  --pm-line: rgba(148, 163, 184, 0.22);
+  --pm-beam: #67e8f9;
+  --pm-shadow: 0 6px 18px rgba(2, 6, 23, 0.45);
+}
+:root[data-theme="light"] .public-shell {
+  --pm-tile: #ffffff;
+  --pm-tile-border: rgba(15, 23, 42, 0.14);
+  --pm-line: rgba(15, 23, 42, 0.16);
+  --pm-beam: #0369a1;
+  --pm-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+.hx-pipe-wrap { margin-top: clamp(2.5rem, 5vw, 3.5rem); }
+.pm {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 460px;
+  padding: 1rem 0;
+}
+.pm-beams { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.pm-path { fill: none; stroke: var(--pm-line); stroke-width: 1.25; }
+.pm-path-beam { fill: none; stroke-width: 1.5; stroke-linecap: round; }
+.pm-stop { stop-color: var(--pm-beam); }
+.pm-col { position: relative; display: grid; justify-items: center; gap: 1.6rem; }
+.pm-col.is-stack { gap: 1.1rem; }
+.pm-col-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--pub-muted);
+}
+.pm-node { display: grid; justify-items: center; gap: 0.55rem; text-align: center; }
+.pm-tile {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1.5px solid var(--pm-tile-border);
+  border-radius: 14px;
+  background: var(--pm-tile);
+  box-shadow: var(--pm-shadow);
+  color: var(--pub-heading);
+}
+.pm-tile svg { width: 30px; height: 30px; stroke-width: 1.25; }
+.pm-tile svg .ln-fill { fill-opacity: 0; }
+.pm-node.is-sm .pm-tile { width: 52px; height: 52px; border-radius: 12px; }
+.pm-node.is-sm .pm-tile svg { width: 24px; height: 24px; }
+.pm-label { display: grid; gap: 0.1rem; }
+.pm-label strong { font-size: 0.9rem; color: var(--pub-heading); }
+.pm-desc { font-size: 0.76rem; color: var(--pub-muted); }
+.pm-no {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--pub-muted);
+}
+.pm-core { display: grid; justify-items: center; gap: 1rem; }
+.pm-core-tile {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--pm-tile-border);
+  border-radius: 20px;
+  background: rgba(148, 163, 184, 0.1);
+}
+.pm-core-inner {
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+  border: 1.5px solid var(--pub-accent-strong);
+  border-radius: 14px;
+  background: var(--pm-tile);
+  box-shadow: var(--pm-shadow);
+}
+.pm-core-inner img { width: 76px; height: auto; }
+.pm-core-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
+.pm-core-steps li { display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.8rem; color: var(--pub-text); white-space: nowrap; }
+
+@media (max-width: 1023px) {
+  .pm { grid-template-columns: minmax(0, 1fr); min-height: 0; gap: 0.9rem; max-width: 30rem; margin: 0 auto; }
+  .pm-beams { display: none; }
+  .pm-col,
+  .pm-col.is-stack { justify-items: stretch; gap: 0.6rem; }
+  .pm-col-title { margin-top: 0.6rem; }
+  .pm-node { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; text-align: left; gap: 0.9rem; }
+  .pm-node .pm-label { grid-template-columns: auto 1fr; column-gap: 0.5rem; }
+  .pm-node .pm-label .pm-desc { grid-column: 1 / -1; }
+  .pm-core { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; padding: 0.6rem 0; }
+  .pm-core-inner { width: 72px; height: 72px; }
+  .pm-core-inner img { width: 54px; }
+  .pm-core-steps li { white-space: normal; }
 }

@@ -1,7 +1,8 @@
 /**
  * 首頁 hero 與技術棧之間的段落（2026-10-09 依使用者要求改版）。
  * 參考 TradingGoose 首頁的動態做法自行實作：捲入畫面依序淡入（Reveal）、
- * 堆疊卡片輪播、即時更新的掃描表格、左右交錯的功能列與可操作的預覽、滑鼠跟隨的卡片光暈。
+ * 堆疊卡片輪播、即時更新的掃描表格、掃描鏈路圖（流動連線）、左右交錯的功能列與可操作的預覽、
+ * 滑鼠跟隨的卡片光暈。
  * 最上面的品牌 hero 與「技術棧」以下（FAQ、結尾 CTA）不在這裡，維持原樣。
  * 內容都以現有程式核對；「核心功能」仍讀 CMS（/content/features/），後台可編輯。
  */
@@ -33,6 +34,7 @@ import { GlowCard, Reveal, useCardGlow } from "./HomeMotion.jsx";
 import LiveScanTable from "./LiveScanTable.jsx";
 import ProcessStack from "./ProcessStack.jsx";
 import ReportPreview from "./ReportPreview.jsx";
+import ScanPipelineMap from "./ScanPipelineMap.jsx";
 import VerifyPreview from "./VerifyPreview.jsx";
 
 const STEPS = [
@@ -222,6 +224,20 @@ export function HomeSections({ features }) {
         />
         <Reveal slide="up" delay={0.2} className="hx-cov-wrap">
           <CoverageTabs items={COVERAGE} />
+        </Reveal>
+      </section>
+
+      {/* 掃描鏈路圖：節點＋流動連線 */}
+      <section className="public-section hx-section" aria-labelledby="hx-pipe-title">
+        <SectionHead
+          id="hx-pipe-title"
+          center
+          eyebrow="掃描鏈路"
+          title="三種引擎交叉診斷"
+          desc="從網站掃描到可執行修正，一條鏈路完成；每一步都留下證據。"
+        />
+        <Reveal slide="none" duration={0.8} delay={0.2} className="hx-pipe-wrap">
+          <ScanPipelineMap />
         </Reveal>
       </section>
 
