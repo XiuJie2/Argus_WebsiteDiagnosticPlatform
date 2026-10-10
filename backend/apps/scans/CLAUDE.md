@@ -28,7 +28,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | `scan_plan.py` | 將單頁／全網站範圍與主動授權集中轉成各工具的執行閘門 | 寫 DB、執行任何掃描工具 |
 | `process_runner.py` | 以 `Popen` 執行 Nuclei/Katana，輪詢 DB 取消並終止 process tree | 吞掉 `ScanCancelled`、記錄 raw stdout/stderr |
 | `crawler.py` | Playwright BFS 爬蟲、收集頁面（`har_dir` 有值時每個 context 錄一個只含同 origin 的 HAR，給 ZAP 被動分析）；整站模式以 robots.txt 宣告的 sitemap（或 `/sitemap.xml`）補種子（`discover_sitemap_urls` → `_CrawlState.seed`，同 origin、非 `.gz`、≤2 MB、索引最多展開 3 個子檔；與掃描網址只差 `www.` 前綴的 sitemap 網址由 `to_scan_origin` 改寫成掃描 origin），連結稀疏的網站也能達到頁數上限；預設深度 `ARGUS_DEFAULT_MAX_DEPTH`＝6。**爬取預算（2026-10-08，roadmap「爬取」第 2 項）**：`_CrawlState` 記種子來源（起始網址／sitemap）、頁面連結排入數、超過頁數上限沒排入、超過深度、robots.txt 禁止、擷取失敗、速率限制等待次數與秒數、每頁耗時；`crawl_site` 結束時（含例外）寫 `warnings["crawl_budget"]`＝`budget_summary(stop_reason, 秒數)`（`stop_reason`：max_pages／queue_exhausted／browser_failed），存進 `warning_summary`、`stage_crawl` 以 `tasks.crawl_budget_text` 寫一行 log（不列在「爬取警告」）、後台掃描詳情顯示。**渲染就緒（2026-10-08，roadmap「爬取」第 1 項）**：`goto(domcontentloaded)` 之後、擷取之前 `wait_for_render_ready`：每 250ms 量正文字數與元素數，至少等 0.5 秒（hydration），連續兩次幾乎不變（字數差 ≤ max(20, 0.5%)、元素數差 ≤ 2，容許輪播）就算就緒；上限 `ARGUS_RENDER_READY_MAX_SECONDS`（5）。逾時照樣擷取，記在 `crawl_budget.render_readiness`（ready／timeout／error 數、平均毫秒、逾時網址）、log 與 `crawl` 覆蓋說明（`render_readiness_timeout`，**不改覆蓋狀態**）。不用 networkidle。等待時間從 `load_time_ms` 扣掉（SEO「載入慢」與網站優勢的載入時間依此判斷）。沙箱實測 9 個網站都在約 0.5 秒就緒、就緒後 3 秒正文沒有再增加。同次修正：`enqueue_links` 不再重複排入已在佇列的網址（sitemap 已排入的頁面又被首頁連結排一次，重複項目會佔掉頁數上限、把新頁面擠掉）。測試 `tests_crawl_budget.py`。`/cdn-cgi/` 路徑一律不爬（`is_crawl_trap`：Cloudflare 給機器人的無限陷阱連結）。Cloudflare 攔截頁判定只認 `/cdn-cgi/challenge-platform/h/`、`_cf_chl_opt` 等攔截頁專屬標記——**不可用裸字串 `challenge-platform`**：CF Bot 偵測會在每個正常頁面插入 `/cdn-cgi/challenge-platform/scripts/` 背景腳本，曾讓整站只爬到首頁且被誤標為被阻擋（`waf_scanner.py` 同理） | 修改 ScanJob.status、呼叫 billing |
-| `scanners.py` | SEO/AEO/GEO/UX 掃描 + 被動式基本安全檢查（HTTPS/header 存在性/CSRF/PII）、產生 findings | 修改 ScanJob.status、深度資安分析 |
+| `scanners.py` | SEO/AEO/GEO/UX 掃描 + 被動式基本安全檢查（HTTPS/header 存在性/CSRF/PII）、產生 findings。CSRF 只查會改變狀態的表單（`method=post` 或含密碼欄位；沒寫 method＝GET 的站內搜尋不查，2026-10-10） | 修改 ScanJob.status、深度資安分析 |
 | `score_explain.py` | 分數說明（`GET /api/scans/<id>/score-breakdown/`）：以 `finding_normalization.stored_scoring_inputs` 還原計分輸入，依目前公式 `scanners.score_breakdown` 逐維度列基準分、扣分項目（權重、出現處數、`score_without`）、`in_base`／`info` 筆數、覆蓋狀態與未完整完成的檢查；重算分數與保存分數不同時 `matches=false` | 寫 DB、自己重寫一套計分邏輯 |
 | `coverage.py` | 掃描覆蓋契約（見下「掃描覆蓋契約」）：`ScanCoverage` 累積各檢查狀態與產生的問題代號、`category_status`、`incomplete_checks`、`absent_issue_status`（前次有本次沒有的問題狀態）、`issue_key` | 寫 DB、修改 `ScanJob.status` |
 | `fingerprint.py`、`fingerprint_gold.py`、`fingerprint_benchmark.py` | 網站特徵（Smart Scan 階段 1，見下「網站特徵」）：`build_fingerprint` 只用爬取已有的訊號、`fingerprint_snapshot` 存 `ScanJob.fingerprint`；準確率資料集與指標 | 發任何請求、改變執行計畫或覆蓋紀錄、把「沒看到」寫成 False |
@@ -95,7 +95,7 @@ Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`；若總預算只
 - 有效判定：`VerifiedDomain.is_effectively_verified`＝`admin_override=True`（管理員人工核准）**或**（`status=verified` 且 `expires_at > now`，TTL 預設 90 天，`ARGUS_DOMAIN_VERIFICATION_TTL_DAYS`）
 - 子網域涵蓋：對 `example.com` 驗證通過，`www.example.com` 等子網域也可主動掃描；不做 eTLD+1 萃取，以完整 hostname／父網域比對
 - **Google Search Console（2026-10-04 起主要方法，`method=search_console`）**：讀使用者所有 `SearchConsoleConnection` 的 `sites.list`，涵蓋該網域的資源 `permissionLevel` 必須是 `siteOwner`（`siteFullUser`／受限使用者不算）。涵蓋規則 `gsc.property_covers_domain`：`sc-domain:X` 涵蓋 X 與其子網域；網址前置字元資源只證明那一個主機（不能拿 `https://www.example.com/` 驗證 `example.com`）。OAuth callback 成功後呼叫 `sync_search_console_ownership(connection, project)`：涵蓋該專案網站且是擁有者的資源，自動建立／更新 VerifiedDomain（`sc-domain` 記網域、前置字元記主機；管理員否決的不動；失敗只 log、不影響連接），導回 `?gsc=connected&verified=<網域>`。TTL 與其他方法相同（90 天），到期後在 `/domains` 按驗證即可重新以 Search Console 確認。
-- **帳號層級 Search Console 連線（2026-10-04）**：`SearchConsoleConnection.project` 可為空＝帳號層級（每人最多一筆，`uniq_account_level_search_console`；migration 0024），只用來驗證網域。端點（`seo_views.py`，在 `scans/urls.py` 排在 router 前面，否則 `domains/gsc/` 會被當成 `domains/<pk>/`）：`GET/DELETE /api/domains/gsc/`（狀態／中斷並撤銷帳號層級連線，專案連線不動）、`POST /api/domains/gsc/connect/`（OAuth state 的 `p` 為 null）、`POST /api/domains/gsc/sync/`。OAuth callback 遇到 `p is None` 走 `_account_callback`，導回 `/domains?gsc=…`。`sync_owned_domains(connection)`：Search Console 裡 `siteOwner` 的資源全部匯入為已驗證網域，並驗證清單中被涵蓋、尚未生效的網域（否決的不動）。`GET /api/domains/<id>/` 另附自己的 token 與三種備用方法說明。刪除帳號會撤銷並刪除使用者全部 Search Console 連線（含帳號層級）。
+- **帳號層級 Search Console 連線（2026-10-04）**：`SearchConsoleConnection.project` 可為空＝帳號層級（每人最多一筆，`uniq_account_level_search_console`；migration 0024），只用來驗證網域。端點（`seo_views.py`，在 `scans/urls.py` 排在 router 前面，否則 `domains/gsc/` 會被當成 `domains/<pk>/`）：`GET/DELETE /api/domains/gsc/`（狀態／中斷並撤銷帳號層級連線，專案連線不動；**沒有帳號層級連線、只有專案連線時**，`needs_reconnect` 看專案連線（全部授權失效才是 true），DELETE 中斷全部專案連線——2026-10-09 前網域驗證頁只看帳號層級，專案連線失效時仍顯示已連接、同步失敗卻沒有重新連接或中斷連線可按）、`POST /api/domains/gsc/connect/`（OAuth state 的 `p` 為 null）、`POST /api/domains/gsc/sync/`。OAuth callback 遇到 `p is None` 走 `_account_callback`，導回 `/domains?gsc=…`。`sync_owned_domains(connection)`：Search Console 裡 `siteOwner` 的資源全部匯入為已驗證網域，並驗證清單中被涵蓋、尚未生效的網域（否決的不動）。`GET /api/domains/<id>/` 另附自己的 token 與三種備用方法說明。刪除帳號會撤銷並刪除使用者全部 Search Console 連線（含帳號層級）。
 - 備用的三種驗證方法共用一支 token（`argus-site-verification=<token>`）：DNS TXT（`_argus-verification.<domain>`，重試 3 次×timeout 5 秒）／首頁 meta 標籤（HTML 前 64KB 需同時出現標籤名與 token）／驗證檔（`/.well-known/argus-verification.txt` 內容等於 token）
 - HTTP 驗證抓取先過 `assert_public_http_url` SSRF 檢查、串流讀取上限 5MB；DNS 查詢走 dnspython
 - 使用者 API：`/api/scans/domains/`（list／create＋instructions／`<id>/verify/`／delete；重複建立回 409 帶現況）
@@ -122,7 +122,7 @@ Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`；若總預算只
 
 1. **同一分類內同一 `rule_id` 只扣一次分**。一個問題出現在幾頁是「廣度」不是「嚴重度」；報告本來就把它們合併成一筆顯示，計分不跟著去重會讓使用者看到一項卻被扣了 N 次。
 2. **`info` 不扣分**。info 多半是純資訊或提醒（例如「主動弱點掃描 0 項發現，但目標位於 WAF／CDN 之後」——0 項發現不能當成防護有效的證據，2026-10-06 起措辭改為「結果可能不完整」）。**同理 `info` 不進 `top_actions`**——它對應的建議修補是「無需修復」，列進「優先改善建議」會被當成待辦。
-3. **指數衰減 `100 * exp(-penalty / SCORE_DECAY_CONSTANT)`**，不是 `max(0, 100 - penalty)`。舊公式累積 100 分懲罰後永遠是 0，無法分辨「4 個高風險」與「40 個高風險」。`SCORE_DECAY_CONSTANT` 是可調的產品參數，不是演算法細節。
+3. **指數衰減 `100 * exp(-penalty / SCORE_DECAY_CONSTANT)`**，不是 `max(0, 100 - penalty)`。舊公式累積 100 分懲罰後永遠是 0，無法分辨「4 個高風險」與「40 個高風險」。`SCORE_DECAY_CONSTANT` 是可調的產品參數，不是演算法細節；**2026-10-10 由 50 改為 100**（`SCORING_VERSION` 3）：50 時 GOV.UK、MDN 這類公認維護良好的網站只有 74、59 分，幾個中低風險就讓一個面向掉到 50 以下；改為 100 後是 81、73（以當時掃描結果重算）。
 4. **未評估的分類不寫進 `category_scores`，缺鍵即代表未評估**。`category_scores` **不保證含全部 5 個分類，取值一律用 `.get()`**。這同時保證「報告列出的分數」與「`overall_score` 平均的分母」是同一組，使用者算得出總分。
 5. **有基準分的分類（`base_scores`，目前只有 AEO）**：`calculate_scores(findings, tested, base_scores={"aeo": N})` 以 N 取代 100 當起點，`BASE_SCORED_RULE_PREFIXES`（`aeo-answer-`）的逐題 finding 不再扣分（已反映在基準分裡），其餘 AEO finding（noindex、標記不一致…）照常衰減扣分。`rerun_scan` 與 `finding_normalization._rescore` 都從 `aeo_report["score"]` 取回基準分（第 5 條由 `tests_aeo_answerability.py` 鎖定）。
 6. **分類分數由 `score_breakdown()` 算出**（2026-10-07）：`calculate_scores` 只取它的 `score`，「分數說明」分頁與計分永遠同一套公式；扣分權重在 `SEVERITY_PENALTY`。改公式時兩者一起變，不要在別處另算（`tests_score_explain.py` 鎖定兩者一致）。
@@ -153,6 +153,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
   - 超過 `MAX_HEADING_CHARS`（80）或含句中句號的 h1–h6 視為內文段落（`content._is_body_text`）。實例：隱私權政策整段寫在 h3 裡，裡面的 Email 被當成標題略過，造成資安判「公開 Email」、AEO 卻判「找不到 Email」的矛盾。
 - **共用聯絡資訊證據（2026-10-07，P0-B）**：`evaluate_site` 以 `evidence.contacts.collect_contacts` 擷取同一份 Email／電話，`reconcile_contact` 核對聯絡題：共用證據的值出現在任何可讀段落（含被當成標題的短段落）就判可回答；只在導覽列、頁首、隱藏區塊或 HTML 註解時判定不變，但理由寫明位置與「與資安檢查情境不同、並不矛盾」。`aeo_report.shared_contacts` 只記筆數不存值。地址（2026-10-08）也走共用證據：`contacts.ADDRESS_PATTERN`（AEO 答案格式同一份）＋JSON-LD `address`（位置 `structured_data`，PostalAddress 只取 streetAddress），頁面文字含該街道即判可回答；只在 JSON-LD 時判定不變、理由寫「搜尋引擎讀得到、訪客看不到」。日期不共用（AEO 與 GEO 的日期是不同的事）。測試 `tests_shared_evidence.py`。
 - **回歸資料集與指標（2026-10-07，P0-C）**：`aeo/gold_dataset.py`（`GOLD_CASES` 調整用＋`HOLDOUT_CASES` 保留集，每題人工標註；tag 分 answerable／insufficient／conflict／missing／near_miss／holdout）、`aeo/benchmark.py`（以「可回答」為正類算 precision、recall、false positive rate、accuracy、每站耗時、混淆矩陣）、`manage.py aeo_benchmark [--holdout] [--json]`（低於門檻非零結束）。門檻 `benchmark.THRESHOLDS`（accuracy／precision／recall ≥ 0.95、FPR ≤ 0.05）由 `tests_aeo_benchmark.py` 鎖定，只能往上調；**不可為了讓規則通過而改標註**，保留集不要拿來調規則。同次依資料集修正的規則：小標題就是主題時段落算候選（`_passage_score` 標題命中權重 1）、「如需／若需」不算條件（`_CONDITIONAL`）、感謝詞算空泛（`_VAGUE`）、營業時間關鍵詞加「無休／全天」。
+- **不計分的題目與英文詞比對（2026-10-10）**：題庫題目（不是聯絡方式 PHONE／EMAIL／ADDRESS／HOURS、不是網站自己的問題）判定 `missing`＝網站沒有任何段落談到這個主題，可能不提供這項服務，`evaluate.is_scored` 回 False：不計入 AEO 分數、不產生 Finding，逐題結果標 `scored=false`＋`not_scored_reason`，`aeo_report.not_scored` 記題數，前端顯示「不計分」；扣掉後少於 `MIN_QUESTIONS` 題即未充分評估。`answered_ratio` 只算計分題。英文觸發詞與檢索詞改從單字開頭比對（`questions.count_term`／`has_term`）：直接找子字串時 `tel` 命中 intellectual、`payment` 命中 overpayments，GOV.UK 因此被問付款方式、電話判資訊不足。
 - 人工校驗題集在 `tests_aeo_answerability.py` 的 `GOLD_SITES`：改動規則後判定正確率必須維持 100%。**第一版只做可重現的規則判定**；受控 AI 評估與外部平台觀察尚未實作，報告不得宣稱有。
 - 新增意圖或判定規則：先在 `GOLD_SITES`（或 `gold_dataset.GOLD_CASES`）加一個會踩到的案例，再改規則，最後跑 `manage.py aeo_benchmark` 確認門檻。
 
@@ -440,10 +441,11 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
   "pages_total": 50,
   "phase": "crawling",
   "phase_started_at": "2026-05-26T10:30:00Z",
-  "step": "analyze_seo",
-  "steps": ["crawl", "analyze_seo", "analyze_geo", "deep_security", "geo_site", "scoring"],
-  "step_done": 12,
-  "step_total": 50,
+  "step": "analyze_pages",
+  "step_detail": "geo",
+  "steps": ["crawl", "analyze_pages", "deep_security", "geo_site", "scoring"],
+  "step_done": 62,
+  "step_total": 100,
   "step_started_at": "2026-05-26T10:31:00Z"
 }
 ```
@@ -452,11 +454,11 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 
 `step`／`steps` 是 phase 之下的細分階段（前端掃描進度條據此顯示「正在分析 GEO／UX／資安…」）：
 `steps` 由 `tasks.planned_scan_steps()` 依勾選維度與範圍／授權算出本次實際會跑的子步驟，`step` 是目前這一步。
-可能值：`crawl`、`analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`（只列勾選維度）、`aeo_answers`（勾 AEO，接在逐維度分析之後）、
+可能值：`crawl`、`analyze_pages`（有勾任一維度；2026-10-10 前是逐維度的 `analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`，前端仍保留這些鍵顯示舊任務）、`aeo_answers`（勾 AEO，接在頁面分析之後）、
 `active_probe`（`run_nuclei`）、`deep_security`、`zap_passive`（勾資安且已啟用 ZAP）、`exposure_probe`（`run_exposure`）、`geo_site`（勾 GEO）、`seo_links`（勾 SEO）、`pagespeed`（勾 UX 且已設定 PSI 金鑰）、`agent`（Agent 啟用且可執行）、`scoring`。
-頁面分析改為**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
+頁面分析**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；進度上合併成一步 `analyze_pages`，`step_detail` 是目前維度（seo／aeo／geo／ux／security），前端據此顯示「分析 GEO」等標題。新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
 
-`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、逐維度分析＝該維度已分析頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
+`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、頁面分析＝已完成的「維度×頁」數、總數＝勾選維度數×頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
 
 ---
 
@@ -469,6 +471,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `target_validation` | `stage_validate_target` | 再次確認目標是公開 HTTP(S) |
 | `crawl` | `stage_crawl` | Playwright BFS；每頁回報進度並當取消檢查點。**沒有任何可分析的頁面（2xx／3xx 且未被阻擋）就丟 `ScanTargetUnreachable`**，由 `finish_unreachable` 標失敗、寫可讀原因並全額退款（2026-10-06：0 頁曾標完成並給 73 分） |
 | `enter_scanning` | `stage_enter_scanning` | 記錄警告、狀態推進到 scanning、落地 `Page` |
+| `pagespeed_start` | `stage_pagespeed_start` | 勾 UX 且已設定 PSI 金鑰時，在背景執行緒（`_PAGESPEED_EXECUTOR`）送出 PageSpeed 量測，future 存 `ctx.pagespeed_future`；背景只做網路請求，不寫 DB（2026-10-10：PSI 要 20～90 秒，原本排在連結檢查之後空等） |
 | `fingerprint` | `stage_fingerprint` | 網站特徵（只記錄、不影響掃描）：寫 `ScanJob.fingerprint`；失敗只記 log（`fingerprint.py`） |
 | `page_analysis` | `stage_analyze_pages`（單頁單維度：`_analyze_one_page`） | 逐維度、逐頁規則分析＋inline 秘鑰偵測 |
 | `aeo_answers` | `stage_aeo_answerability`（`_aeo_site_pages`） | AEO 問答檢測（見下「AEO 問答檢測」），結果寫 `ScanJob.aeo_report` |
@@ -479,7 +482,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
 | `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體、文章作者與日期（`geo_entity.py`） |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
-| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`）。勾了 UX 但平台沒設定金鑰時標覆蓋 skipped（原因「平台尚未設定…」），效能分頁據此說明是平台設定（2026-10-08）；正式環境要在 Secret 設 `ARGUS_PAGESPEED_API_KEY`，後台系統資訊頁 `providers.PAGESPEED_API_KEY_SET` 可確認 |
+| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑；有 `ctx.pagespeed_future` 就等它的結果，沒有才當場量測：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`）。勾了 UX 但平台沒設定金鑰時標覆蓋 skipped（原因「平台尚未設定…」），效能分頁據此說明是平台設定（2026-10-08）；正式環境要在 Secret 設 `ARGUS_PAGESPEED_API_KEY`，後台系統資訊頁 `providers.PAGESPEED_API_KEY_SET` 可確認 |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |
 | `agent` | `stage_agent` | Hermes-Agent（資安／UX），失敗不讓掃描失敗 |
 | `kali` | `stage_kali` | Kali 主動驗證 fallback |

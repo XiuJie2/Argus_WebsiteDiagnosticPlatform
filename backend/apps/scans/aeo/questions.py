@@ -270,8 +270,35 @@ class Question:
         }
 
 
+# 英文詞要從單字開頭比對（可以是字首，例如 eligib 對 eligibility）：直接找子字串時
+# tel 會命中 intellectual、payment 會命中 overpayments，讓 GOV.UK 這類英文網站被問到
+# 不相干的題目（2026-10-10 實測）。中文與符號（$、nt$）照舊找子字串。
+_ASCII_WORD = re.compile(r"[a-z][a-z .'-]*")
+
+
+def _term_pattern(term: str) -> re.Pattern | None:
+    lowered = term.lower()
+    if not _ASCII_WORD.fullmatch(lowered):
+        return None
+    return re.compile(r"(?<![a-z])" + re.escape(lowered))
+
+
+def count_term(text_lower: str, term: str) -> int:
+    pattern = _term_pattern(term)
+    if pattern is None:
+        return text_lower.count(term.lower())
+    return len(pattern.findall(text_lower))
+
+
+def has_term(text_lower: str, term: str) -> bool:
+    pattern = _term_pattern(term)
+    if pattern is None:
+        return term.lower() in text_lower
+    return pattern.search(text_lower) is not None
+
+
 def _count_hits(text_lower: str, words: tuple[str, ...]) -> int:
-    return sum(text_lower.count(w.lower()) for w in words)
+    return sum(count_term(text_lower, w) for w in words)
 
 
 def _question_keywords(text: str) -> tuple[str, ...]:

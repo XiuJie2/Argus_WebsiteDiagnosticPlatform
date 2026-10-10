@@ -177,20 +177,16 @@ class PlannedScanStepsTests(TestCase):
         steps = self._steps(categories=["ux", "seo"], max_pages=1)
         self.assertEqual(
             steps,
-            ["crawl", "analyze_seo", "analyze_ux", "deep_security", "seo_links", "scoring"],
+            ["crawl", "analyze_pages", "deep_security", "seo_links", "scoring"],
         )
         # 沒勾 SEO 就沒有連結檢查
         self.assertNotIn("seo_links", self._steps(categories=["ux"], max_pages=1))
 
     def test_all_categories_include_geo_site_and_keep_fixed_order(self):
         steps = self._steps(categories=["security", "geo", "aeo", "seo", "ux"])
-        self.assertEqual(
-            steps[:6],
-            [
-                "crawl", "analyze_seo", "analyze_aeo", "analyze_geo",
-                "analyze_ux", "analyze_security",
-            ],
-        )
+        # 五個維度的頁面分析合併成一步
+        self.assertEqual(steps[:3], ["crawl", "analyze_pages", "aeo_answers"])
+        self.assertFalse(any(s.startswith("analyze_") and s != "analyze_pages" for s in steps))
         self.assertIn("geo_site", steps)
         self.assertNotIn("active_probe", steps)  # 被動模式不跑主動探測
         self.assertEqual(steps[-1], "scoring")
@@ -199,11 +195,12 @@ class PlannedScanStepsTests(TestCase):
         scan = _make_scan(self.user)
         _write_progress(
             scan.id, phase="scanning", done=3, total=10, phase_started_at="t",
-            step="analyze_geo", steps=["crawl", "analyze_geo"],
+            step="analyze_pages", steps=["crawl", "analyze_pages"], detail="geo",
         )
         scan.refresh_from_db()
-        self.assertEqual(scan.progress["step"], "analyze_geo")
-        self.assertEqual(scan.progress["steps"], ["crawl", "analyze_geo"])
+        self.assertEqual(scan.progress["step"], "analyze_pages")
+        self.assertEqual(scan.progress["steps"], ["crawl", "analyze_pages"])
+        self.assertEqual(scan.progress["step_detail"], "geo")
 
 
 class StepProgressTests(TestCase):

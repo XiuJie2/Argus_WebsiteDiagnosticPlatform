@@ -96,7 +96,10 @@ class StaticScannerTests(APITestCase):
             url="http://example.com/",
             final_url="http://example.com/",
             title="短",
-            html="<html><body><h1>主標題</h1><img src='/a.png'><form></form></body></html>",
+            html=(
+                "<html><body><h1>主標題</h1><img src='/a.png'>"
+                "<form method='post'></form></body></html>"
+            ),
             headers={},
             element_boxes={"h1": {"x": 1, "y": 2, "width": 3, "height": 4}},
         )
@@ -1270,7 +1273,7 @@ class PageTypeRoutingTests(APITestCase):
             url="https://example.com/admin/login",
             final_url="https://example.com/admin/login",
             title="Login",
-            html="<html><body><form><input name='user'></form></body></html>",
+            html="<html><body><form method='post'><input name='user'></form></body></html>",
             headers={},
             element_boxes={},
         )
@@ -1288,7 +1291,7 @@ class PageTypeRoutingTests(APITestCase):
             url="https://example.com/admin/login",
             final_url="https://example.com/admin/login",
             title="Login",
-            html="<html><body><form><input name='user'></form></body></html>",
+            html="<html><body><form method='post'><input name='user'></form></body></html>",
             headers={},
             element_boxes={},
         )
@@ -1307,7 +1310,7 @@ class PageTypeRoutingTests(APITestCase):
             url="https://example.com/downloads/app.apk",
             final_url="https://example.com/downloads/app.apk",
             title="",
-            html="<form><input name='q'></form>",
+            html="<form method='post'><input name='q'></form>",
             headers={},
             element_boxes={},
         )
@@ -1319,6 +1322,42 @@ class PageTypeRoutingTests(APITestCase):
         self.assertNotIn("aeo", categories)
         self.assertNotIn("geo", categories)
         self.assertIn("security", categories)
+
+
+class CsrfStateChangingFormTests(APITestCase):
+    """2026-10-10：只查會改變狀態的表單。
+
+    GOV.UK 實測站內搜尋（GET）被判缺 CSRF token，出現在 8 頁。
+    """
+
+    def _security_titles(self, html):
+        page_input = PageAnalysisInput(
+            url="https://example.com/", final_url="https://example.com/", title="t",
+            html=html, headers={}, element_boxes={},
+        )
+        return {f["title"] for f in analyze_page(page_input) if f["category"] == "security"}
+
+    def test_get_search_form_is_not_flagged(self):
+        self.assertNotIn("表單可能缺少 CSRF token", self._security_titles(
+            "<form action='/search'><input name='q'><button>搜尋</button></form>"
+        ))
+        self.assertNotIn("表單可能缺少 CSRF token", self._security_titles(
+            "<form method='GET' action='/search'><input name='q'></form>"
+        ))
+
+    def test_post_or_password_form_without_token_is_flagged(self):
+        self.assertIn("表單可能缺少 CSRF token", self._security_titles(
+            "<form method='post' action='/contact'><input name='email'></form>"
+        ))
+        # 沒寫 method、由 JavaScript 送出的登入表單
+        self.assertIn("表單可能缺少 CSRF token", self._security_titles(
+            "<form><input name='user'><input type='password' name='pw'></form>"
+        ))
+
+    def test_post_form_with_token_is_not_flagged(self):
+        self.assertNotIn("表單可能缺少 CSRF token", self._security_titles(
+            "<form method='post'><input type='hidden' name='csrfmiddlewaretoken' value='x'></form>"
+        ))
 
 
 class AeoFaqHeuristicTests(APITestCase):

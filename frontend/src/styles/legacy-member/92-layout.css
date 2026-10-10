@@ -256,6 +256,9 @@
 }
 .aeo-citation.is-not_citable { @apply bg-rose-50 text-rose-700; }
 .aeo-citation.is-limited { @apply bg-amber-50 text-amber-800; }
+.aeo-not-scored {
+  @apply shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600;
+}
 .aeo-question-text {
   @apply min-w-0 flex-1 text-sm text-slate-800;
 }

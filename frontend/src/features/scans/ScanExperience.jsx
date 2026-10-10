@@ -80,6 +80,9 @@ const CRAWL_PHASES = [
 const SCAN_STEP_META = {
   queued: { label: "等待", title: "等待排程", hint: "任務已建立，等待掃描器接手", Icon: StatusQueuedGlyph },
   crawl: { label: "爬取", title: "爬取頁面", hint: "以真實瀏覽器走訪同網域頁面，擷取內容、截圖與行動版版面量測", Icon: StatusCrawlGlyph },
+  // 頁面分析（2026-10-10 起五個維度合併成一步；progress.step_detail 是目前維度，標題與說明改用該維度的）
+  analyze_pages: { label: "頁面分析", title: "分析頁面", hint: "逐頁檢查已勾選的各個維度", Icon: StatusScanGlyph },
+  // 以下 analyze_* 是舊任務（合併前）的逐維度步驟，也供 analyze_pages 顯示目前維度
   analyze_seo: { label: "SEO", title: "分析 SEO", hint: "檢查 title、meta description、H1、圖片 alt、canonical 與 Open Graph", Icon: StatusScanGlyph },
   analyze_aeo: { label: "AEO", title: "分析 AEO", hint: "檢查索引與摘要限制，以及結構化資料是否與頁面文字一致", Icon: StatusScanGlyph },
   analyze_geo: { label: "GEO", title: "分析 GEO", hint: "檢查 JSON-LD 實體、可引用段落與 JavaScript 渲染依賴", Icon: StatusScanGlyph },
@@ -112,7 +115,10 @@ function buildScanSteps(status, progress) {
     currentKey = status === "scanning" ? planned.find((key) => key.startsWith("analyze_")) || planned[1] : planned[0];
   }
   const currentIdx = Math.max(0, steps.findIndex((step) => step.key === currentKey));
-  return { detailed: true, steps, currentIdx, current: steps[currentIdx] };
+  let current = steps[currentIdx];
+  const dimension = currentKey === "analyze_pages" ? SCAN_STEP_META[`analyze_${progress?.step_detail}`] : null;
+  if (dimension) current = { ...current, title: dimension.title, hint: dimension.hint };
+  return { detailed: true, steps, currentIdx, current };
 }
 
 /**
@@ -160,7 +166,8 @@ function CrawlingAnimation({
     detailed, steps, currentIdx: safeIdx, current, stepTotal, stepDone, stepFrac, total, done, hasProgress,
     percent: pct,
   } = scanProgress(status, progress);
-  const stepUnit = current?.key === "agent" ? "步" : "頁";
+  // 頁面分析的計數是「維度數 × 頁數」，不是頁數
+  const stepUnit = current?.key === "agent" ? "步" : current?.key === "analyze_pages" ? "項" : "頁";
 
   // 已執行時間（從整個 scan 的 started_at 起算）
   const scanStart = startedAt ? new Date(startedAt).getTime() : null;
@@ -1123,10 +1130,11 @@ function ScreenshotCanvas({ scan, targetPage, findings, selectedFinding, onSelec
         URL.revokeObjectURL(objectUrl);
       }
     };
-    // scan 只認 id：ScanDetailPage 每 2 秒 polling 會產生全新的 scan 物件參考，
-    // 若把整個 scan 物件放進依賴陣列，即使內容沒變也會每次重新清空/重抓截圖，畫面閃爍。
+    // scan 與 targetPage 都只認 id：掃描進行中每 2 秒 polling 會產生全新的物件參考，
+    // 放整個物件進依賴陣列，即使內容沒變也會每次清空／重抓截圖，SEO、AEO… 各階段畫面一直閃。
+    // 截圖在爬取階段就和頁面一起存好，同一頁不會再變，不需要重抓（2026-10-09）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scan?.id, targetPage, variant]);
+  }, [scan?.id, targetPage?.id, variant]);
 
   function syncScale() {
     const image = imageRef.current;
