@@ -441,10 +441,11 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
   "pages_total": 50,
   "phase": "crawling",
   "phase_started_at": "2026-05-26T10:30:00Z",
-  "step": "analyze_seo",
-  "steps": ["crawl", "analyze_seo", "analyze_geo", "deep_security", "geo_site", "scoring"],
-  "step_done": 12,
-  "step_total": 50,
+  "step": "analyze_pages",
+  "step_detail": "geo",
+  "steps": ["crawl", "analyze_pages", "deep_security", "geo_site", "scoring"],
+  "step_done": 62,
+  "step_total": 100,
   "step_started_at": "2026-05-26T10:31:00Z"
 }
 ```
@@ -453,11 +454,11 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 
 `step`／`steps` 是 phase 之下的細分階段（前端掃描進度條據此顯示「正在分析 GEO／UX／資安…」）：
 `steps` 由 `tasks.planned_scan_steps()` 依勾選維度與範圍／授權算出本次實際會跑的子步驟，`step` 是目前這一步。
-可能值：`crawl`、`analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`（只列勾選維度）、`aeo_answers`（勾 AEO，接在逐維度分析之後）、
+可能值：`crawl`、`analyze_pages`（有勾任一維度；2026-10-10 前是逐維度的 `analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`，前端仍保留這些鍵顯示舊任務）、`aeo_answers`（勾 AEO，接在頁面分析之後）、
 `active_probe`（`run_nuclei`）、`deep_security`、`zap_passive`（勾資安且已啟用 ZAP）、`exposure_probe`（`run_exposure`）、`geo_site`（勾 GEO）、`seo_links`（勾 SEO）、`pagespeed`（勾 UX 且已設定 PSI 金鑰）、`agent`（Agent 啟用且可執行）、`scoring`。
-頁面分析改為**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
+頁面分析**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；進度上合併成一步 `analyze_pages`，`step_detail` 是目前維度（seo／aeo／geo／ux／security），前端據此顯示「分析 GEO」等標題。新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
 
-`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、逐維度分析＝該維度已分析頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
+`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、頁面分析＝已完成的「維度×頁」數、總數＝勾選維度數×頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
 
 ---
 
@@ -470,6 +471,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `target_validation` | `stage_validate_target` | 再次確認目標是公開 HTTP(S) |
 | `crawl` | `stage_crawl` | Playwright BFS；每頁回報進度並當取消檢查點。**沒有任何可分析的頁面（2xx／3xx 且未被阻擋）就丟 `ScanTargetUnreachable`**，由 `finish_unreachable` 標失敗、寫可讀原因並全額退款（2026-10-06：0 頁曾標完成並給 73 分） |
 | `enter_scanning` | `stage_enter_scanning` | 記錄警告、狀態推進到 scanning、落地 `Page` |
+| `pagespeed_start` | `stage_pagespeed_start` | 勾 UX 且已設定 PSI 金鑰時，在背景執行緒（`_PAGESPEED_EXECUTOR`）送出 PageSpeed 量測，future 存 `ctx.pagespeed_future`；背景只做網路請求，不寫 DB（2026-10-10：PSI 要 20～90 秒，原本排在連結檢查之後空等） |
 | `fingerprint` | `stage_fingerprint` | 網站特徵（只記錄、不影響掃描）：寫 `ScanJob.fingerprint`；失敗只記 log（`fingerprint.py`） |
 | `page_analysis` | `stage_analyze_pages`（單頁單維度：`_analyze_one_page`） | 逐維度、逐頁規則分析＋inline 秘鑰偵測 |
 | `aeo_answers` | `stage_aeo_answerability`（`_aeo_site_pages`） | AEO 問答檢測（見下「AEO 問答檢測」），結果寫 `ScanJob.aeo_report` |
@@ -480,7 +482,7 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 | `exposure` | `stage_exposure` | robots 敏感路徑（被動）＋敏感檔案主動探測（全網站 active） |
 | `geo_site` | `stage_geo_site` | llms.txt、AI 爬蟲政策（`ai_bots.py`：只有封鎖 AI 搜尋／使用者觸發的爬蟲才列問題）、組織實體、文章作者與日期（`geo_entity.py`） |
 | `seo_links` | `stage_seo_links` | 勾 SEO 才跑：連結狀態與跳轉鏈、robots.txt／sitemap／HTTPS／www／404／結尾斜線檢查，寫 `ScanJob.seo_report`，並由 `seo/site_findings.py` 轉出站台層級 SEO Finding；失敗只記 log（`seo/collect.py`） |
-| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`）。勾了 UX 但平台沒設定金鑰時標覆蓋 skipped（原因「平台尚未設定…」），效能分頁據此說明是平台設定（2026-10-08）；正式環境要在 Secret 設 `ARGUS_PAGESPEED_API_KEY`，後台系統資訊頁 `providers.PAGESPEED_API_KEY_SET` 可確認 |
+| `pagespeed` | `stage_pagespeed` | 勾 UX 且已設定 PSI 金鑰才跑；有 `ctx.pagespeed_future` 就等它的結果，沒有才當場量測：首頁 Lighthouse＋CrUX，寫 `ScanJob.performance_report`；失敗只標覆蓋 failed（`pagespeed.py`）。勾了 UX 但平台沒設定金鑰時標覆蓋 skipped（原因「平台尚未設定…」），效能分頁據此說明是平台設定（2026-10-08）；正式環境要在 Secret 設 `ARGUS_PAGESPEED_API_KEY`，後台系統資訊頁 `providers.PAGESPEED_API_KEY_SET` 可確認 |
 | `favicon` | `stage_favicon` | 更新所屬專案的網站圖示（`favicon.py`；失敗只記 log，不影響掃描） |
 | `agent` | `stage_agent` | Hermes-Agent（資安／UX），失敗不讓掃描失敗 |
 | `kali` | `stage_kali` | Kali 主動驗證 fallback |

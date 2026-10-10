@@ -124,7 +124,10 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
     """本次掃描會經過的子步驟（順序即執行順序）。"""
     cats = scan_job.effective_categories
     steps = ["crawl"]
-    steps += [f"analyze_{c}" for c in ANALYZE_STEP_ORDER if c in cats]
+    # 逐維度分析每項只要幾秒，分開顯示會讓進度條一閃而過、階段看起來很多；
+    # 合併成一步「頁面分析」，目前分析的維度放在 progress.step_detail（2026-10-10）
+    if any(c in cats for c in ANALYZE_STEP_ORDER):
+        steps.append("analyze_pages")
     if "aeo" in cats:
         steps.append("aeo_answers")
     if execution_plan.run_nuclei:
@@ -162,6 +165,7 @@ def _write_progress(
     steps: list[str] | None = None,
     step_done: int | None = None,
     step_total: int | None = None,
+    detail: str = "",
 ) -> None:
     """寫 ScanJob.progress；用 filter().update() 避免覆蓋其他欄位且 race-safe。
 
@@ -192,6 +196,9 @@ def _write_progress(
             progress["step_started_at"] = timezone.now().isoformat()
     if steps:
         progress["steps"] = steps
+    if detail:
+        # 合併步驟裡目前在做什麼（頁面分析的目前維度：seo／aeo／geo／ux／security）
+        progress["step_detail"] = detail
     ScanJob.objects.filter(id=scan_job_id).update(progress=progress)
 
 
@@ -411,6 +418,8 @@ class ScanRunContext:
     nuclei_template_set: dict = field(default_factory=dict)
     # AEO 可回答性檢測（aeo/evaluate.py 的 AeoEvaluation）
     aeo_evaluation: object | None = None
+    # PageSpeed Insights 背景量測（stage_pagespeed_start 送出，stage_pagespeed 取結果）
+    pagespeed_future: object | None = None
     # Agent 階段
     agent_meta: dict = field(default_factory=dict)
     agent_result: object | None = None
@@ -796,7 +805,8 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
     scan_job_id = ctx.scan_job_id
     page_count = max(len(ctx.crawled_pages), 1)
     page_finding_counts = [0] * len(ctx.pages)
-    for cat_idx, category in enumerate(_analyze_categories(ctx)):
+    categories = _analyze_categories(ctx)
+    for cat_idx, category in enumerate(categories):
         category_found = 0
         for page_idx, (page, page_data) in enumerate(ctx.pages):
             # 被阻擋的頁面內容是錯誤頁，不進行分析，僅保留紀錄與警告
@@ -817,10 +827,11 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
                 done=cat_idx * page_count + page_idx + 1,
                 total=ctx.scanning_total,
                 phase_started_at=ctx.scan_phase_started,
-                step=f"analyze_{category}",
+                step="analyze_pages",
                 steps=ctx.steps,
-                step_done=page_idx + 1,
-                step_total=page_count,
+                step_done=cat_idx * page_count + page_idx + 1,
+                step_total=len(categories) * page_count,
+                detail=category,
             )
             raise_if_cancelled(scan_job_id)
         ctx.coverage.mark(f"page_{category}", COMPLETED)
@@ -1396,11 +1407,31 @@ def _link_trend_for(ctx: ScanRunContext, report: dict) -> dict | None:
     )
 
 
+# PageSpeed Insights 只是等 Google 量測（20～90 秒），不佔本機資源：爬取完就在背景送出，
+# 與頁面分析、資安檢查、連結檢查同時進行，stage_pagespeed 只取結果（2026-10-10）。
+# 只在背景執行網路請求，資料庫寫入與覆蓋紀錄仍在主流程做。
+_PAGESPEED_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="pagespeed")
+
+
+def _pagespeed_target(ctx: ScanRunContext) -> str:
+    return ctx.scan_job.normalized_url or ctx.scan_job.original_url
+
+
+def stage_pagespeed_start(ctx: ScanRunContext) -> None:
+    """勾 UX 且已設定金鑰時，在背景送出 PageSpeed Insights 量測。"""
+    if "ux" not in ctx.scan_job.effective_categories or not pagespeed_enabled():
+        return
+    url = _pagespeed_target(ctx)
+    # 用 lambda 在執行時才取 fetch_pagespeed，測試 patch 模組名稱才有效
+    ctx.pagespeed_future = _PAGESPEED_EXECUTOR.submit(lambda: fetch_pagespeed(url))
+
+
 def stage_pagespeed(ctx: ScanRunContext) -> None:
     """Google PageSpeed Insights：首頁的 Lighthouse 實驗室分數＋CrUX 真實使用者資料。
 
     勾 UX 且有設定金鑰才跑；結果寫 ScanJob.performance_report，不併入 Argus 分數。
-    量測失敗只記 log 與覆蓋紀錄，不影響掃描完成。
+    量測失敗只記 log 與覆蓋紀錄，不影響掃描完成。量測通常已在背景完成
+    （stage_pagespeed_start），這裡只等結果；沒有背景量測時當場量測。
     """
     scan_job = ctx.scan_job
     if "ux" not in scan_job.effective_categories:
@@ -1412,7 +1443,10 @@ def stage_pagespeed(ctx: ScanRunContext) -> None:
     raise_if_cancelled(ctx.scan_job_id)
     ctx.scanning_progress(ctx.deep_scan_total, "pagespeed")
     try:
-        report = fetch_pagespeed(scan_job.normalized_url or scan_job.original_url)
+        if ctx.pagespeed_future is not None:
+            report = ctx.pagespeed_future.result()
+        else:
+            report = fetch_pagespeed(_pagespeed_target(ctx))
     except PageSpeedError as exc:
         append_log(ctx.scan_job_id, f"PageSpeed Insights 量測失敗：{exc}", level="warn")
         ctx.coverage.mark("pagespeed", FAILED, str(exc))
@@ -1786,6 +1820,7 @@ SCAN_PIPELINE: tuple[tuple[str, Callable[[ScanRunContext], None]], ...] = (
     ("target_validation", stage_validate_target),
     ("crawl", stage_crawl),
     ("enter_scanning", stage_enter_scanning),
+    ("pagespeed_start", stage_pagespeed_start),
     ("fingerprint", stage_fingerprint),
     ("page_analysis", stage_analyze_pages),
     ("aeo_answers", stage_aeo_answerability),
