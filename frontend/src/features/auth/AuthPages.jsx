@@ -66,7 +66,7 @@ function AuthShell({ children, backTo, backLabel }) {
   return (
     <div className="auth-shell">
       <aside className="auth-story ag-surface-grid" aria-label="關於 Argus">
-        <ArgusLogo size={40} subtitle="AI網站健檢平台" />
+        <ArgusLogo size={30} className="brand-lockup" subtitle="AI網站健檢平台" />
         <div className="auth-story-copy">
           <p className="ag-eyebrow">Night Watch</p>
           <p className="auth-story-title">

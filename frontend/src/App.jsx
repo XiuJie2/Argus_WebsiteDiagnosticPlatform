@@ -55,6 +55,7 @@ const ScanLayout = lazyNamed(loadScanExperience, "ScanLayout");
 const ScanDetailPage = lazyNamed(loadScanExperience, "ScanDetailPage");
 const ScanStrengthsPage = lazyNamed(loadScanExperience, "ScanStrengthsPage");
 const ScanArchitecturePage = lazyNamed(loadScanExperience, "ScanArchitecturePage");
+const TopologyPage = lazyNamed(loadScanExperience, "TopologyPage");
 const ScanPerformancePage = lazyNamed(loadScanExperience, "ScanPerformancePage");
 const ScanScorePage = lazyNamed(loadScanExperience, "ScanScorePage");
 const OptimizationResultPage = lazyNamed(loadOptimizationResult, "OptimizationResultPage");
@@ -235,10 +236,10 @@ function AppShell({ googleOAuthEnabled }) {
               <Route path="/scans/:scanId" element={<ScanDetailPage />} />
               <Route path="/scans/:scanId/strengths" element={<ScanStrengthsPage />} />
               <Route path="/scans/:scanId/architecture" element={<ScanArchitecturePage />} />
+              <Route path="/scans/:scanId/topology" element={<TopologyPage />} />
               <Route path="/scans/:scanId/performance" element={<ScanPerformancePage />} />
               <Route path="/scans/:scanId/score" element={<ScanScorePage />} />
-              {/* 舊網址：網站結構圖併入網站架構、修正產出已移除（2026-10-06） */}
-              <Route path="/scans/:scanId/topology" element={<ScanSubpathRedirect to="architecture" />} />
+              {/* 舊網址：修正產出已移除（2026-10-06）；topology 2026-10-10 起是獨立的網站拓撲分頁 */}
               <Route path="/scans/:scanId/fixes" element={<ScanSubpathRedirect to="" />} />
             </Route>
           </Route>

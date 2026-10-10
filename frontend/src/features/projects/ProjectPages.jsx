@@ -505,7 +505,7 @@ function SiteSummaryPanel({ project, scan }) {
               <strong className="project-site-tile-value is-text">
                 {summary.technologies.length ? summary.technologies.join("、") : "未辨識到"}
               </strong>
-              <span className="project-site-tile-hint">{more > 0 ? `另有 ${more} 項，查看網站架構` : "依首頁內容與回應標頭判斷"}</span>
+              <span className="project-site-tile-hint">{more > 0 ? `另有 ${more} 項，查看架構與信任` : "依首頁內容與回應標頭判斷"}</span>
             </>
           ) : (
             <>

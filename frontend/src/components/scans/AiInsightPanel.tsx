@@ -4,7 +4,8 @@ import { api } from "../../api";
 
 // AI 掃描解讀（scan.ai_insight，後端 apps/scans/ai_insight.py）：整體診斷、優先處理建議、
 // 高風險問題的 AI 複核。AI 產生、只供參考：不改嚴重度、不影響分數，畫面上一律標明。
-// 產生中時每 5 秒重新讀取，直到完成或失敗；沒有結果或失敗時可重新產生。
+// 掃描完成時不自動產生（每次都花 token，2026-10-10 起改為使用者按「產生 AI 解讀」才派工）；
+// 產生中顯示 Argus 守望之眼動畫並每 5 秒重新讀取，直到完成或失敗；失敗時可重新產生。
 
 const POLL_MS = 5000;
 
@@ -27,6 +28,77 @@ const VERDICT_TONE: Record<Verdict, string> = {
   possible_false_positive: "is-good",
   needs_check: "is-warn",
 };
+
+// 產生中的步驟文字（每 STEP_MS 前進一格，停在最後一格直到完成）
+const WATCH_STEPS = ["讀取這次的問題與證據", "複核高風險問題是否可能誤報", "整理整體診斷與優先順序"];
+const STEP_MS = 6000;
+const PIPS = [0, 1, 2, 3, 4, 5, 6, 7];
+
+/**
+ * Argus 守望之眼：產生 AI 解讀時的載入動畫。
+ * Argus 是希臘神話的百眼守衛——中央的眼睛左右巡視、偶爾眨眼，外圈八個小眼依序亮起，
+ * 一道掃描線掃過眼睛。偏好減少動態時全部靜止（92-layout.css）。
+ */
+function ArgusWatchLoader() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const step = Math.min(Math.floor((elapsed * 1000) / STEP_MS), WATCH_STEPS.length - 1);
+  return (
+    <div className="ai-watch" role="status" aria-live="polite">
+      <svg className="ai-watch-eye" viewBox="0 0 120 120" aria-hidden="true">
+        <defs>
+          <clipPath id="ai-watch-lid">
+            <path d="M18 60 Q60 22 102 60 Q60 98 18 60 Z" />
+          </clipPath>
+        </defs>
+        <circle className="ai-watch-orbit" cx="60" cy="60" r="54" />
+        {PIPS.map((i) => {
+          const angle = (i / PIPS.length) * Math.PI * 2 - Math.PI / 2;
+          return (
+            <circle
+              key={i}
+              className="ai-watch-pip"
+              cx={60 + 54 * Math.cos(angle)}
+              cy={60 + 54 * Math.sin(angle)}
+              r="3.4"
+            />
+          );
+        })}
+        <g className="ai-watch-lids">
+          <path className="ai-watch-almond" d="M18 60 Q60 22 102 60 Q60 98 18 60 Z" />
+          <g clipPath="url(#ai-watch-lid)">
+            <g className="ai-watch-iris">
+              <circle className="ai-watch-iris-ring" cx="60" cy="60" r="15" />
+              <circle className="ai-watch-pupil" cx="60" cy="60" r="6.5" />
+              <circle className="ai-watch-glint" cx="64" cy="55.5" r="2.2" />
+            </g>
+            <rect className="ai-watch-scan" x="14" y="24" width="92" height="3" rx="1.5" />
+          </g>
+        </g>
+      </svg>
+      <div className="ai-watch-copy">
+        <p className="ai-watch-title">Argus 正在解讀這次掃描</p>
+        <ol className="ai-watch-steps">
+          {WATCH_STEPS.map((label, idx) => (
+            <li
+              key={label}
+              className={idx < step ? "is-done" : idx === step ? "is-active" : ""}
+              aria-current={idx === step ? "step" : undefined}
+            >
+              {label}
+            </li>
+          ))}
+        </ol>
+        <p className="ai-insight-note">
+          已等待 {elapsed} 秒。通常需要 30 秒到 1 分鐘，完成後會自動顯示；可以先看下方的問題清單。
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /** 依規則代號找出這次掃描的問題標題（優先處理的連結文字用）。 */
 function ruleTitle(findings: FindingLike[], ruleId: string) {
@@ -99,19 +171,17 @@ function AiInsightPanel({
         <span className="ai-insight-tag">AI 產生，僅供參考，不影響分數</span>
       </header>
 
-      {status === "generating" && (
-        <p className="ai-insight-note" role="status">AI 正在閱讀這次的問題與證據，完成後會自動顯示…</p>
-      )}
+      {(status === "generating" || busy) && <ArgusWatchLoader />}
 
-      {(!status || status === "failed") && (
+      {(!status || status === "failed") && !busy && (
         <div className="ai-insight-empty">
           <p className="ai-insight-note">
             {status === "failed"
               ? `這次沒有產生成功：${insight.reason || "原因不明"}`
-              : "讓 AI 讀完這次的問題與證據，寫一段整體診斷，並複核高風險問題是否可能誤報。"}
+              : "需要時再產生：讓 AI 讀完這次的問題與證據，寫一段整體診斷，並複核高風險問題是否可能誤報。"}
           </p>
-          <button className="secondary-button" type="button" onClick={regenerate} disabled={busy}>
-            {busy ? "送出中…" : status === "failed" ? "重新產生" : "產生 AI 解讀"}
+          <button className="primary-button" type="button" onClick={regenerate}>
+            {status === "failed" ? "重新產生" : "產生 AI 解讀"}
           </button>
           {error && <p className="error-text">{error}</p>}
         </div>

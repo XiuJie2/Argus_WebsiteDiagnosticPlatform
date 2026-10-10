@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { api } from "../../api";
+import { scoreGrade, scoreTone } from "../../components/projects/DashboardWidgets.jsx";
 import ProjectHeader from "../../components/projects/ProjectHeader.jsx";
 import { apiErrorMessage } from "../../shared/AppShared.jsx";
 import { formatDate, formatDateTime } from "../../shared/formatters";
@@ -328,6 +329,7 @@ function OverviewTab({ data, keyword, googleIndexed, gsc, onOpenPage }) {
   return (
     <>
       <section className="seo-kpis" aria-label="SEO 概覽">
+        <SeoScoreKpi score={data.scan.score} />
         <Kpi label="掃描頁數" value={overview.pages_scanned} hint={`檢測時間 ${formatDateTime(data.scan.completed_at)}`} />
         <Kpi label="受影響頁數" value={overview.pages_affected} hint={`有重大或警告問題的頁面，共 ${overview.pages_scanned} 頁`} />
         <Kpi label="重大問題" value={overview.critical} tone={overview.critical ? "is-bad" : ""} hint={`另有警告 ${overview.warnings}、提示 ${overview.notices}`} />
@@ -406,6 +408,25 @@ function OverviewTab({ data, keyword, googleIndexed, gsc, onOpenPage }) {
 
       <SiteChecks checks={data.site_checks} checkedAt={data.links.checked_at} />
     </>
+  );
+}
+
+// SEO 分數卡：與資安分析頁的分數卡相同（數值＋等級文字，≥80 藍／60–79 琥珀／<60 紅）
+function SeoScoreKpi({ score }) {
+  return (
+    <div className="project-kpi seo-kpi seo-kpi-score">
+      <span className="project-kpi-label">SEO 分數</span>
+      {score === null || score === undefined ? (
+        <span className="project-kpi-value is-small">未評估</span>
+      ) : (
+        <span className="project-kpi-value">
+          {score}
+          <small>/100</small>
+          <span className={`project-grade tone-${scoreTone(score)}`}>{scoreGrade(score)}</span>
+        </span>
+      )}
+      <span className="project-kpi-hint">Argus 依 SEO 問題的嚴重度計算</span>
+    </div>
   );
 }
 
