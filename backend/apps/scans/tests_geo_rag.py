@@ -56,5 +56,10 @@ class RagChunkingTests(SimpleTestCase):
     def test_short_page_skipped(self):
         self.assertEqual(self._rules(_page(f"<h2>A</h2><p>{_SHORT}</p>")), set())
 
+    def test_rule_has_report_basis(self):
+        from apps.scans.reports import RULE_BASIS
+
+        self.assertIn("geo-rag-chunking", RULE_BASIS)
+
     def test_non_html_skipped(self):
         self.assertEqual(rag_findings("https://x/feed", "<rss><item>x</item></rss>"), [])

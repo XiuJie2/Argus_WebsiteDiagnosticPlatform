@@ -63,3 +63,14 @@ class CitabilityTests(SimpleTestCase):
         for f in findings:
             self.assertEqual(f["category"], "geo")
             self.assertIn(f["severity"], ("low", "info"))
+
+    def test_rules_have_report_basis(self):
+        # 報告逐項「判定依據」要附研究出處（Princeton GEO），不只套用維度通用說明
+        from apps.scans.reports import RULE_BASIS
+
+        for rule in (
+            "geo-citability-no-sources",
+            "geo-citability-no-statistics",
+            "geo-citability-no-quotations",
+        ):
+            self.assertIn(rule, RULE_BASIS)

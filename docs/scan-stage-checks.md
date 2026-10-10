@@ -157,6 +157,7 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 | 版面跳動（CLS） | 依 Google CLS 定義：>0.1＝低、>0.25＝中；列出移動最多的元素與沒標寬高的圖片 | 低／中 |
 | 觸控目標過小 | 手機上可點的按鈕或連結寬或高小於 40px；5 個以上升為中（另註明 WCAG 2.2 的 24px／44px 標準） | 低／中 |
 | 表單欄位缺標籤 | input、select、textarea 沒有 label、aria-label、title 或 placeholder | 中 |
+| 假按鈕（div／span 當按鈕） | 用 onclick 掛在 `<div>`／`<span>` 上當按鈕、卻沒有 role：螢幕報讀者唸不出、鍵盤 Tab 不到、AI 代理也看不到（有 role 代表作者有意識處理，不列入） | 低 |
 | JavaScript 錯誤 | 頁面有未捕捉的例外 | 中 |
 | WCAG 無障礙（axe-core） | 色彩對比不足、按鈕或連結沒有名稱、頁面語言未設定、圖片缺替代文字等；axe 的 critical、serious 判中，moderate、minor 判低 | 低／中 |
 
@@ -389,6 +390,7 @@ AI 回報的 UX 問題最高為中風險（只憑 AI 觀察、沒有規則依據
 - **網站優勢**：HTTPS、HSTS、nosniff、CSP、DNSSEC、SPF -all、DMARC、robots＋sitemap、正確的 404、行動版沒破版、載入速度；每項附依據，與同次發現的問題矛盾的不列。
 - **使用的技術**：從首頁 HTML 與回應標頭辨識，不列版本號。
 - **安全標頭參考等第**：依 Mozilla HTTP Observatory 公開規則離線計算 A+～F（勾資安時，不計入分數）。
+- **信任輪廓（五層信任分）**：把既有訊號聚合成技術／身分／社群／學術／一致性五層的 0–100 分與總分，看出「哪一層強、哪一層弱」。只聚合已算出的 observatory 分數與本次問題，不重新偵測、不計入分數；只對有掃到的維度評分。
 - **AI 爬蟲政策表**（勾 GEO 時）。
 
 ## 16. 彙整評分
