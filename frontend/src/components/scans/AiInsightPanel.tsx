@@ -33,9 +33,9 @@ const VERDICT_TONE: Record<Verdict, string> = {
 const WATCH_STEPS = ["讀取這次的問題與證據", "複核高風險問題是否可能誤報", "整理整體診斷與優先順序"];
 const STEP_MS = 6000;
 /**
- * AI 解讀產生中的動畫：Thought Spark（2026-10-10 使用者從 Argus Minimal Loading Pack 選定 08）。
- * 五個光點分兩排緩慢依序閃爍，像思考訊號；旁邊列出目前步驟與已等待秒數。
- * 偏好減少動態時靜止（92-layout.css）。
+ * AI 解讀產生中的動畫：Argus Minimal Loading Pack「08 · Thought Spark」原樣使用，
+ * 下方保留原檔的「AI Agent 正在分析…」（2026-10-10 使用者指定不改）。
+ * 右側另列目前步驟與已等待秒數（92-layout.css）。
  */
 function AiThinkingLoader() {
   const [elapsed, setElapsed] = useState(0);
@@ -46,15 +46,11 @@ function AiThinkingLoader() {
   const step = Math.min(Math.floor((elapsed * 1000) / STEP_MS), WATCH_STEPS.length - 1);
   return (
     <div className="ai-watch" role="status" aria-live="polite">
-      <span className="ai-spark" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-      </span>
+      <div className="ai-spark-stage">
+        <div className="ag-spark" aria-hidden="true" />
+        <div className="ag-loader-label">AI Agent 正在分析…</div>
+      </div>
       <div className="ai-watch-copy">
-        <p className="ai-watch-title">Argus 正在分析這次掃描…</p>
         <ol className="ai-watch-steps">
           {WATCH_STEPS.map((label, idx) => (
             <li

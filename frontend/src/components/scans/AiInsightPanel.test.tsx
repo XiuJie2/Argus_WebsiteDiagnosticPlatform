@@ -51,9 +51,9 @@ describe("AiInsightPanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "產生 AI 解讀" }));
     expect(api.post).toHaveBeenCalledWith("/scans/9/ai-insight/");
-    // 產生中顯示 Thought Spark 動畫與目前步驟；產生按鈕收起，避免重複送出
+    // 產生中顯示 Thought Spark（下方「AI Agent 正在分析…」）與目前步驟；產生按鈕收起，避免重複送出
     const loader = await screen.findByRole("status");
-    expect(loader).toHaveTextContent("Argus 正在分析這次掃描");
+    expect(loader).toHaveTextContent("AI Agent 正在分析…");
     expect(loader.querySelector('[aria-current="step"]')).toHaveTextContent("讀取這次的問題與證據");
     expect(screen.queryByRole("button", { name: "產生 AI 解讀" })).not.toBeInTheDocument();
 
