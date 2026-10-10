@@ -135,6 +135,31 @@ class AiInsightGenerateTests(TestCase):
         self.assertEqual(insight["status"], "failed")
         self.assertNotIn("secret", insight["reason"])
 
+    def test_transient_provider_error_is_retried_once(self):
+        from apps.agent.providers import ProviderError
+
+        good = FakeChain(self._payload())
+
+        class Flaky:
+            calls = 0
+
+            def chat_text(self, prompt, **kwargs):
+                Flaky.calls += 1
+                if Flaky.calls == 1:
+                    # 鏈上最後一家沒有金鑰：拋出的是 no_key，不是原本的 502
+                    raise ProviderError("gemini", "no_key", "not set")
+                return good.chat_text(prompt, **kwargs)
+
+        insight = ai_insight.generate_ai_insight(self.scan.id, chain=Flaky())
+        self.assertEqual(insight["status"], "ready")
+        self.assertEqual(Flaky.calls, 2)
+
+    def test_prompt_limits_version_only_evidence_to_needs_check(self):
+        chain = FakeChain(self._payload())
+        ai_insight.generate_ai_insight(self.scan.id, chain=chain)
+        self.assertIn("只憑版本號", chain.prompts[0])
+        self.assertIn("FAQPage", chain.prompts[0])
+
     def test_scan_without_findings_needs_no_ai_call(self):
         empty = _scan(self.user, original_url="https://empty.example/",
                       normalized_url="https://empty.example/", origin="https://empty.example")

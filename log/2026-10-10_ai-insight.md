@@ -36,4 +36,7 @@
   - API 重新產生的條件、他人掃描回 404。
 - 前端 `AiInsightPanel.test.tsx`（4 項）、`npm run lint`、`npm run typecheck`、`npx vitest run`、`npx vite build`。
 - `uv run python backend/manage.py test apps` 與 root `tests/`（全部，序列執行）、`uv run ruff check backend`。
-- **未驗證**：本機沒有 AI 服務金鑰，沒有以真實模型產生過。部署後需實掃一次，確認 AI 解讀的品質與產生時間。
+- **以 MiniMax-M3 實測**（沙箱，金鑰由網路代理注入）：GOV.UK、MDN、示範掃描各產生一次，15～25 秒，內容為繁體中文、只引用本次的問題。實測後修正：
+  - MiniMax 偶爾在約 30 秒回 502（5 次中 2 次），失敗時重試一次。ProviderChain 會把錯誤轉給沒有金鑰的備援家，拋出來的是 no_key，所以只排除 400／401／403／404。
+  - 複核把「只憑標頭版本號的 Apache CVE」判成證據支持。提示詞改為：只有證據直接證明問題才算證據支持，只憑版本號、標頭或規則推測的最多判需要人工確認。改後重跑判「需要人工確認」，理由寫明可能已被發行版修補。
+  - 修法建議過 FAQPage 結構化資料（Google 已不顯示），也猜過網站用的框架。提示詞已禁止這兩種，改後重跑沒有再出現。

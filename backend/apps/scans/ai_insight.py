@@ -141,13 +141,19 @@ def build_prompt(scan: ScanJob, groups: list[dict], candidates: list[dict]) -> s
         "任務：\n"
         "1. summary：用繁體中文 3～5 句話說明這個網站整體狀況、最主要的問題與可能原因。"
         "只能根據資料，不可編造資料沒有的事實、數字或問題。\n"
+        "建議不可猜測資料沒有提到的事情（例如網站用哪種框架、主機商或後台系統）；"
+        "也不要建議補 FAQPage／HowTo 結構化資料（Google 已不再顯示這兩種複合式搜尋結果）。\n"
         "2. priorities：挑最多 3 件最值得先處理的事。每件寫 title（動詞開頭的短句）、why"
         "（為什麼先做，1～2 句）、how（具體怎麼做，2～3 句）、rule_ids（對應的 rule_id，"
         "只能用資料裡出現過的）。修法在同一處的問題可以合併成一件。\n"
         "3. triage：對【待複核】的每一項，看證據判斷規則是否可能誤報。verdict 只能是 "
         f"\"{LIKELY_VALID}\"（證據支持這個問題）、\"{POSSIBLE_FALSE_POSITIVE}\"（證據看起來"
         f"不像真的問題，例如號碼其實是檔名、日期或編號）或 \"{NEEDS_CHECK}\"（證據不足以判斷）。"
-        "reason 用 1～2 句說明依據。你不能更改嚴重度，也不要因為問題聽起來嚴重就判證據支持。\n\n"
+        "reason 用 1～2 句說明依據。你不能更改嚴重度，也不要因為問題聽起來嚴重就判證據支持。"
+        f"只有證據本身就直接證明問題時才判 \"{LIKELY_VALID}\""
+        "（例如 scheme=http、回應內容就是外洩的資料）；"
+        "只憑版本號比對已知漏洞、只看標頭或規則推測、沒有實際驗證能否被利用的，最多判 "
+        f"\"{NEEDS_CHECK}\"——作業系統發行版常把修補補進舊版本而不改版本號。\n\n"
         "只輸出一個 JSON 物件，不要 markdown 圍欄、不要其他文字：\n"
         '{"summary": "", "priorities": [{"title": "", "why": "", "how": "", "rule_ids": []}], '
         '"triage": [{"rule_id": "", "verdict": "", "reason": ""}]}\n\n'
@@ -242,6 +248,30 @@ def can_regenerate(insight: dict) -> bool:
     return (timezone.now() - started_at).total_seconds() > GENERATING_STALE_SECONDS
 
 
+# 失敗重試一次：2026-10-10 以 MiniMax 實測，5 次呼叫有 2 次在約 30 秒時回 502、重試即成功。
+# ProviderChain 會把 502 轉給下一家，沒設金鑰的備援家回 no_key，拋出來的是最後一家的錯誤，
+# 所以不看狀態是否「暫時性」，只排除請求本身有問題的狀態。只重試一次，避免 token 花太多
+_NOT_RETRYABLE = {400, 401, 403, 404}
+
+
+def _chat_with_retry(chain, prompt: str):
+    from apps.agent.providers import ProviderError
+
+    kwargs = {
+        "model": settings.ARGUS_AI_INSIGHT_MODEL or None,
+        "temperature": 0.2,
+        "max_tokens": settings.ARGUS_AI_INSIGHT_MAX_TOKENS,
+        "timeout": settings.ARGUS_AI_INSIGHT_TIMEOUT,
+    }
+    try:
+        return chain.chat_text(prompt, **kwargs)
+    except ProviderError as exc:
+        if exc.http_status in _NOT_RETRYABLE:
+            raise
+        logger.info("AI 解讀失敗（%s），重試一次", exc.http_status)
+        return chain.chat_text(prompt, **kwargs)
+
+
 def generate_ai_insight(scan_id: int, chain=None) -> dict:
     """產生並保存 AI 解讀；失敗寫 status=failed 與可公開的原因，不往上拋。"""
     scan = ScanJob.objects.filter(id=scan_id).first()
@@ -265,13 +295,7 @@ def generate_ai_insight(scan_id: int, chain=None) -> dict:
             from apps.agent.providers import build_default_chain
 
             chain = build_default_chain()
-        response = chain.chat_text(
-            build_prompt(scan, groups, candidates),
-            model=settings.ARGUS_AI_INSIGHT_MODEL or None,
-            temperature=0.2,
-            max_tokens=settings.ARGUS_AI_INSIGHT_MAX_TOKENS,
-            timeout=settings.ARGUS_AI_INSIGHT_TIMEOUT,
-        )
+        response = _chat_with_retry(chain, build_prompt(scan, groups, candidates))
         result = validate(parse_response(response.content), groups, candidates)
     except AiInsightError as exc:
         insight = {"status": "failed", "reason": str(exc)}
