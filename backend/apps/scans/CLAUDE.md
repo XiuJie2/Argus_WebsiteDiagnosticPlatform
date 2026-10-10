@@ -363,6 +363,10 @@ Agent UX 測試（`run_agent_ux`，全網站＋勾 UX 才跑，預設總開關�
   MEDIUM）；`<input>`/`<select>`/`<textarea>` 無 label/aria/title/placeholder 列為
   accessibility 問題（MEDIUM）。每類上限 `_MAX_UX_OFFENDERS`（8）。
 - **精準標註（2026-10-06）**：觸控目標、缺標籤欄位、破版元素都記錄行動版文件座標 `box`（`rect + scroll`）；只要有這類問題，爬蟲另拍一張行動版整頁截圖（`page-N-mobile.png`，路徑存 `layout_metrics["mobile_screenshot"]`，API `pages/<id>/screenshot/?variant=mobile`、`PageSerializer.has_mobile_screenshot`）。Finding 的 `evidence_json.annotations = {"viewport": "mobile", "boxes": [...]}`，前端在行動版截圖上逐一框住實際元素，不再框整個區塊。移出視窗左右兩側的抽屜選單不算觸控目標（`isVisible` 排除 `rect.right <= 0 || rect.left >= innerWidth`）。
+- **假按鈕（`scanners._ux_fake_buttons`，2026-10-10，借鑑 claude-seo MIT）**：原始 HTML 的
+  `<div>`／`<span>`／`<li>` 掛 `onclick` 但**完全沒有 `role` 屬性**（`_FAKE_BUTTON_RE`）→
+  `ux-fake-button`（LOW）。螢幕報讀者唸不出、鍵盤 Tab 不到、AI 代理從可及性樹看不到。有 role 的
+  不列入（作者已有意識處理語意，壓低誤報）；與 axe 的 button-name（看「有沒有名稱」）互補、不重複。
 - **未捕捉的 JS 例外**（`pageerror` 監聽 → `page["js_errors"]`）：頁面 console 未攔截的
   例外列為 MEDIUM，證據上限 `_MAX_JS_ERROR_EVIDENCE_CHARS`（800）。
 - **axe-core WCAG 自動化檢查（2026-10-07，roadmap P1，`accessibility.py`）**：勾 UX 且

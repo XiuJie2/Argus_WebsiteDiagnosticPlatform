@@ -157,6 +157,7 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 | 版面跳動（CLS） | 依 Google CLS 定義：>0.1＝低、>0.25＝中；列出移動最多的元素與沒標寬高的圖片 | 低／中 |
 | 觸控目標過小 | 手機上可點的按鈕或連結寬或高小於 40px；5 個以上升為中（另註明 WCAG 2.2 的 24px／44px 標準） | 低／中 |
 | 表單欄位缺標籤 | input、select、textarea 沒有 label、aria-label、title 或 placeholder | 中 |
+| 假按鈕（div／span 當按鈕） | 用 onclick 掛在 `<div>`／`<span>` 上當按鈕、卻沒有 role：螢幕報讀者唸不出、鍵盤 Tab 不到、AI 代理也看不到（有 role 代表作者有意識處理，不列入） | 低 |
 | JavaScript 錯誤 | 頁面有未捕捉的例外 | 中 |
 | WCAG 無障礙（axe-core） | 色彩對比不足、按鈕或連結沒有名稱、頁面語言未設定、圖片缺替代文字等；axe 的 critical、serious 判中，moderate、minor 判低 | 低／中 |
 

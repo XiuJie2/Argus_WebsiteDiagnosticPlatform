@@ -600,9 +600,55 @@ def analyze_ux(page_input: PageAnalysisInput) -> list[dict]:
     findings.extend(_ux_layout_shift(page_input))
     findings.extend(_ux_tap_targets(page_input))
     findings.extend(_ux_unlabeled_fields(page_input))
+    findings.extend(_ux_fake_buttons(page_input))
     findings.extend(_ux_js_errors(page_input))
     findings.extend(_ux_axe(page_input))
     return findings
+
+
+# 假按鈕：非互動元素帶 onclick 但完全沒有 role —— 對螢幕報讀者、鍵盤與 AI agent 都不可見
+# （借鑑 claude-seo 的 agent_ux_check，MIT）。要求「完全沒有 role」把誤報壓到最低：
+# 作者只要加了 role=button/link 就代表有意識處理語意，不列入。
+_FAKE_BUTTON_RE = re.compile(
+    r"<(?:div|span|li)\b(?![^>]*\brole\s*=)[^>]*\bonclick\s*=",
+    re.IGNORECASE,
+)
+_MAX_FAKE_BUTTONS = 8
+
+
+def _ux_fake_buttons(page_input: PageAnalysisInput) -> list[dict]:
+    """假按鈕：用 <div>／<span> 掛 onclick 當按鈕，卻沒有 role。
+
+    真正的按鈕要用 <button>／<a>（或至少補 role＋tabindex＋鍵盤事件）。只掛 onclick 的
+    非互動元素：螢幕報讀者唸不出、鍵盤 Tab 不到、AI agent 從可及性樹也看不到這是可點的。
+    只讀原始 HTML、不需量測。
+    """
+    html = page_input.html or ""
+    count = len(_FAKE_BUTTON_RE.findall(html))
+    if count == 0:
+        return []
+    samples = [m.group(0)[:80] for m in list(_FAKE_BUTTON_RE.finditer(html))[:_MAX_FAKE_BUTTONS]]
+    return [
+        make_finding(
+            category=Finding.Category.UX,
+            severity=Finding.Severity.LOW,
+            rule_id="ux-fake-button",
+            title="用 div／span 當按鈕（缺少語意）",
+            description=(
+                f"頁面有 {count} 個以 onclick 掛在 <div>／<span> 上的「假按鈕」，但沒有 role 標記。"
+                "螢幕報讀者會唸不出它是按鈕、鍵盤使用者 Tab 不到、AI 代理從可及性樹也看不到這是"
+                "可點擊的元素，等於對這些使用者隱藏了功能。"
+            ),
+            remediation=(
+                "改用真正的 <button>（頁面內動作）或 <a href>（導覽）；若必須用 <div>／<span>，"
+                "至少補上 role=\"button\"、tabindex=\"0\" 與鍵盤事件（Enter／Space）。"
+            ),
+            evidence="；".join(samples),
+            impact_area="accessibility",
+            priority_score=40,
+            evidence_type="html",
+        )
+    ]
 
 
 def _mobile_annotations(offenders: list[dict], label) -> dict | None:
