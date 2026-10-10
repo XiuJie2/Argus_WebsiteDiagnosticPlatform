@@ -559,14 +559,18 @@ def analyze_page(page_input: PageAnalysisInput, categories: set[str] | None = No
     if runs("aeo"):
         findings.extend(analyze_aeo(page_input, parser))
     if runs("geo"):
-        # 內容結構／可引用性（匯入 make_finding，放在函式內避免循環匯入）
+        # 內容結構／可引用性／衰退／RAG 分塊（匯入 make_finding，放在函式內避免循環匯入）
         from apps.scans.geo_citability import citability_findings
+        from apps.scans.geo_decay import decay_findings
+        from apps.scans.geo_rag import rag_findings
         from apps.scans.geo_structure import structure_findings
 
         findings.extend(analyze_geo(page_input, parser))
         findings.extend(analyze_geo_fast(page_input, parser))
         findings.extend(structure_findings(page_input.url, page_input.html))
         findings.extend(citability_findings(page_input.url, page_input.html))
+        findings.extend(decay_findings(page_input.url, page_input.html))
+        findings.extend(rag_findings(page_input.url, page_input.html))
     if runs("security"):
         findings.extend(analyze_security(page_input, parser))
         findings.extend(analyze_data_exposure(page_input))

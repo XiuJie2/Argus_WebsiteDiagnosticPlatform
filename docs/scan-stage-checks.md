@@ -142,6 +142,8 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 | 缺少權威來源引用 | 有篇幅的正文頁沒有連到政府／學術等權威來源、沒有 `<cite>`、沒有「參考資料」區塊（Princeton 研究：附來源最多 +115% 被引用率） | 低 |
 | 缺少量化數據 | 有篇幅的正文頁幾乎沒有百分比、金額等具體數字 | 資訊 |
 | 缺少可引用引言 | 有篇幅的正文頁沒有 blockquote 或署名引言 | 資訊 |
+| 內容可能過時 | 有篇幅的正文頁同時出現過去年份、時效性措辭、軟體版本、定期價格等 ≥2 類會變動的內容，卻沒有更新日期訊號 | 資訊 |
+| 區段偏長不利分塊 | 有小標題、但正文很長、平均每個小標題區段仍超過約 280 字，AI 難以逐段擷取乾淨片段 | 資訊 |
 
 > 後三項「可引用性」是依 Princeton「GEO: Generative Engine Optimization」(KDD 2024) 的內容訊號，只對有一定篇幅的正文頁出題，是軟性建議、不重扣分。
 
@@ -292,7 +294,7 @@ Email 與手機的格式判斷與 AEO 共用同一套，兩邊結論不會互相
 | 檢查 | 判定標準 | 嚴重度 |
 |---|---|---|
 | llms.txt | 網站沒有 `/llms.txt`（新興做法，只是提醒） | 資訊 |
-| AI 爬蟲政策 | 依 robots.txt 判斷 13 個 AI 爬蟲（GPTBot、ClaudeBot、PerplexityBot、Google-Extended…）。**只擋訓練用爬蟲不算問題**；擋了 AI 搜尋或使用者觸發的爬蟲（OAI-SearchBot、ChatGPT-User、Claude-User…）才列 | 低 |
+| AI 爬蟲政策 | 依 robots.txt 判斷 24 個 AI 爬蟲（GPTBot、ClaudeBot、PerplexityBot、Google-Extended…）。**只擋訓練用爬蟲不算問題**；擋了 AI 搜尋或使用者觸發的爬蟲（OAI-SearchBot、ChatGPT-User、Claude-User…）才列 | 低 |
 | 組織實體 | 有結構化資料，卻沒有 Organization／LocalBusiness | 低 |
 | sameAs | 組織實體沒有連到 Wikidata、維基百科或社群帳號 | 資訊 |
 | 文章作者 | 文章頁沒有作者 | 低 |
