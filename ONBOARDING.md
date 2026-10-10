@@ -227,7 +227,7 @@ Argus/
 | `/` | redirect | 未登入跳 `/project`、已登入跳 `/dashboard` |
 | `/project` ★ | `ProjectPage` | 公開介紹頁 |
 | `/free-tools` ★ | `FreeToolsPage` | 免費分析（測速 / URL 風險 / 郵件原始碼風險），呼叫 `/api/insights/*` |
-| `/purchase` ★ | `PurchasePage` | marketing + 4 方案 + FAQ，CTA 跳 `/billing` |
+| `/purchase` ★ | `PurchasePage` | 方案與計費：計費規則、試算範例、即時讀取的月訂閱與點數包價格、比較表、FAQ；結帳跳 `/billing` |
 | `/download` ★ | `DownloadPage` | PWA 一鍵安裝 + 三平台步驟 |
 | `/login` ★ | `LoginPage` | Email 登入 / 新帳號註冊；有 Google Client ID 時才顯示 Google OAuth |
 | `/reviews` ★ | `ReviewsPage`（`PublicLayout`） | 夜間科技評論頁；沿用公開 top bar／footer，提供星等分布／篩選、本人評論管理與評論／官方回覆的逐則按讚、檢舉 |
