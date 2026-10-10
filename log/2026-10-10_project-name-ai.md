@@ -17,7 +17,7 @@
 
 ## 影響範圍
 - 使用者看得到的名稱：分頁標題、PWA 安裝名稱、導覽列／登入頁／頁尾、系統信、PDF 頁尾、MCP 說明。
-- 不在 `69b7f7c` 範圍、這次未改（仍是舊名）：`SharedOptimizationPage.jsx` 的品牌 aria-label、`LegalPages.jsx` 隱私權政策與服務條款開頭、`docs/opencode-agents/argus-rebuild.md` agent 提示詞，另有歷史規劃文件。
+- 不在 `69b7f7c` 範圍、使用者確認後一併改名（fix-a）：`SharedOptimizationPage.jsx` 的品牌 aria-label、`LegalPages.jsx` 隱私權政策與服務條款開頭（只改名稱，資料處理方式未變，`EFFECTIVE_DATE` 不動）、`docs/opencode-agents/argus-rebuild.md` agent 提示詞。歷史規劃文件與 log 不改。
 
 ## 驗證方式
 - `ruff check backend` 通過；`manage.py test apps.accounts apps.billing apps.mcp_access apps.scans.tests_report_layout apps.scans.tests_report_payload`（241 項通過）。
