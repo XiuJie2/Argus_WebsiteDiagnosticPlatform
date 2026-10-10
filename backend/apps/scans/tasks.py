@@ -54,6 +54,10 @@ from apps.scans.scanners import (
     calculate_scores,
 )
 from apps.scans.security import exposure_scanner, owasp_mapper
+from apps.scans.security.content_injection import (
+    build_injection_finding,
+    detect_content_injection,
+)
 from apps.scans.security.cookie_scanner import analyze_cookies
 from apps.scans.security.dns_scanner import analyze_dns
 from apps.scans.security.header_scanner import analyze_headers
@@ -781,13 +785,15 @@ def _analyze_one_page(page: Page, page_data: dict, category: str) -> list[dict]:
         ),
         categories={category},
     )
-    # Inline/HTML 硬編碼秘鑰偵測（被動：只分析已抓到的 HTML，不發額外請求）
+    # Inline/HTML 硬編碼秘鑰偵測＋AI 提示詞注入（被動：只解析已抓到的 HTML，不發額外請求）
     if category == "security":
         secrets = detect_secrets_in_text(page.html)
         location = page.final_url or page.url
+        injection = build_injection_finding(detect_content_injection(page.html), location)
         for secret_finding in (
             build_secret_finding(secrets, location, source="inline_html"),
             build_browser_key_finding(secrets, location, source="inline_html"),
+            injection,
         ):
             if secret_finding:
                 page_findings.append(owasp_mapper.tag(secret_finding))
@@ -1563,7 +1569,8 @@ def stage_agent(ctx: ScanRunContext) -> None:
 
 
 def _mark_agent_coverage(ctx: ScanRunContext) -> None:
-    """Agent 的覆蓋狀態：跑完＝completed、步數用完＝partial、出錯＝failed、沒啟動＝skipped。
+    """Agent 的覆蓋狀態：跑完＝completed、步數或 token 預算用完＝partial、
+    出錯＝failed、沒啟動＝skipped。
 
     agent 的 finding 由 runner 直接落 DB，歷史比較以規則前綴（AGENT_UX_／agent-）對回檢查。
     """
@@ -1576,6 +1583,9 @@ def _mark_agent_coverage(ctx: ScanRunContext) -> None:
         status, reason = COMPLETED, ""
     elif str(result.error or "").startswith("max_steps_reached"):
         status, reason = PARTIAL, "步數上限內未完成"
+    elif str(result.error or "").startswith("token_budget_exceeded"):
+        # 預算用完前回報的問題照樣有效，只是沒跑完全部流程（2026-10-10 實測 14 步用完 6 萬）
+        status, reason = PARTIAL, "token 預算內未完成"
     else:
         status, reason = FAILED, str(result.error or "")[:120]
     plan = ctx.execution_plan
@@ -1802,6 +1812,10 @@ def stage_settlement(ctx: ScanRunContext) -> dict:
             f"修正產出額度贈與失敗（{exc.__class__.__name__}）",
             level="warn",
         )
+    # AI 掃描解讀：完成後另外排背景任務，不拖慢掃描；失敗只記在 ai_insight
+    from apps.scans.ai_insight import schedule_ai_insight
+
+    schedule_ai_insight(scan_job)
     return {
         "status": scan_job.status,
         "pages": len(ctx.crawled_pages),
@@ -1910,6 +1924,14 @@ def finish_unreachable(scan_job: ScanJob, message: str) -> dict:
     )
     _refund_or_raise(scan_job, reason="失敗", label="失敗")
     return {"status": "failed", "reason": "no_usable_pages"}
+
+
+@shared_task
+def run_ai_insight_task(scan_job_id: int) -> None:
+    """AI 掃描解讀（ai_insight.py）。不重試：每次都會花 token，失敗由使用者決定是否重新產生。"""
+    from apps.scans.ai_insight import generate_ai_insight
+
+    generate_ai_insight(scan_job_id)
 
 
 @shared_task(bind=True)
