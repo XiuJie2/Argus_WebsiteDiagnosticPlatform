@@ -153,7 +153,7 @@ AEO 不再數 FAQPage／HowTo 標記，改成檢測「問題能否從網站內�
   - 超過 `MAX_HEADING_CHARS`（80）或含句中句號的 h1–h6 視為內文段落（`content._is_body_text`）。實例：隱私權政策整段寫在 h3 裡，裡面的 Email 被當成標題略過，造成資安判「公開 Email」、AEO 卻判「找不到 Email」的矛盾。
 - **共用聯絡資訊證據（2026-10-07，P0-B）**：`evaluate_site` 以 `evidence.contacts.collect_contacts` 擷取同一份 Email／電話，`reconcile_contact` 核對聯絡題：共用證據的值出現在任何可讀段落（含被當成標題的短段落）就判可回答；只在導覽列、頁首、隱藏區塊或 HTML 註解時判定不變，但理由寫明位置與「與資安檢查情境不同、並不矛盾」。`aeo_report.shared_contacts` 只記筆數不存值。地址（2026-10-08）也走共用證據：`contacts.ADDRESS_PATTERN`（AEO 答案格式同一份）＋JSON-LD `address`（位置 `structured_data`，PostalAddress 只取 streetAddress），頁面文字含該街道即判可回答；只在 JSON-LD 時判定不變、理由寫「搜尋引擎讀得到、訪客看不到」。日期不共用（AEO 與 GEO 的日期是不同的事）。測試 `tests_shared_evidence.py`。
 - **回歸資料集與指標（2026-10-07，P0-C）**：`aeo/gold_dataset.py`（`GOLD_CASES` 調整用＋`HOLDOUT_CASES` 保留集，每題人工標註；tag 分 answerable／insufficient／conflict／missing／near_miss／holdout）、`aeo/benchmark.py`（以「可回答」為正類算 precision、recall、false positive rate、accuracy、每站耗時、混淆矩陣）、`manage.py aeo_benchmark [--holdout] [--json]`（低於門檻非零結束）。門檻 `benchmark.THRESHOLDS`（accuracy／precision／recall ≥ 0.95、FPR ≤ 0.05）由 `tests_aeo_benchmark.py` 鎖定，只能往上調；**不可為了讓規則通過而改標註**，保留集不要拿來調規則。同次依資料集修正的規則：小標題就是主題時段落算候選（`_passage_score` 標題命中權重 1）、「如需／若需」不算條件（`_CONDITIONAL`）、感謝詞算空泛（`_VAGUE`）、營業時間關鍵詞加「無休／全天」。
-- **不計分的題目與英文詞比對（2026-10-10）**：題庫題目（不是聯絡方式 PHONE／EMAIL／ADDRESS／HOURS、不是網站自己的問題）判定 `missing`＝網站沒有任何段落談到這個主題，可能不提供這項服務，`evaluate.is_scored` 回 False：不計入 AEO 分數、不產生 Finding，逐題結果標 `scored=false`＋`not_scored_reason`，`aeo_report.not_scored` 記題數，前端顯示「不計分」；扣掉後少於 `MIN_QUESTIONS` 題即未充分評估。`answered_ratio` 只算計分題。英文觸發詞與檢索詞改從單字開頭比對（`questions.count_term`／`has_term`）：直接找子字串時 `tel` 命中 intellectual、`payment` 命中 overpayments，GOV.UK 因此被問付款方式、電話判資訊不足。
+- **不計分的題目與英文詞比對（2026-10-10）**：題庫題目（不是聯絡方式 PHONE／EMAIL／ADDRESS／HOURS、不是網站自己的問題）判定 `missing`＝網站沒有任何段落談到這個主題，可能不提供這項服務，`evaluate.is_scored` 回 False：不計入 AEO 分數、不產生 Finding，逐題結果標 `scored=false`＋`not_scored_reason`，`aeo_report.not_scored` 記題數，前端顯示「不計分」；扣掉後少於 `MIN_QUESTIONS` 題即未充分評估。`answered_ratio` 只算計分題。價格題另以金額格式（`Intent.trigger_pattern`：`1,200 元`、`NT$ 300`）計入觸發，觸發詞加「價目、房價、票價、價位、價錢」（保留集民宿只寫「房價」與每晚金額，原本不出價格題）。`aeo_benchmark` 遇到內容太少、整站不評估的網站，標註題目記為 missing 而不是 no_question（Argus 沒有宣稱有答案）。英文觸發詞與檢索詞改從單字開頭比對（`questions.count_term`／`has_term`）：直接找子字串時 `tel` 命中 intellectual、`payment` 命中 overpayments，GOV.UK 因此被問付款方式、電話判資訊不足。
 - 人工校驗題集在 `tests_aeo_answerability.py` 的 `GOLD_SITES`：改動規則後判定正確率必須維持 100%。**第一版只做可重現的規則判定**；受控 AI 評估與外部平台觀察尚未實作，報告不得宣稱有。
 - 新增意圖或判定規則：先在 `GOLD_SITES`（或 `gold_dataset.GOLD_CASES`）加一個會踩到的案例，再改規則，最後跑 `manage.py aeo_benchmark` 確認門檻。
 
@@ -287,7 +287,7 @@ scan 38 是 34 頁，使用者回饋「結構跟之前差不多、優化不明�
 ### 證據品質（2026-09-28 報告審查）
 
 - **嚴重度反映實際風險（2026-10-06 第二輪審查，`tests_accuracy_review.py`）**：缺少 CSP 是縱深防禦，列低風險（原中風險）；CSP 有 `frame-ancestors` 就不報缺少 X-Frame-Options（看的是有沒有防點擊劫持）；沒有 H1 是低風險、多個 H1 只是 info；登入／註冊／忘記密碼等帳號功能頁（路徑段 `login`、`register`、`signup`… 與 `/management`）比照後台跳過 SEO／AEO／GEO（`is_admin_path`）；觸控目標的描述區分 Argus 易用性建議（40px）與 WCAG 2.2（AA 2.5.8＝24×24 且間距足夠可豁免、AAA 2.5.5＝44×44）；llms.txt 標明是新興做法。
-- **PII 分級**（`scanners.analyze_data_exposure`）：高風險 `SECURITY_PII_8B24BB8B28` 只給身分證號／信用卡號；手機、非本站網域 Email、藏在 HTML 註解的資料、開發殘留 → 中風險 `security-pii-personal-contact`；本站網域（同 registrable domain）或 `mailto:`／`tel:` 的聯絡方式 → info `security-pii-public-contact`（多半是刻意公開）。舊版一看到任何 Email 就判高風險。信箱名稱含網站名稱（`ntubimdbirc@ntub.edu.tw` 之於 ntubimdbirc.tw）或角色信箱（info、service、contact…）也視為組織窗口；`placeholder` 屬性的填寫範例（`e.g.0911-222-333`）不掃描（2026-10-06 實測誤報）。
+- **PII 分級**（`scanners.analyze_data_exposure`）：高風險 `SECURITY_PII_8B24BB8B28` 只給身分證號／信用卡號；手機、非本站網域 Email、藏在 HTML 註解的資料、開發殘留 → 中風險 `security-pii-personal-contact`；本站網域（同 registrable domain）或 `mailto:`／`tel:` 的聯絡方式 → info `security-pii-public-contact`（多半是刻意公開）。舊版一看到任何 Email 就判高風險。信箱名稱含網站名稱（`ntubimdbirc@ntub.edu.tw` 之於 ntubimdbirc.tw）或角色信箱（info、service、contact…）也視為組織窗口；`placeholder` 屬性的填寫範例（`e.g.0911-222-333`）不掃描（2026-10-06 實測誤報）。身分證號與信用卡號只看頁面上看得到的文字（`_visible_text`：去掉 script／style／註解與標籤屬性；HTML 註解另外掃），信用卡另須開頭與位數符合卡組織規則（`_card_issuer_ok`），沒有關鍵字時要照卡片分組（4-4-4-4、4-6-5…，`_is_formatted_card`）——2026-10-10 Next.js 圖片檔名「20221027 0069652-ISO 9001…」（日期＋流水號）巧合通過 Luhn 被判高風險。
 - **判定依據**：高風險、PII 與 AI 觀察項目在 `evidence_json.assessment`（或 `reports._assessment_for` 的預設）寫「成立條件／實際觀察／尚缺證據／驗證方法」，報告卡片逐項印出。
 - **AI 觀察封頂中風險**（`reports._report_severity`，對 `agent-` 規則；舊資料亦同）並標示來源；每張卡片一行追溯資訊：規則、觀測時間、來源（規則引擎／工具／AI Agent）。
 - **合併多頁保留逐頁證據**（`locations`），Cookie 值遮蔽（`cookie_scanner.mask_cookie_line`，頭 4 尾 2）。
@@ -441,11 +441,10 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
   "pages_total": 50,
   "phase": "crawling",
   "phase_started_at": "2026-05-26T10:30:00Z",
-  "step": "analyze_pages",
-  "step_detail": "geo",
-  "steps": ["crawl", "analyze_pages", "deep_security", "geo_site", "scoring"],
-  "step_done": 62,
-  "step_total": 100,
+  "step": "analyze_seo",
+  "steps": ["crawl", "analyze_seo", "analyze_geo", "deep_security", "geo_site", "scoring"],
+  "step_done": 12,
+  "step_total": 50,
   "step_started_at": "2026-05-26T10:31:00Z"
 }
 ```
@@ -454,11 +453,11 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 
 `step`／`steps` 是 phase 之下的細分階段（前端掃描進度條據此顯示「正在分析 GEO／UX／資安…」）：
 `steps` 由 `tasks.planned_scan_steps()` 依勾選維度與範圍／授權算出本次實際會跑的子步驟，`step` 是目前這一步。
-可能值：`crawl`、`analyze_pages`（有勾任一維度；2026-10-10 前是逐維度的 `analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`，前端仍保留這些鍵顯示舊任務）、`aeo_answers`（勾 AEO，接在頁面分析之後）、
+可能值：`crawl`、`analyze_seo`／`analyze_aeo`／`analyze_geo`／`analyze_ux`／`analyze_security`（只列勾選維度；2026-10-10 曾合併成一步 `analyze_pages`，使用者要求恢復五個階段）、`aeo_answers`（勾 AEO，接在逐維度分析之後）、
 `active_probe`（`run_nuclei`）、`deep_security`、`zap_passive`（勾資安且已啟用 ZAP）、`exposure_probe`（`run_exposure`）、`geo_site`（勾 GEO）、`seo_links`（勾 SEO）、`pagespeed`（勾 UX 且已設定 PSI 金鑰）、`agent`（Agent 啟用且可執行）、`scoring`。
-頁面分析**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；進度上合併成一步 `analyze_pages`，`step_detail` 是目前維度（seo／aeo／geo／ux／security），前端據此顯示「分析 GEO」等標題。新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
+頁面分析改為**逐維度、逐頁**執行（`analyze_page(categories={單一維度})`），結果與一次跑全部維度相同；各維度實際檢查項目與「為什麼幾秒就跑完」的說明見 [`docs/scan-stage-checks.md`](../../../docs/scan-stage-checks.md)（改規則時同步）；新增子步驟時要同步前端 `ScanExperience.jsx` 的 `SCAN_STEP_META`。
 
-`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、頁面分析＝已完成的「維度×頁」數、總數＝勾選維度數×頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
+`step_done`／`step_total` 是**本階段**內的進度（爬取＝頁、逐維度分析＝該維度已分析頁數、Agent＝步數；其他子步驟 0/0＝不定進度），`step_started_at` 在同一步內保留不變（供前端估算本階段剩餘時間）。前端整體百分比由階段序號加上本階段比例算出，進度條才會和階段一起走（2026-09-28 前整體進度只看頁數，爬完就 100%、後面十個階段進度條不動）。
 
 ---
 

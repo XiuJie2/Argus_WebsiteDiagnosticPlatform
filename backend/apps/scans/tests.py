@@ -1027,6 +1027,32 @@ class PiiDetectionTests(APITestCase):
         result = detect_pii_in_text("信用卡號 4111111111111111")
         self.assertEqual(result["credit_card"], ["4111111111111111"])
 
+    def test_card_needs_card_grouping_and_issuer(self):
+        # 2026-10-10 實測誤報：日期＋流水號（8＋7 位）巧合通過 Luhn，不是卡片的分組方式
+        self.assertEqual(detect_pii_in_text("檔案 20221027 0069652 結束")["credit_card"], [])
+        # 位數與分組都對，但開頭不是任何卡組織（IIN）
+        self.assertEqual(detect_pii_in_text("信用卡 1000-0000-0000-0008")["credit_card"], [])
+        # Amex 4-6-5
+        self.assertEqual(
+            detect_pii_in_text("卡號 3782-822463-10005")["credit_card"], ["3782-822463-10005"]
+        )
+
+    def test_card_and_national_id_ignore_attribute_values_and_scripts(self):
+        html_text = (
+            '<html><body><img src="/_next/static/media/20221027 0069652-ISO 9001.jpg" '
+            'alt="ISO">'
+            '<a href="/files/A123456789.pdf">下載</a>'
+            '<script>var cc = "4111-1111-1111-1111";</script>'
+            "<p>認證證書</p></body></html>"
+        )
+        findings = analyze_data_exposure(self._page_input(html_text))
+        self.assertFalse(any(f["rule_id"] == "SECURITY_PII_8B24BB8B28" for f in findings))
+        # 同一個號碼寫在看得到的文字裡就會被抓到
+        visible = analyze_data_exposure(
+            self._page_input("<html><body><p>卡號 4111-1111-1111-1111</p></body></html>")
+        )
+        self.assertTrue(any(f["rule_id"] == "SECURITY_PII_8B24BB8B28" for f in visible))
+
     def test_detect_pii_dedups_repeated_values(self):
         result = detect_pii_in_text("a@b.com a@b.com a@b.com 重複出現")
         self.assertEqual(result["email"], ["a@b.com"])

@@ -135,6 +135,7 @@ def analyze_services(pages: list[dict]) -> list[dict]:
 - 版本區間比對**重用** `js_library_scanner._is_vulnerable`（DB 欄位格式與 jsrepository.json 一致），不重寫 matcher
 - 命中 → `service-known-cve`（severity 取命中 CVE 最高、critical 封頂 high、A06/CWE-1104；per-CVE 進 `evidence_json`）
 - 無命中（或 DB 缺失）→ LOW `service-version-exposed`（A05/CWE-200）；**版本暴露不依賴 DB**，以完整接手舊 `header-server-version` 而不回歸
+- **只憑標頭版本號，一律是疑似**（2026-10-10）：標題寫「版本號落在已知漏洞範圍」，`evidence_json.assessment` 寫明沒有實際驗證；標頭帶作業系統發行版註記（`(Ubuntu)`、`+deb9u3`、`-4ubuntu2`、`.el8`…，`_DISTRO_MARKER`）時 `backport_possible=true`、嚴重度封頂中——發行版會把修補補進舊版本、版本號不變
 - 以 `(產品, 版本)` 去重；DB 為 `data/backend_services.json`（NVD public domain），以 `manage.py refresh_backend_cve_db` 手動更新；轉換純函式 `nvd_db.build_db_from_nvd` 的正確性由 `tests_nvd_db.py` 已知答案 fixture 鎖定
 
 ---
@@ -143,6 +144,7 @@ def analyze_services(pages: list[dict]) -> list[dict]:
 
 - **`secret_scanner.detect_secrets_in_text(text)`**：純函式，高訊號前綴 regex（避免誤報）；回傳遮罩後結果。
   - **被動使用**（任何模式）：`tasks.py` per-page 對已抓到的 HTML/inline script 偵測（零額外請求）。
+  - **瀏覽器用金鑰**（`BROWSER_PUBLIC_KINDS`＝Google `AIza` 金鑰）：Google 地圖／Firebase 金鑰必須放在前端，靠 Google Cloud 的參照網址與 API 限制保護。頁面中出現時 `build_secret_finding` 不算，另由 `build_browser_key_finding` 產生低風險 `exposure-browser-api-key`（確認已設限制）；Katana jsluice 的 `AIza` 值同樣降為低（2026-10-10，原本高／嚴重）。值已被特定格式抓到時，泛用賦值（`apiKey: "AIza…"`）不重複列。
   - `redact_secrets_in_text(text)` 用於把「檔案內容片段」當證據前遮罩，**一律遮罩**（不因 placeholder 子字串豁免，否則真密碼會二次外洩）。
 - **`exposure_scanner.probe_paths(...)`**：整站主動內容探測，**只在全網站且 `scan_mode==ACTIVE and active_testing_authorized` 時由 tasks.py 呼叫**；單頁、被動或未授權模式不得發探測請求。
   - `build_probe_targets` 強制 **same-origin**（內建字典含 dotted/非 dotted/.txt 變體）。

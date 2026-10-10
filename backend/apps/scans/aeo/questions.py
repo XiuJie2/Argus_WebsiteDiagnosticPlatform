@@ -52,6 +52,8 @@ class Intent:
     # 答案蘊含：段落（或其小標題）必須出現其中一個主題詞，答案值才算回答了這題。
     # 例如「必須」出現在學員心得裡，不代表那段在講申請資格。空＝不額外要求。
     anchors: tuple[str, ...] = ()
+    # 額外的觸發格式：每次符合都算一次觸發（例：價格題的「1,200 元」）
+    trigger_pattern: re.Pattern | None = None
 
 
 INTENTS: tuple[Intent, ...] = (
@@ -144,9 +146,16 @@ INTENTS: tuple[Intent, ...] = (
             "訂閱",
             "售價",
             "報價",
+            "價目",
+            "房價",
+            "票價",
+            "價位",
+            "價錢",
             "price",
             "pricing",
         ),
+        # 寫出金額本身也算：民宿、露營區常只寫「每晚 3,200 元」（2026-10-10 保留集案例）
+        trigger_pattern=re.compile(r"\d[\d,]*\s*元|(?:nt\$|ntd|\$)\s*\d"),
         weight=1.0,
         expect="有明確金額與對應的項目或方案",
     ),
@@ -337,6 +346,8 @@ def build_question_set(pages) -> list[Question]:
     for intent in INTENTS:
         text = prose_corpus if intent.answer_type in _PROSE_TRIGGER_TYPES else corpus
         hits = _count_hits(text, intent.triggers) if intent.triggers else 0
+        if intent.trigger_pattern is not None:
+            hits += len(intent.trigger_pattern.findall(text))
         if intent.triggers and hits < intent.min_trigger_hits:
             continue
         questions.append(
