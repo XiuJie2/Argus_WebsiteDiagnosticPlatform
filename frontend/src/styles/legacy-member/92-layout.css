@@ -347,66 +347,30 @@
   @apply m-0 flex flex-wrap items-baseline gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700;
 }
 
-/* Argus 守望之眼：AI 解讀產生中的載入動畫（2026-10-10）。
-   中央眼睛左右巡視並偶爾眨眼、外圈八個小眼依序亮起、掃描線掃過眼睛；
-   顏色走 currentColor，深色版由建置外掛自動產生；偏好減少動態時全部靜止。 */
+/* AI 解讀產生中的動畫 Thought Spark（2026-10-10 使用者選定 Argus Minimal Loading Pack 08）：
+   五個光點分兩排依序閃爍；旁邊是步驟與已等待秒數。偏好減少動態時全部靜止。 */
 .ai-watch {
-  @apply flex flex-wrap items-center gap-5 rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-4;
-  color: #0369a1;
+  @apply flex flex-wrap items-center gap-6 rounded-xl border border-sky-100 bg-sky-50/60 px-5 py-4;
 }
-.ai-watch-eye {
-  width: 104px;
-  height: 104px;
+.ai-spark {
+  position: relative;
   flex: none;
-  overflow: visible;
+  width: 74px;
+  height: 34px;
+  margin: 0 0.5rem;
 }
-.ai-watch-orbit {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  stroke-dasharray: 3 7;
-  opacity: 0.45;
-  transform-origin: 60px 60px;
-  animation: ai-watch-spin 18s linear infinite;
+.ai-spark i {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: ai-spark-breathe 1.3s ease-in-out infinite;
 }
-.ai-watch-pip {
-  fill: currentColor;
-  opacity: 0.18;
-  animation: ai-watch-pip 2.4s ease-in-out infinite;
-}
-/* 第 1 個 circle 是外圈軌道，小眼是第 2～9 個，依序延遲 0.3 秒 */
-.ai-watch-pip:nth-of-type(3) { animation-delay: 0.3s; }
-.ai-watch-pip:nth-of-type(4) { animation-delay: 0.6s; }
-.ai-watch-pip:nth-of-type(5) { animation-delay: 0.9s; }
-.ai-watch-pip:nth-of-type(6) { animation-delay: 1.2s; }
-.ai-watch-pip:nth-of-type(7) { animation-delay: 1.5s; }
-.ai-watch-pip:nth-of-type(8) { animation-delay: 1.8s; }
-.ai-watch-pip:nth-of-type(9) { animation-delay: 2.1s; }
-.ai-watch-lids {
-  transform-origin: 60px 60px;
-  animation: ai-watch-blink 5.2s ease-in-out infinite;
-}
-.ai-watch-almond {
-  fill: #ffffff;
-  stroke: currentColor;
-  stroke-width: 2.4;
-  stroke-linejoin: round;
-}
-.ai-watch-iris {
-  animation: ai-watch-look 4.2s ease-in-out infinite;
-}
-.ai-watch-iris-ring {
-  fill: #e0f2fe;
-  stroke: currentColor;
-  stroke-width: 2.4;
-}
-.ai-watch-pupil { fill: #0c4a6e; }
-.ai-watch-glint { fill: #ffffff; }
-.ai-watch-scan {
-  fill: currentColor;
-  opacity: 0.35;
-  animation: ai-watch-scan 2.6s ease-in-out infinite;
-}
+.ai-spark i:nth-child(1) { left: 0; top: 0; background: #0ea5e9; }
+.ai-spark i:nth-child(2) { left: 32px; top: 0; background: #14b8a6; animation-delay: 0.18s; }
+.ai-spark i:nth-child(3) { left: 64px; top: 0; background: #4f46e5; animation-delay: 0.36s; }
+.ai-spark i:nth-child(4) { left: 16px; top: 22px; background: #4f46e5; animation-delay: 0.54s; }
+.ai-spark i:nth-child(5) { left: 48px; top: 22px; background: #0ea5e9; animation-delay: 0.72s; }
 .ai-watch-copy {
   @apply flex min-w-0 flex-1 flex-col gap-2;
 }
@@ -431,36 +395,49 @@
   animation: ai-watch-pip 1.2s ease-in-out infinite;
 }
 
-@keyframes ai-watch-spin { to { transform: rotate(360deg); } }
 @keyframes ai-watch-pip {
   0%, 100% { opacity: 0.18; }
   40% { opacity: 1; }
 }
-@keyframes ai-watch-look {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-11px); }
-  50% { transform: translateX(0); }
-  75% { transform: translateX(11px); }
-}
-@keyframes ai-watch-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.08); }
-}
-@keyframes ai-watch-scan {
-  0% { transform: translateY(0); opacity: 0; }
-  15% { opacity: 0.35; }
-  85% { opacity: 0.35; }
-  100% { transform: translateY(68px); opacity: 0; }
+@keyframes ai-spark-breathe {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-watch-orbit,
-  .ai-watch-pip,
-  .ai-watch-lids,
-  .ai-watch-iris,
-  .ai-watch-scan,
+  .ai-spark i,
   .ai-watch-steps li.is-active::before {
     animation: none;
   }
-  .ai-watch-pip { opacity: 0.5; }
-  .ai-watch-scan { opacity: 0; }
+  .ai-spark i { opacity: 0.7; }
+}
+
+/* 頁面資料載入 Signal Bars（shared/PageLoader.jsx）：會員區範圍會重置外部規則，這裡再給一份 */
+.ag-page-loader {
+  @apply flex flex-col items-center justify-center gap-3 px-4 py-10 text-sm text-slate-500;
+}
+.ag-signal {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 46px;
+}
+.ag-signal i {
+  display: block;
+  width: 6px;
+  border-radius: 999px;
+  background: linear-gradient(#0ea5e9, #4f46e5);
+  transform-origin: bottom;
+  animation: ag-signal-bar 1s ease-in-out infinite;
+}
+.ag-signal i:nth-child(1) { height: 16px; }
+.ag-signal i:nth-child(2) { height: 28px; animation-delay: 0.08s; }
+.ag-signal i:nth-child(3) { height: 44px; animation-delay: 0.16s; }
+.ag-signal i:nth-child(4) { height: 26px; animation-delay: 0.24s; }
+.ag-signal i:nth-child(5) { height: 36px; animation-delay: 0.32s; }
+@keyframes ag-signal-bar {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.35; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ag-signal i { animation: none; opacity: 0.7; }
 }

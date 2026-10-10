@@ -4,6 +4,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react
 
 import { api } from "../../api";
 import { ArgusLogo, ArgusMark } from "../../components/brand/ArgusMark";
+import PageLoader from "../../shared/PageLoader.jsx";
 import { ThemeToggle } from "../../components/navigation/NavActions";
 import { useArgusStore } from "../../store";
 import { ArrowLeftIcon, CheckIcon } from "../../shared/ActionIcons";
@@ -475,7 +476,7 @@ function AccountSetupPage() {
   const next = searchParams.get("next");
   const redirect = next && next.startsWith("/") && !next.startsWith("/account/setup") ? next : "/dashboard";
 
-  if (!profile) return <p className="loading-state">載入帳號資料中…</p>;
+  if (!profile) return <PageLoader label="載入帳號資料中…" />;
   if (!profile.needs_setup) return <Navigate to={redirect} replace />;
   const needHandle = !profile.handle;
   const needPassword = !profile.has_password;

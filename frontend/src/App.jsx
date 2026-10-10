@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
+
+import PageLoader from "./shared/PageLoader.jsx";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { useArgusStore } from "./store";
@@ -148,7 +150,7 @@ function AppShell({ googleOAuthEnabled }) {
   }
   return (
     <div className={`argus-app ${isAdmin ? "is-admin-mode" : ""} ${isPublic ? "is-public-mode" : ""}`}>
-      <Suspense fallback={<p className="loading-state">正在載入頁面…</p>}>
+      <Suspense fallback={<PageLoader label="正在載入頁面…" className="is-route" />}>
         {!introSeen && location.pathname === "/project" && (
           <IntroSequence onComplete={handleIntroDone} />
         )}

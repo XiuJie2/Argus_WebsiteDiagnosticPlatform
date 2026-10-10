@@ -14,6 +14,7 @@ import { ExternalIcon, GlobeIcon, SearchIcon } from "../../shared/LineIcons";
 import { FilterChips, ScanTimeCard, useProjectScans } from "./ProjectPages.jsx";
 import { projectPath } from "./ProjectWorkspace.jsx";
 import { keywordGap, untargetedQueries } from "./seoKeywordGap";
+import PageLoader from "../../shared/PageLoader.jsx";
 
 const TABS = [
   { key: "overview", label: "概覽" },
@@ -191,7 +192,7 @@ function ProjectSeoPage() {
   const completed = (scans || []).filter((scan) => scan.status === "completed");
 
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
-  if (!data) return <section className="panel"><p className="hint-text">載入 SEO 分析中…</p></section>;
+  if (!data) return <section className="panel"><PageLoader label="載入 SEO 分析中…" /></section>;
   const gscNotice = gscFlash && (
     <div className={`seo-flash ${gscFlash === "connected" ? "is-good" : "is-bad"}`} role="status">
       <span>
@@ -671,7 +672,7 @@ function PageDetailDialog({ projectId, scanId, scanParam, pageId, onClose }) {
           <button type="button" className="secondary-button" onClick={onClose}>關閉</button>
         </div>
         {error && <p className="error-text">{error}</p>}
-        {!detail && !error && <p className="hint-text">載入中…</p>}
+        {!detail && !error && <PageLoader label="載入中…" />}
         {detail && <PageDetail detail={detail} scanId={scanId} />}
       </aside>
     </div>
@@ -1050,7 +1051,7 @@ function GscPanel({ project, gsc, performance, keyword, onChanged }) {
         <p className="seo-muted">選擇與 {project.origin} 對應的資源（網域資源或網址前置字元資源）。</p>
         {error && <p className="error-text" role="alert">{error}</p>}
         {properties == null ? (
-          <p className="hint-text">載入中…</p>
+          <PageLoader label="載入中…" />
         ) : properties.length === 0 ? (
           <p className="hint-text">這個 Google 帳號沒有任何已驗證的資源。請先在 Search Console 新增並驗證網站。</p>
         ) : (
@@ -1088,7 +1089,7 @@ function GscPanel({ project, gsc, performance, keyword, onChanged }) {
           <button type="button" className="project-text-link" disabled={busy} onClick={disconnect}>中斷連線</button>
         </div>
       </div>
-      {performance.loading && <p className="hint-text">載入 Search Console 資料中…</p>}
+      {performance.loading && <PageLoader label="載入 Search Console 資料中…" />}
       {performance.error && <p className="error-text" role="alert">{performance.error}</p>}
       {perf && (
         <>

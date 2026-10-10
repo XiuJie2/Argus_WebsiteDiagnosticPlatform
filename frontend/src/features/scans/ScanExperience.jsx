@@ -46,6 +46,7 @@ import {
   StatusScanGlyph,
   useConfirmDialogs,
 } from "../../shared/AppShared.jsx";
+import PageLoader from "../../shared/PageLoader.jsx";
 
 const SCAN_POLL_INTERVAL_MS = 2000;
 const MAX_SITE_SCAN_PAGES = 50;
@@ -1806,7 +1807,7 @@ function ScanStrengthsPage() {
   const { scanId } = useParams();
   const { scan, error } = useScanDetail(scanId);
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
-  if (!scan) return <section className="panel"><p className="hint-text">載入中…</p></section>;
+  if (!scan) return <section className="panel"><PageLoader label="載入中…" /></section>;
   return <SiteStrengths profile={scan.site_profile} />;
 }
 
@@ -1815,7 +1816,7 @@ function ScanPerformancePage() {
   const { scanId } = useParams();
   const { scan, error } = useScanDetail(scanId);
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
-  if (!scan) return <section className="panel"><p className="hint-text">載入中…</p></section>;
+  if (!scan) return <section className="panel"><PageLoader label="載入中…" /></section>;
   return (
     <PerformancePanel
       report={scan.performance_report}
@@ -1841,7 +1842,7 @@ function ScanScorePage() {
     };
   }, [scanId]);
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
-  if (!data) return <section className="panel"><p className="hint-text">載入中…</p></section>;
+  if (!data) return <section className="panel"><PageLoader label="載入中…" /></section>;
   return <ScoreBreakdownPanel data={data} />;
 }
 
@@ -1851,7 +1852,7 @@ function ScanArchitecturePage() {
   const { scanId } = useParams();
   const { scan, error } = useScanDetail(scanId);
   if (error) return <section className="panel"><p className="error-text">{error}</p></section>;
-  if (!scan) return <section className="panel"><p className="hint-text">載入中…</p></section>;
+  if (!scan) return <section className="panel"><PageLoader label="載入中…" /></section>;
   return (
     <div className="scan-architecture">
       <SiteArchitecture profile={scan.site_profile} />

@@ -85,3 +85,43 @@
   background: currentColor;
   box-shadow: 0 0 0 3px var(--ag-primary-soft-2);
 }
+
+/* 頁面切換／載入動畫 Signal Bars（shared/PageLoader.jsx，2026-10-10）：
+   五根細長條依序起伏；顏色走品牌 token，深淺主題自動切換；偏好減少動態時靜止 */
+.ag-page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2.5rem 1rem;
+  color: var(--ag-text-2);
+  font-size: 0.875rem;
+}
+.ag-page-loader.is-route { min-height: 50vh; }
+.ag-signal {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 46px;
+}
+.ag-signal i {
+  display: block;
+  width: 6px;
+  border-radius: 999px;
+  background: linear-gradient(var(--ag-primary), var(--ag-info));
+  transform-origin: bottom;
+  animation: ag-signal-bar 1s ease-in-out infinite;
+}
+.ag-signal i:nth-child(1) { height: 16px; }
+.ag-signal i:nth-child(2) { height: 28px; animation-delay: 0.08s; }
+.ag-signal i:nth-child(3) { height: 44px; animation-delay: 0.16s; }
+.ag-signal i:nth-child(4) { height: 26px; animation-delay: 0.24s; }
+.ag-signal i:nth-child(5) { height: 36px; animation-delay: 0.32s; }
+@keyframes ag-signal-bar {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.35; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ag-signal i { animation: none; opacity: 0.7; }
+}
