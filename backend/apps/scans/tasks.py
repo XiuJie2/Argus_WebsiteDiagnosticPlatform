@@ -1563,7 +1563,8 @@ def stage_agent(ctx: ScanRunContext) -> None:
 
 
 def _mark_agent_coverage(ctx: ScanRunContext) -> None:
-    """Agent 的覆蓋狀態：跑完＝completed、步數用完＝partial、出錯＝failed、沒啟動＝skipped。
+    """Agent 的覆蓋狀態：跑完＝completed、步數或 token 預算用完＝partial、
+    出錯＝failed、沒啟動＝skipped。
 
     agent 的 finding 由 runner 直接落 DB，歷史比較以規則前綴（AGENT_UX_／agent-）對回檢查。
     """
@@ -1576,6 +1577,9 @@ def _mark_agent_coverage(ctx: ScanRunContext) -> None:
         status, reason = COMPLETED, ""
     elif str(result.error or "").startswith("max_steps_reached"):
         status, reason = PARTIAL, "步數上限內未完成"
+    elif str(result.error or "").startswith("token_budget_exceeded"):
+        # 預算用完前回報的問題照樣有效，只是沒跑完全部流程（2026-10-10 實測 14 步用完 6 萬）
+        status, reason = PARTIAL, "token 預算內未完成"
     else:
         status, reason = FAILED, str(result.error or "")[:120]
     plan = ctx.execution_plan

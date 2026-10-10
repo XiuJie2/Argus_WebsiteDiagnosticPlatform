@@ -235,13 +235,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "report_ux_issue",
-            "description": "回報一個 UX 問題；不要回報修復程式碼，只描述問題與方向。",
+            "description": (
+                "回報一個 UX 問題；不要回報修復程式碼，只描述問題與方向。"
+                "嚴重度：medium＝會讓使用者卡住或完成不了主要任務；low＝造成困惑但繞得過去；"
+                "info＝只是建議。"
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "severity": {
                         "type": "string",
-                        "enum": ["critical", "high", "medium", "low", "info"],
+                        "enum": ["medium", "low", "info"],
                     },
                     "title": {"type": "string"},
                     "description": {"type": "string"},
@@ -1785,6 +1789,8 @@ class ToolExecutor:
         return ToolOutcome(ok=True, result={"path": str(path)})
 
     def _report_ux_issue(self, args: dict[str, Any]) -> ToolOutcome:
+        from apps.agent.findings import cap_ux_severity
+
         severity = args.get("severity", "low")
         title = (args.get("title") or "").strip()[:255]
         description = (args.get("description") or "").strip()
@@ -1798,9 +1804,8 @@ class ToolExecutor:
         if not title or not description:
             return ToolOutcome(ok=False, result={"error": "missing_title_or_description"})
 
-        valid_sev = {"critical", "high", "medium", "low", "info"}
         payload = {
-            "severity": severity if severity in valid_sev else "low",
+            "severity": cap_ux_severity(severity),
             "title": title,
             "description": description,
             "remediation": remediation or "請檢視該流程的可用性並對齊使用者預期。",

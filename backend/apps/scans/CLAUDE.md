@@ -76,7 +76,7 @@ Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`；若總預算只
 **Agent 有兩種角色，閘門分離**（都受 `ARGUS_AGENT_ENABLED` 總開關控制）：
 
 - **資安（deep_mode）**＝`run_agent`：只有「全網站 ＋ active 且已授權」才開，執行主動滲透（recon→orchestrator→specialist）。
-- **UX（擬真使用者體驗測試）**＝`run_agent_ux`：`scope == "site"` 且 `effective_categories` 含 `ux` 就開，**不需要主動授權**（passive 全網站勾 UX 也跑）。單頁不跑（無流程可走）。
+- **UX（擬真使用者體驗測試）**＝`run_agent_ux`：`scope == "site"` 且 `effective_categories` 含 `ux` 就開，**不需要主動授權**（passive 全網站勾 UX 也跑）。單頁不跑（無流程可走）。AI 回報的 UX 問題嚴重度封頂中風險；token 預算用完時 `_mark_agent_coverage` 標 partial（2026-10-10）。
 - `tasks.py` 只要 `run_agent or run_agent_ux` 任一成立即呼叫 `run_agent_for_scan`；是否允許 agent 送出表單由 `may_submit_forms` 決定＝`run_agent`（deep_mode）**或**掃描目標 hostname 已通過 `user_owns_domain`。未驗證網域的 passive UX 測試 `may_submit_forms=False`：runner 隱藏 `send_message` 工具、prompt 明示只填欄位不送出，避免在他人網站留下測試資料。
 
 ### 掃描維度選擇（ScanJob.categories，2026-09-26）

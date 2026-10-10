@@ -272,6 +272,11 @@ class ToolSchemaTests(TestCase):
         }
         self.assertEqual(names, expected)
 
+    def test_report_ux_issue_severity_enum_tops_out_at_medium(self):
+        report = next(t for t in TOOL_SCHEMAS if t["function"]["name"] == "report_ux_issue")
+        enum = report["function"]["parameters"]["properties"]["severity"]["enum"]
+        self.assertEqual(enum, ["medium", "low", "info"])
+
     def test_report_ux_issue_required_fields(self):
         report = next(t for t in TOOL_SCHEMAS if t["function"]["name"] == "report_ux_issue")
         required = report["function"]["parameters"]["required"]
@@ -327,7 +332,8 @@ class ToolExecutorTests(TestCase):
         )
         self.assertTrue(outcome.ok)
         self.assertIsNotNone(outcome.issue)
-        self.assertEqual(outcome.issue["severity"], "high")
+        # AI 自評的 high 封頂為 medium
+        self.assertEqual(outcome.issue["severity"], "medium")
         self.assertEqual(outcome.issue["selector"], ".checkout-btn")
         self.assertEqual(outcome.issue["url"], "https://example.com/test")
 
@@ -1329,6 +1335,16 @@ class PersistAgentIssuesTests(TestCase):
         created = persist_agent_issues(self.scan_job, issues)
         self.assertEqual(len(created), 1)
         self.assertIsNone(created[0].page)
+
+    def test_critical_and_high_capped_to_medium(self):
+        # 2026-10-10 實測：Agent 把「加入購物車導向聯絡表單」自評 critical，UX 從 41 掉到 23
+        issues = [
+            {"severity": "critical", "title": "購物車導向聯絡表單", "description": "x"},
+            {"severity": "high", "title": "結帳按鈕沒反應", "description": "y"},
+            {"severity": "info", "title": "提示", "description": "z"},
+        ]
+        created = persist_agent_issues(self.scan_job, issues)
+        self.assertEqual([f.severity for f in created], ["medium", "medium", "info"])
 
     def test_invalid_severity_normalized(self):
         issues = [

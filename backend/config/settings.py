@@ -401,6 +401,9 @@ ARGUS_AGENT_MAX_STEPS = int(os.getenv("ARGUS_AGENT_MAX_STEPS", "20"))
 # 不設派工上限時單次掃描最壞約 1.3M token；6 次可覆蓋典型需求並讓成本有上界。
 ARGUS_AGENT_MAX_SPECIALIST_DISPATCH = int(os.getenv("ARGUS_AGENT_MAX_SPECIALIST_DISPATCH", "6"))
 ARGUS_AGENT_MAX_TOKENS = int(os.getenv("ARGUS_AGENT_MAX_TOKENS", "60000"))
+# 擬真使用者 UX 測試另設預算：單一 session 要走多個頁面與流程，6 萬約 14 步就用完
+# （2026-10-10 實測）；資安各角色仍用上面的 ARGUS_AGENT_MAX_TOKENS
+ARGUS_AGENT_UX_MAX_TOKENS = int(os.getenv("ARGUS_AGENT_UX_MAX_TOKENS", "120000"))
 ARGUS_AGENT_STEP_TIMEOUT = int(os.getenv("ARGUS_AGENT_STEP_TIMEOUT", "30"))
 ARGUS_AGENT_ENABLED = env_bool("ARGUS_AGENT_ENABLED", default=False)
 

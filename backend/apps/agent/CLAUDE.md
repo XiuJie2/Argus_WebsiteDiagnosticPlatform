@@ -19,7 +19,9 @@ Claude Code 進 `backend/apps/agent/` 工作時，本檔在專案層 `CLAUDE.md`
   `report_ux_issue`（UX 類 finding）。**不需要主動授權**，但 `may_submit_forms` 閘門決定能否
   送出表單：deep_mode 或掃描目標已通過 `user_owns_domain` 才可送出；否則 runner 隱藏
   `send_message` 工具、prompt 只填欄位不送出，避免在未驗證網域留下測試資料。
-  計費見 billing 的 `agent_ux_fee`（固定附加點數）。
+  計費見 billing 的 `agent_ux_fee`（固定附加點數）。`report_ux_issue` severity 封頂 **medium**
+  （`findings.cap_ux_severity`，2026-10-10）；token 上限另用 `ARGUS_AGENT_UX_MAX_TOKENS`（120000），
+  用完時覆蓋紀錄標 partial。
 
 ## 關鍵檔案
 
