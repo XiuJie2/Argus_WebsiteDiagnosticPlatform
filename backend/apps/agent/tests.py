@@ -352,6 +352,43 @@ class ToolExecutorTests(TestCase):
         outcome = asyncio.run(executor.run("finish", {"summary": "ok"}))
         self.assertTrue(outcome.finish)
 
+    def _security_args(self, **kw):
+        base = {
+            "severity": "critical",
+            "title": "登入 SQL 注入繞過",
+            "description": "以 ' OR 1=1-- 繞過密碼取得 JWT。",
+            "evidence": "HTTP/1.1 200 OK\\n{\"authentication\":{\"token\":\"ey...\"}}",
+            "url": "https://example.com/rest/user/login",
+        }
+        base.update(kw)
+        return base
+
+    def test_security_issue_unverified_high_capped_to_medium(self):
+        # 2026-10-10：沒用主動工具驗證（verified 缺省）→ 高風險自評一律降 medium
+        executor, _ = self._make_executor()
+        outcome = asyncio.run(executor.run("report_security_issue", self._security_args()))
+        self.assertTrue(outcome.ok)
+        self.assertEqual(outcome.security_finding["severity"], "medium")
+        self.assertFalse(outcome.security_finding["evidence_json"]["tool_verified"])
+
+    def test_security_issue_verified_claim_without_tool_still_capped(self):
+        # verified=true 但從沒成功呼叫過主動工具（_active_confirmations 空）→ 仍降 medium
+        executor, _ = self._make_executor()
+        outcome = asyncio.run(
+            executor.run("report_security_issue", self._security_args(verified=True))
+        )
+        self.assertEqual(outcome.security_finding["severity"], "medium")
+
+    def test_security_issue_verified_with_tool_keeps_critical(self):
+        # 真的用主動工具確認過 + verified=true → 保留 critical
+        executor, _ = self._make_executor()
+        executor._active_confirmations.add("replay_request")
+        outcome = asyncio.run(
+            executor.run("report_security_issue", self._security_args(verified=True))
+        )
+        self.assertEqual(outcome.security_finding["severity"], "critical")
+        self.assertTrue(outcome.security_finding["evidence_json"]["tool_verified"])
+
 
 class RedactToolDataTests(TestCase):
     """Step 5：probe_sql_injection 的 arguments 與 result 必須遮罩後才持久化。"""

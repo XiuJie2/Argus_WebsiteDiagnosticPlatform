@@ -495,9 +495,13 @@ def _assessment_for(finding) -> dict | None:
 
 
 def _report_severity(finding) -> str:
-    """報告顯示的嚴重度：AI 觀察項目上限為中風險（與 agent 新版回報規則一致，涵蓋舊紀錄）。"""
+    """報告顯示的嚴重度：AI 觀察項目上限為中風險（涵蓋舊紀錄）。
+    2026-10-10 放寬：agent 以主動工具驗證過的發現（evidence_json.tool_verified）不封頂，
+    照 finding 已存的嚴重度顯示（落庫時已確認 verified＋真的呼叫過主動工具）。"""
     if (finding.rule_id or "").startswith("agent-") and _severity_rank(finding.severity) < 2:
-        return AGENT_SEVERITY_CAP
+        evidence_json = getattr(finding, "evidence_json", None) or {}
+        if not evidence_json.get("tool_verified"):
+            return AGENT_SEVERITY_CAP
     return finding.severity
 
 
