@@ -135,6 +135,7 @@ def analyze_services(pages: list[dict]) -> list[dict]:
 - 版本區間比對**重用** `js_library_scanner._is_vulnerable`（DB 欄位格式與 jsrepository.json 一致），不重寫 matcher
 - 命中 → `service-known-cve`（severity 取命中 CVE 最高、critical 封頂 high、A06/CWE-1104；per-CVE 進 `evidence_json`）
 - 無命中（或 DB 缺失）→ LOW `service-version-exposed`（A05/CWE-200）；**版本暴露不依賴 DB**，以完整接手舊 `header-server-version` 而不回歸
+- **只憑標頭版本號，一律是疑似**（2026-10-10）：標題寫「版本號落在已知漏洞範圍」，`evidence_json.assessment` 寫明沒有實際驗證；標頭帶作業系統發行版註記（`(Ubuntu)`、`+deb9u3`、`-4ubuntu2`、`.el8`…，`_DISTRO_MARKER`）時 `backport_possible=true`、嚴重度封頂中——發行版會把修補補進舊版本、版本號不變
 - 以 `(產品, 版本)` 去重；DB 為 `data/backend_services.json`（NVD public domain），以 `manage.py refresh_backend_cve_db` 手動更新；轉換純函式 `nvd_db.build_db_from_nvd` 的正確性由 `tests_nvd_db.py` 已知答案 fixture 鎖定
 
 ---
