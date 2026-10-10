@@ -127,7 +127,7 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 
 ## 4. GEO（逐頁）
 
-`scanners.analyze_geo`、`analyze_geo_fast`、`geo_structure.py`。檢查內容是否容易被生成式 AI 理解與引用。
+`scanners.analyze_geo`、`analyze_geo_fast`、`geo_structure.py`、`geo_citability.py`。檢查內容是否容易被生成式 AI 理解與引用。
 
 | 檢查 | 判定標準 | 嚴重度 |
 |---|---|---|
@@ -139,6 +139,11 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 | 段落過長 | 有超過 1000 字的段落 | 低 |
 | 長文沒有小標題 | 成句段落合計約中文 1500 字／英文 1000 詞以上，卻沒有 h2～h6 | 低 |
 | 列舉沒用清單 | 同一段裡有 3 個以上編號（1. 2. 3.） | 資訊 |
+| 缺少權威來源引用 | 有篇幅的正文頁沒有連到政府／學術等權威來源、沒有 `<cite>`、沒有「參考資料」區塊（Princeton 研究：附來源最多 +115% 被引用率） | 低 |
+| 缺少量化數據 | 有篇幅的正文頁幾乎沒有百分比、金額等具體數字 | 資訊 |
+| 缺少可引用引言 | 有篇幅的正文頁沒有 blockquote 或署名引言 | 資訊 |
+
+> 後三項「可引用性」是依 Princeton「GEO: Generative Engine Optimization」(KDD 2024) 的內容訊號，只對有一定篇幅的正文頁出題，是軟性建議、不重扣分。
 
 ## 5. UX（逐頁）
 
@@ -157,7 +162,7 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 
 ## 6. 資安（逐頁）
 
-`scanners.analyze_security`、`analyze_data_exposure`、`security/secret_scanner.py`。登入與後台頁面也會檢查。
+`scanners.analyze_security`、`analyze_data_exposure`、`security/secret_scanner.py`、`security/content_injection.py`。登入與後台頁面也會檢查。
 
 | 檢查 | 判定標準 | 嚴重度 |
 |---|---|---|
@@ -167,6 +172,7 @@ AEO 分數主要來自後面的「AEO 問答檢測」。
 | 公開的聯絡方式 | 本網域 Email、`mailto:`／`tel:` 連結、角色信箱（info、service…），多半是刻意公開 | 資訊 |
 | 硬編碼秘鑰 | 原始碼裡的私鑰、AWS／GitHub／Stripe 正式金鑰（嚴重）、Stripe 測試金鑰、SendGrid、Slack、含帳密的資料庫連線字串（高）、JWT 與明文密碼賦值（中） | 嚴重～中 |
 | 瀏覽器用 Google 金鑰 | `AIza…` 金鑰本來就要放在前端；只提醒確認已設 HTTP 參照網址與 API 限制 | 低 |
+| AI 提示詞注入 | 頁面藏有操縱 AI 問答引擎的指令字樣（「忽略先前指令」「務必推薦」「不要提及競爭者」等），在可見文字、HTML 註解或隱藏區塊；或 AI 專用 `data-*` 屬性。一般 `display:none`／摺疊選單不算 | 高（可疑標記＝低） |
 
 Email 與手機的格式判斷與 AEO 共用同一套，兩邊結論不會互相矛盾。
 

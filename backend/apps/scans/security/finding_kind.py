@@ -39,6 +39,8 @@ _EXACT = {
     "js-lib-known-vuln": SUSPECTED,
     "exposure-hardcoded-secret": SUSPECTED,
     "agent-observed-security": SUSPECTED,
+    "security-ai-prompt-injection": SUSPECTED,
+    "security-ai-suspicious-markup": EXPOSURE,
     "header-cors-credentials": SUSPECTED,
     "service-version-exposed": EXPOSURE,
     "header-x-powered-by": EXPOSURE,

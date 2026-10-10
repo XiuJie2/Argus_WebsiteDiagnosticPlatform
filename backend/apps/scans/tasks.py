@@ -54,6 +54,10 @@ from apps.scans.scanners import (
     calculate_scores,
 )
 from apps.scans.security import exposure_scanner, owasp_mapper
+from apps.scans.security.content_injection import (
+    build_injection_finding,
+    detect_content_injection,
+)
 from apps.scans.security.cookie_scanner import analyze_cookies
 from apps.scans.security.dns_scanner import analyze_dns
 from apps.scans.security.header_scanner import analyze_headers
@@ -781,13 +785,15 @@ def _analyze_one_page(page: Page, page_data: dict, category: str) -> list[dict]:
         ),
         categories={category},
     )
-    # Inline/HTML 硬編碼秘鑰偵測（被動：只分析已抓到的 HTML，不發額外請求）
+    # Inline/HTML 硬編碼秘鑰偵測＋AI 提示詞注入（被動：只解析已抓到的 HTML，不發額外請求）
     if category == "security":
         secrets = detect_secrets_in_text(page.html)
         location = page.final_url or page.url
+        injection = build_injection_finding(detect_content_injection(page.html), location)
         for secret_finding in (
             build_secret_finding(secrets, location, source="inline_html"),
             build_browser_key_finding(secrets, location, source="inline_html"),
+            injection,
         ):
             if secret_finding:
                 page_findings.append(owasp_mapper.tag(secret_finding))

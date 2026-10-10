@@ -27,6 +27,7 @@ Claude Code 進 `backend/apps/scans/security/` 工作時，本檔在 `scans/CLAU
 | `header_scanner.py` | 資訊洩露標頭（X-Powered-By 技術棧）、CORS 設定、CSP 品質分析、HSTS 標示 preload 卻不符預載條件（info）；Server 版本→CVE 已移交 service_cve_scanner | 已建 |
 | `owasp_mapper.py` | Finding 對映 OWASP Top 10（A01~A10）與 CWE 編號（`tag()` + `backfill()`） | 已建 |
 | `secret_scanner.py` | 硬編碼/外洩秘鑰偵測（AWS/Google/GitHub/Stripe/連線字串/私鑰/明文密碼）+ 遮罩 `redact_secrets_in_text` | 已建 |
+| `content_injection.py` | 頁面 AI 提示詞注入偵測（2026-10-10，方法移植自 GeoReady/geo-optimizer-skill MIT）：`detect_content_injection(html)`（stdlib `html.parser`，純解析零請求）＋`build_injection_finding`。**刻意保守避免誤報**：只有命中明確 LLM 操縱指令字樣（可見文字／HTML 註解／隱藏區塊）或 AI 專用 `data-*` 屬性才判定；一般 `display:none`／摺疊選單不成立。命中指令＝high `security-ai-prompt-injection`（A03/CWE-74；隱藏或在註解＝刻意隱藏；只在可見文字且頁面有留言區＝可能第三方 UGC 降 medium）；只有 `data-ai-*` 或異常不可見字元＝low `security-ai-suspicious-markup`（A05/CWE-451）。由 tasks.py `_analyze_one_page` 資安分支被動呼叫（同 secret_scanner） | 已建 |
 | `redaction.py` | 共用 finding/log 遮罩：URL query、PII、任意短 secret；持久化前使用 | 已建 |
 | `exposure_scanner.py` | 敏感檔案主動探測（content discovery）：重用 crawler 的 robots 結果 + 內建字典 → Playwright 探測 → 檔案分類 + 秘鑰/PII 解析 | 已建 |
 | `kali_tools.py` | Facade：`run_sqlmap` / `run_sqlmap_batch` / `validate_findings_with_kali` / `run_metasploit`；統一走 `reserve_sqlmap_targets` 預算 + backend dispatcher | 已建 |
