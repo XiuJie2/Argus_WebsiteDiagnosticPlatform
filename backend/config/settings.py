@@ -414,6 +414,14 @@ ARGUS_FIXGEN_MAX_TOKENS = int(os.getenv("ARGUS_FIXGEN_MAX_TOKENS", "4096"))
 # provider 預設的 60 秒（實測 MiniMax-M2.7 約 77 秒），故另立較寬上限。
 ARGUS_FIXGEN_TIMEOUT = int(os.getenv("ARGUS_FIXGEN_TIMEOUT", "180"))
 
+# AI 掃描解讀（apps/scans/ai_insight.py）：掃描完成後以 Agent 的 ProviderChain 寫整體診斷、
+# 優先處理建議，並複核高風險問題是否可能誤報。預設關閉：每次掃描都會花 token；
+# 只送問題標題、說明與遮罩後的證據，不送頁面原文。不影響分數與嚴重度。
+ARGUS_AI_INSIGHT_ENABLED = env_bool("ARGUS_AI_INSIGHT_ENABLED", default=False)
+ARGUS_AI_INSIGHT_MODEL = os.getenv("ARGUS_AI_INSIGHT_MODEL", "").strip()
+ARGUS_AI_INSIGHT_MAX_TOKENS = int(os.getenv("ARGUS_AI_INSIGHT_MAX_TOKENS", "3000"))
+ARGUS_AI_INSIGHT_TIMEOUT = int(os.getenv("ARGUS_AI_INSIGHT_TIMEOUT", "180"))
+
 # 網頁複刻與優化（OpenCode agent server）
 # 預設關閉：優化階段會呼叫外部 agent 花錢，而且該 agent 在它那台主機上有
 # shell 權限——沒有明確授權就不該讓 worker 打得到它。

@@ -1802,6 +1802,10 @@ def stage_settlement(ctx: ScanRunContext) -> dict:
             f"修正產出額度贈與失敗（{exc.__class__.__name__}）",
             level="warn",
         )
+    # AI 掃描解讀：完成後另外排背景任務，不拖慢掃描；失敗只記在 ai_insight
+    from apps.scans.ai_insight import schedule_ai_insight
+
+    schedule_ai_insight(scan_job)
     return {
         "status": scan_job.status,
         "pages": len(ctx.crawled_pages),
@@ -1910,6 +1914,14 @@ def finish_unreachable(scan_job: ScanJob, message: str) -> dict:
     )
     _refund_or_raise(scan_job, reason="失敗", label="失敗")
     return {"status": "failed", "reason": "no_usable_pages"}
+
+
+@shared_task
+def run_ai_insight_task(scan_job_id: int) -> None:
+    """AI 掃描解讀（ai_insight.py）。不重試：每次都會花 token，失敗由使用者決定是否重新產生。"""
+    from apps.scans.ai_insight import generate_ai_insight
+
+    generate_ai_insight(scan_job_id)
 
 
 @shared_task(bind=True)
