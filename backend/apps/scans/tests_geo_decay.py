@@ -53,3 +53,8 @@ class ContentDecayTests(SimpleTestCase):
     def test_non_html_skipped(self):
         rss = "<rss><item>2020 recently</item></rss>"
         self.assertEqual(decay_findings("https://x/feed", rss), [])
+
+    def test_rule_has_report_basis(self):
+        from apps.scans.reports import RULE_BASIS
+
+        self.assertIn("geo-content-decay", RULE_BASIS)
