@@ -89,7 +89,7 @@ function PublicFooter() {
       <div className="public-footer-inner">
         <div className="public-footer-about">
           <img src={brandLogo} className="public-footer-logo" alt="ARGUS" width="96" height="64" />
-          <div className="public-footer-sub">網站健檢平台</div>
+          <div className="public-footer-sub">AI網站健檢平台</div>
           <p className="public-footer-tagline">
             找出網站在 SEO、AEO、GEO、資安與使用體驗上的問題，附上證據並給出可直接套用的修正。
           </p>
@@ -109,7 +109,7 @@ function PublicFooter() {
           ))}
         </nav>
         <div className="public-footer-copy">
-          © Argus 網站健檢平台
+          © Argus AI網站健檢平台
         </div>
       </div>
     </footer>
