@@ -35,6 +35,7 @@ _RULE_OWASP_MAP: dict[str, tuple[str, str]] = {
     "kali-sqlmap-sqli": ("A03", "CWE-89"),
     # 敏感檔案 / 路徑外洩（exposure_scanner）+ 硬編碼秘鑰（secret_scanner）
     "exposure-hardcoded-secret": ("A07", "CWE-798"),
+    "exposure-browser-api-key": ("A05", "CWE-284"),
     "exposure-file-env": ("A05", "CWE-200"),
     "exposure-file-git": ("A05", "CWE-527"),
     "exposure-file-credentials": ("A07", "CWE-798"),

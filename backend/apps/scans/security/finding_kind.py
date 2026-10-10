@@ -48,6 +48,7 @@ _EXACT = {
     "exposure-robots-disclosure": EXPOSURE,
     "exposure-admin-panel": EXPOSURE,
     "exposure-securitytxt": CONFIG,
+    "exposure-browser-api-key": CONFIG,
     "security-pii-public-contact": EXPOSURE,
     "security-pii-personal-contact": EXPOSURE,
     "SECURITY_PII_8B24BB8B28": EXPOSURE,

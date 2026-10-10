@@ -64,7 +64,11 @@ from apps.scans.security.redaction import (
     redact_url_query_values,
     redact_warning_summary,
 )
-from apps.scans.security.secret_scanner import build_secret_finding, detect_secrets_in_text
+from apps.scans.security.secret_scanner import (
+    build_browser_key_finding,
+    build_secret_finding,
+    detect_secrets_in_text,
+)
 from apps.scans.security.service_cve_scanner import analyze_services
 from apps.scans.security.sri_scanner import analyze_sri
 from apps.scans.security.ssl_scanner import analyze_ssl
@@ -124,10 +128,7 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
     """本次掃描會經過的子步驟（順序即執行順序）。"""
     cats = scan_job.effective_categories
     steps = ["crawl"]
-    # 逐維度分析每項只要幾秒，分開顯示會讓進度條一閃而過、階段看起來很多；
-    # 合併成一步「頁面分析」，目前分析的維度放在 progress.step_detail（2026-10-10）
-    if any(c in cats for c in ANALYZE_STEP_ORDER):
-        steps.append("analyze_pages")
+    steps += [f"analyze_{c}" for c in ANALYZE_STEP_ORDER if c in cats]
     if "aeo" in cats:
         steps.append("aeo_answers")
     if execution_plan.run_nuclei:
@@ -165,7 +166,6 @@ def _write_progress(
     steps: list[str] | None = None,
     step_done: int | None = None,
     step_total: int | None = None,
-    detail: str = "",
 ) -> None:
     """寫 ScanJob.progress；用 filter().update() 避免覆蓋其他欄位且 race-safe。
 
@@ -196,9 +196,6 @@ def _write_progress(
             progress["step_started_at"] = timezone.now().isoformat()
     if steps:
         progress["steps"] = steps
-    if detail:
-        # 合併步驟裡目前在做什麼（頁面分析的目前維度：seo／aeo／geo／ux／security）
-        progress["step_detail"] = detail
     ScanJob.objects.filter(id=scan_job_id).update(progress=progress)
 
 
@@ -786,13 +783,14 @@ def _analyze_one_page(page: Page, page_data: dict, category: str) -> list[dict]:
     )
     # Inline/HTML 硬編碼秘鑰偵測（被動：只分析已抓到的 HTML，不發額外請求）
     if category == "security":
-        secret_finding = build_secret_finding(
-            detect_secrets_in_text(page.html),
-            page.final_url or page.url,
-            source="inline_html",
-        )
-        if secret_finding:
-            page_findings.append(owasp_mapper.tag(secret_finding))
+        secrets = detect_secrets_in_text(page.html)
+        location = page.final_url or page.url
+        for secret_finding in (
+            build_secret_finding(secrets, location, source="inline_html"),
+            build_browser_key_finding(secrets, location, source="inline_html"),
+        ):
+            if secret_finding:
+                page_findings.append(owasp_mapper.tag(secret_finding))
     return page_findings
 
 
@@ -805,8 +803,7 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
     scan_job_id = ctx.scan_job_id
     page_count = max(len(ctx.crawled_pages), 1)
     page_finding_counts = [0] * len(ctx.pages)
-    categories = _analyze_categories(ctx)
-    for cat_idx, category in enumerate(categories):
+    for cat_idx, category in enumerate(_analyze_categories(ctx)):
         category_found = 0
         for page_idx, (page, page_data) in enumerate(ctx.pages):
             # 被阻擋的頁面內容是錯誤頁，不進行分析，僅保留紀錄與警告
@@ -827,11 +824,10 @@ def stage_analyze_pages(ctx: ScanRunContext) -> None:
                 done=cat_idx * page_count + page_idx + 1,
                 total=ctx.scanning_total,
                 phase_started_at=ctx.scan_phase_started,
-                step="analyze_pages",
+                step=f"analyze_{category}",
                 steps=ctx.steps,
-                step_done=cat_idx * page_count + page_idx + 1,
-                step_total=len(categories) * page_count,
-                detail=category,
+                step_done=page_idx + 1,
+                step_total=page_count,
             )
             raise_if_cancelled(scan_job_id)
         ctx.coverage.mark(f"page_{category}", COMPLETED)

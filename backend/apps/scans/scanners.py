@@ -1,4 +1,5 @@
 import hashlib
+import html
 import math
 import re
 from dataclasses import dataclass
@@ -141,10 +142,44 @@ _CARD_CONTEXT_KEYWORDS = (
 )
 
 
+# 卡片上印的分組方式：4-4-4-4（Visa／Master 等）、4-6-5（Amex）、4-6-4（Diners）、4-4-4-4-3（19 位）
+_CARD_GROUPINGS = ((4, 4, 4, 4), (4, 6, 5), (4, 6, 4), (4, 4, 4, 4, 3))
+
+
 def _is_formatted_card(match: str) -> bool:
-    """卡號有 4-4-4-4 / 4-6-5 之類分隔且去分隔後為 15/16 位 → 視為高信心格式。"""
-    digits = re.sub(r"\D", "", match)
-    return ("-" in match or " " in match) and len(digits) in (15, 16)
+    """卡號以同一種分隔符號照卡片的分組方式分段 → 視為高信心格式。
+
+    只看「有分隔、位數對」不夠：圖片檔名 20221027 0069652（日期＋流水號，8＋7 位）
+    巧合通過 Luhn 就被當成卡號（2026-10-10 實測誤報）。
+    """
+    separators = set(re.findall(r"\D", match))
+    if len(separators) != 1:
+        return False
+    groups = tuple(len(g) for g in re.split(r"\D", match))
+    return groups in _CARD_GROUPINGS
+
+
+def _card_issuer_ok(digits: str) -> bool:
+    """開頭（發卡機構代碼 IIN）與位數符合現行卡組織的號碼規則。
+
+    隨機數字串通過 Luhn 的機率是十分之一，再要求開頭與位數對得上卡組織，
+    日期、訂單號、檔名裡的數字幾乎都會被排除。
+    """
+    n = len(digits)
+    p2, p3, p4 = int(digits[:2]), int(digits[:3]), int(digits[:4])
+    if digits[0] == "4":  # Visa
+        return n in (13, 16, 19)
+    if 51 <= p2 <= 55 or 2221 <= p4 <= 2720:  # Mastercard
+        return n == 16
+    if p2 in (34, 37):  # American Express
+        return n == 15
+    if p2 in (62, 65) or p4 == 6011 or 644 <= p3 <= 649:  # 銀聯、Discover
+        return 16 <= n <= 19
+    if 3528 <= p4 <= 3589:  # JCB
+        return 16 <= n <= 19
+    if p2 in (36, 38, 39) or 300 <= p3 <= 305:  # Diners Club
+        return 14 <= n <= 19
+    return False
 
 
 def _card_has_context(text: str, match: str, window: int = 48) -> bool:
@@ -165,13 +200,14 @@ def detect_pii_in_text(text: str) -> dict[str, list[str]]:
 
     身分證與信用卡會額外用檢查碼過濾，降低 false positive。
 
-    信用卡精準度（收斂誤報）：通過 Luhn 後，僅在「格式化（含分隔且 15/16 位）」
+    信用卡精準度（收斂誤報）：通過 Luhn 且開頭與位數符合卡組織規則後，僅在「照卡片分組」
     或「附近有信用卡關鍵字」時才採計；裸數字串（流水號、座標、雜湊片段巧過 Luhn）
     不採計，避免報告灌入大量假卡號（已於靶機報告觀察到此問題）。
     """
     text = text or ""
     cc_valid = [
-        m for m in dict.fromkeys(CREDIT_CARD_PATTERN.findall(text)) if is_valid_luhn(m)
+        m for m in dict.fromkeys(CREDIT_CARD_PATTERN.findall(text))
+        if is_valid_luhn(m) and _card_issuer_ok(re.sub(r"\D", "", m))
     ]
     credit_card = [
         m for m in cc_valid if _is_formatted_card(m) or _card_has_context(text, m)
@@ -1389,6 +1425,18 @@ def analyze_security_site_level(pages: list[dict]) -> list[dict]:
     return findings
 
 
+_HTML_NON_VISIBLE = re.compile(
+    r"<(script|style|template)\b[^>]*>.*?</\1\s*>|<!--.*?-->", re.IGNORECASE | re.DOTALL
+)
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def _visible_text(html_text: str) -> str:
+    """頁面上看得到的文字：去掉 script／style／註解與所有標籤（含屬性值）。"""
+    text = _HTML_NON_VISIBLE.sub(" ", html_text)
+    return html.unescape(_HTML_TAG.sub(" ", text))
+
+
 def _collect_pii(raw_html: str) -> tuple[dict, dict, dict, list[str]]:
     """從頁面 HTML 萃取 PII。
 
@@ -1401,6 +1449,12 @@ def _collect_pii(raw_html: str) -> tuple[dict, dict, dict, list[str]]:
     # 輸入框 placeholder 是填寫範例（例：e.g.0911-222-333），不是任何人的資料（2026-10-06 實測）
     safe_html = contacts.PLACEHOLDER_ATTR.sub(" ", safe_html)
     pii_main = detect_pii_in_text(safe_html)
+    # 身分證與信用卡（高風險）只看頁面上看得到的文字：屬性值（圖片檔名、網址）與
+    # script 裡的數字（時間戳、編號）巧合通過檢查碼的機會很高（2026-10-10：Next.js 圖片
+    # 檔名「20221027 0069652-ISO 9001…」被判成信用卡號）。HTML 註解另外掃，見下。
+    visible = detect_pii_in_text(_visible_text(safe_html))
+    pii_main["national_id"] = visible["national_id"]
+    pii_main["credit_card"] = visible["credit_card"]
 
     # B2: 額外掃 HTML 註解內容（開發者常留測試資料 / TODO / 卡號 / token）
     comments_text = "\n".join(_HTML_COMMENT.findall(raw_html))
