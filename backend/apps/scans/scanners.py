@@ -273,6 +273,7 @@ class HtmlSignalParser(HTMLParser):
         self.image_empty_alt_large = 0
         self.form_count = 0
         self.form_without_csrf = 0
+        self.form_get_only = 0
         self.json_ld_blocks: list[str] = []
         self.dl_count = 0
         self.og_tags: set[str] = set()
@@ -313,10 +314,17 @@ class HtmlSignalParser(HTMLParser):
             self.form_count += 1
             self.in_form = True
             self.form_has_csrf = False
+            # 沒寫 method 依 HTML 規範是 GET；GET 表單（站內搜尋、篩選）不改變狀態，
+            # 不需要 CSRF token
+            self.form_is_post = attributes.get("method", "").strip().lower() == "post"
+            self.form_has_password = False
         elif normalized_tag == "input" and self.in_form:
             name = attributes.get("name", "").lower()
             if "csrf" in name or attributes.get("type", "").lower() == "hidden" and "token" in name:
                 self.form_has_csrf = True
+            if attributes.get("type", "").lower() == "password":
+                # 登入表單常不寫 method、改用 JavaScript 送出，仍視為會改變狀態
+                self.form_has_password = True
         elif normalized_tag == "script":
             self.current_script_type = attributes.get("type", "").lower()
             self.current_script_parts = []
@@ -337,7 +345,9 @@ class HtmlSignalParser(HTMLParser):
             self.current_script_type = ""
             self.current_script_parts = []
         elif normalized_tag == "form" and self.in_form:
-            if not self.form_has_csrf:
+            if not (self.form_is_post or self.form_has_password):
+                self.form_get_only += 1
+            elif not self.form_has_csrf:
                 self.form_without_csrf += 1
             self.in_form = False
             self.form_has_csrf = False
@@ -1777,11 +1787,13 @@ def analyze_site_signals(site_signals: dict) -> list[dict]:
 
 # 分數衰減常數：category_score = 100 * exp(-penalty / SCORE_DECAY_CONSTANT)。
 # 這是刻意可調的產品參數，不是演算法細節。目前值讓：
-#   1 個低風險(4)   -> 92 分      1 個中風險(12)  -> 79 分
-#   1 個高風險(35)  -> 50 分      1 個嚴重(60)    -> 30 分
-#   典型中小企業體質(2 中 4 低 = 40) -> 45 分
+#   1 個低風險(4)   -> 96 分      1 個中風險(12)  -> 89 分
+#   1 個高風險(35)  -> 70 分      1 個嚴重(60)    -> 55 分
+#   典型中小企業體質(2 中 4 低 = 40) -> 67 分
 # 調小 = 更嚴格（分數掉更快），調大 = 更寬鬆。
-SCORE_DECAY_CONSTANT = 50.0
+# 2026-10-10 由 50 調為 100：50 時 GOV.UK、MDN 這類公認維護良好的網站只有 74、59 分，
+# 幾個中低風險項目就讓一個面向掉到 50 以下，分數反映的是「小問題累積多少」而不是網站品質。
+SCORE_DECAY_CONSTANT = 100.0
 
 
 def _dedupe_findings_for_scoring(findings: list[dict]) -> list[dict]:

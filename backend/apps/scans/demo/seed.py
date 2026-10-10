@@ -193,6 +193,8 @@ def create_demo_project(user) -> SiteProject | None:
                 for finding in entry["findings"]
             ]
         )
+        # 匯出資料的分數是當時公式算的；用目前公式重算，與分數說明、評分版本一致
+        rescore_with_current_formula(scan)
         fix = row.get("fix_output")
         if fix:
             FixOutput.objects.create(
@@ -204,6 +206,12 @@ def create_demo_project(user) -> SiteProject | None:
                 generated_at=target + timedelta(minutes=10),
             )
     return project
+
+
+def rescore_with_current_formula(scan) -> None:
+    from apps.scans.finding_normalization import _rescore
+
+    _rescore(scan)
 
 
 def create_demo_project_safely(user) -> None:
