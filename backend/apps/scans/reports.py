@@ -34,6 +34,7 @@ from apps.scans.root_causes import annotate_root_causes
 from apps.scans.scan_plan import build_scan_execution_plan
 from apps.scans.security.observatory import summary_line as observatory_summary
 from apps.scans.security.redaction import redact_pii_in_text
+from apps.scans.trust_stack import summary_line as trust_stack_summary
 
 # --- 品牌與嚴重度配色 -------------------------------------------------
 # frontend/src/styles.css 的 token 是為深色背景設計的，--argus-cyan (#38bdf8)
@@ -1360,6 +1361,10 @@ def _report_site_profile(scan_job: ScanJob) -> dict:
         facts.append(
             {"label": "安全標頭等第", "value": observatory_summary(profile["observatory"])}
         )
+    if profile.get("trust_stack"):
+        line = trust_stack_summary(profile["trust_stack"])
+        if line:
+            facts.append({"label": "信任輪廓（五層）", "value": line})
     if not facts and not strengths:
         return {}
     return {"notice": infra.get("notice", ""), "facts": facts, "strengths": strengths}
