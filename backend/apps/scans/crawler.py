@@ -823,8 +823,25 @@ def is_static_asset_path(path: str) -> bool:
 _MAX_JS_BODIES = 40  # 每次掃描最多讀幾個 JS 檔的內容
 _MAX_JS_BODY_BYTES = 2 * 1024 * 1024
 _MAX_JS_API_PATHS = 60
-# 絕對路徑字串：以 / 開頭、兩段以上、只含路徑安全字元（擋掉 regex／CSS／模板殘段）
-_JS_PATH_RE = re.compile(r"""['"`](/[A-Za-z0-9_][A-Za-z0-9._~\-/]{1,120})['"`]""")
+# 絕對路徑字串：以 / 開頭、只含路徑安全字元（含 Next.js rewrite 的 :param／* 動態段，
+# 下面會截到第一個動態段之前）。原本字元類不含 : *，碰到 "/api_proxy/:path*" 整段比對失敗、
+# 抽不到 /api_proxy——這是 2026-10-16 實站漏抓的直接原因。
+_JS_PATH_RE = re.compile(r"""['"`](/[A-Za-z0-9_][A-Za-z0-9._~:*\-/]{1,120})['"`]""")
+
+
+def _static_prefix_of(path: str) -> str:
+    """截到第一個含動態參數（`:` 或 `*`，Next.js rewrite 語法）的路徑段之前。
+
+    `/api_proxy/:path*` → `/api_proxy`；`/api/v1/users` → 原樣；`/:locale/x` → ``（整段動態）。
+    """
+    kept: list[str] = []
+    for seg in path.split("/"):
+        if not seg:
+            continue
+        if ":" in seg or "*" in seg:
+            break
+        kept.append(seg)
+    return "/" + "/".join(kept) if kept else ""
 # 看起來像 API／後端的路徑才留（避免把 /about、/_next 這類頁面與資源路徑灌進來）
 _API_PATH_HINT = re.compile(
     r"(?:^|/)(?:api|api[_-]?proxy|backend|rest|graphql|gateway|service|services|"
@@ -837,7 +854,10 @@ def extract_api_paths_from_js(text: str) -> set[str]:
     """從一段 JS 原始碼抽出看起來像 API 的絕對路徑（去查詢字串、去重）。純解析、不連線。"""
     found: set[str] = set()
     for match in _JS_PATH_RE.finditer(text or ""):
-        path = match.group(1).split("?", 1)[0]
+        # 先截到動態段之前：Next.js rewrite 寫成 /api_proxy/:path*，要的是 /api_proxy
+        path = _static_prefix_of(match.group(1).split("?", 1)[0])
+        if not path or path == "/":
+            continue
         if is_static_asset_path(path) or path.startswith("/_next/"):
             continue
         if _API_PATH_HINT.search(path):
