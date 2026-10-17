@@ -7,12 +7,14 @@
 認證（全新 context、無 cookie）。
 
 誤報防線（關鍵）：公開網站回傳 JSON 陣列是常態（商品、文章、公開目錄），不能見到 200 JSON
-就報。只有同時滿足以下才算未授權記錄外洩——
-1. 內容是成批記錄（頂層陣列，或 data／result／items… 底下的非空物件陣列）；
-2. 記錄物件帶**身分欄位**（姓名／帳號／email／電話／member／user…）；
-3. 且帶**內部帳號欄位**（memberId／roleId／啟用狀態／建立或修改時間／password／token…）——
-   公開人員目錄通常只有姓名職稱、不會帶內部 id 與帳號狀態，這一條把它們排除。
-偵測到聯絡類 PII（email／電話／身分證／信用卡）再升到 high。
+就報。先要是**成批記錄**（頂層陣列，或 data／result／items… 底下的非空物件陣列），再滿足以下
+任一條才算未授權記錄外洩：
+1. 記錄同時帶**身分欄位**（姓名／帳號／email／電話／member／user…）**與內部帳號欄位**
+   （memberId／roleId／啟用狀態／建立或修改時間…）——後台帳號／成員名單。公開人員目錄
+   通常只有姓名職稱、沒有內部 id 與帳號狀態，用「內部欄位」這條把它們排除。
+2. 出現**敏感欄位名**（password／token／secret／身分證／idcard／ssn）——絕不可能刻意成批公開。
+3. 回應夾帶**強個資**（身分證／信用卡）——同上，不需再要求欄位名。
+email／手機屬弱個資（公開聯絡清單也會有），不單獨成立，只在第 1 條成立時把嚴重度升到 high。
 """
 
 from __future__ import annotations
@@ -100,14 +102,24 @@ def analyze_unauthorized_results(results: list[dict]) -> list[dict]:
             continue
         keys = _collect_keys(objects)
         keys_blob = " ".join(keys)
-        if not (_IDENTITY_KEYS.search(keys_blob) and _INTERNAL_KEYS.search(keys_blob)):
+        pii = detect_pii_in_text(body)
+        pii_total = sum(len(v) for v in pii.values())
+        # 身分證／信用卡＝絕不可能刻意公開的強個資；email／手機是公開聯絡清單也會有的弱個資
+        strong_pii = bool(pii.get("national_id") or pii.get("credit_card"))
+        has_identity = bool(_IDENTITY_KEYS.search(keys_blob))
+        has_internal = bool(_INTERNAL_KEYS.search(keys_blob))
+        has_sensitive_keys = bool(_SENSITIVE_KEYS.search(keys_blob))
+        # 成立條件（任一）：
+        #   1. 身分欄位＋內部帳號欄位——後台帳號／成員名單（公開目錄沒有內部欄位，用這條區隔）
+        #   2. 敏感欄位名（password／token／身分證…）——這些欄位絕不可能刻意成批公開
+        #   3. 強個資（身分證／信用卡）出現在回應——同上，不需再要求欄位名
+        # email／手機這類弱個資不單獨成立（公開聯絡清單也有），要配合第 1 條的內部欄位。
+        if not ((has_identity and has_internal) or has_sensitive_keys or strong_pii):
             continue
 
         url = r.get("url") or ""
         safe_url = redact_pii_in_text(redact_url_query_values(str(url)))
-        pii = detect_pii_in_text(body)
-        pii_total = sum(len(v) for v in pii.values())
-        severity = "high" if (pii_total > 0 or _SENSITIVE_KEYS.search(keys_blob)) else "medium"
+        severity = "high" if (pii_total > 0 or has_sensitive_keys or strong_pii) else "medium"
 
         sample_keys = sorted(keys)[:15]
         excerpt = redact_pii_in_text(redact_secrets_in_text(body)).strip()[:400]
@@ -123,8 +135,8 @@ def analyze_unauthorized_results(results: list[dict]) -> list[dict]:
             evidence_parts.append("回應片段（個資與秘鑰已遮罩）：\n" + excerpt)
 
         description = (
-            f"API 端點 {safe_url} 無需任何登入憑證即回傳成批帳號／成員記錄"
-            f"（約 {len(objects)} 筆，含內部識別碼與帳號欄位）。"
+            f"API 端點 {safe_url} 無需任何登入憑證即回傳成批記錄"
+            f"（約 {len(objects)} 筆，含個資或內部帳號資料）。"
             "這類後台資料應只開放給已驗證的管理員，匿名可讀代表存取控制缺失，"
             "攻擊者可一次撈走整份名單。"
         )

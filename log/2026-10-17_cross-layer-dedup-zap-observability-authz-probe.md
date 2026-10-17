@@ -25,7 +25,7 @@ scan 2 security 7 分如實反映真實風險（2 critical／3 high，agent 實�
 ### 3. 未授權存取確定性探測（`security/authz_probe.py`，新）
 把 agent 偶然打到的未授權個資 API 沉澱成確定性檢查。
 - `probe_unauthorized_endpoints`：對 `_observed_api_paths` 的 API 端點做**無憑證 GET**（全新 context、無 cookie、`max_redirects=0`、active RPS、最多 20 個）。
-- `analyze_unauthorized_results`（純函式，誤報防線是重點）：只在「成批記錄（頂層陣列或 data／result… 底下非空物件陣列）＋記錄帶身分欄位（姓名／帳號／email／member…）＋帶內部帳號欄位（memberId／roleId／啟用狀態／時間／password…）」才報 `security-unauth-api-records`（A01／CWE-862，VERIFIED）；偵測到聯絡 PII 或 password／token 欄位升 high，否則 medium。公開 JSON 清單、公開人員目錄（無內部欄位）、單筆、非 JSON、非 200 一律不報。
+- `analyze_unauthorized_results`（純函式，誤報防線是重點）：先要是成批記錄（頂層陣列或 data／result… 底下非空物件陣列），再滿足**任一**才報 `security-unauth-api-records`（A01／CWE-862，VERIFIED）——(1) 身分欄位（姓名／帳號／email／member…）**且**內部帳號欄位（memberId／roleId／啟用狀態／時間…）；(2) 敏感欄位名（password／token／secret／身分證／idcard／ssn）；(3) 回應夾帶強個資（身分證／信用卡）。有 PII／敏感欄位／強個資升 high，否則 medium。**email／手機屬弱個資不單獨成立**（公開聯絡清單也有，要配合條件 1 的內部欄位）——使用者指出「三者同時」對 credential／ID dump 太嚴，改成 OR，讓「純 token／身分證成批外洩」不帶一般身分欄位時也報；公開 JSON 清單、公開人員目錄、姓名＋email 清單、單筆、非 JSON、非 200 仍不報。
 - 由 `tasks._run_authz_probe`（stage_exposure 內、同 exposure 閘：全站＋主動＋已授權）呼叫，覆蓋檢查 `authz_probe`，失敗不影響主掃描。
 - owasp_mapper／finding_kind 登記新規則。
 - **刻意不處理的**：「非個資但內部」的資料端點外洩，確定性難與正常公開 API 區分（agent 是靠「其他端點要驗證、這個漏了」的差異判斷），留給 agent，不硬做以免誤報。
