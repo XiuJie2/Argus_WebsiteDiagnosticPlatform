@@ -217,3 +217,17 @@ ADR-0005 的五相位分析完成，落地成果：
   §1 主動重抓未載入 .js（增量，待需要時再做）、Nuclei 模板集放寬（需產品拍板＋實機量噪音）。
 - **去重現況**：設計性重疊已從源頭消除（被動不再跑兩引擎、agent 不盲跑重報）；殘餘由三道確定性
   機制（Redis 指紋、known_findings、cross_layer）覆蓋，**非 AI 事後審查**。
+
+## 補遺（2026-10-17，17AF 報告逐項審查）
+一次實機重掃（17AF）逐項審查後補強 `cross_layer`，並記錄一個刻意不做：
+- **`cross_layer` 第二個 pass（已實作）**：原本只處理「確定性 exposure ↔ Agent 同端點」。17AF 出現
+  Agent↔Agent 跨掛載路徑的同資源重複——`/api_proxy/visits`（高）與 `/backend/visits`（低）是 Next.js
+  rewrite 指向的**同一個後端資源**，被計分扣兩次、嚴重度還一高一低。新增 `_canonical_resource` 剝除
+  反向代理／BFF 掛載前綴（`_MOUNT_SEGMENTS`，通用命名慣例），**同資源＋同弱點類型**的 Agent 發現
+  只留最嚴重那筆（不同弱點類型不併，修法不同）。測試 `tests_cross_layer.AgentCrossPathMergeTests`。
+- **跨類別同源收斂（評估後不做）**：17AF 的密碼欄位明碼同時出現在資安（`form-password-unmasked`，
+  確定性）與 UX（Agent 觀察）兩節。原先設想以「同 URL＋同 selector」收斂，但 `form_scanner` 的確定性
+  發現**不存 CSS selector**（只有 url＋fields），key 對不上；且明碼密碼欄位本就是資安（CWE-549）與
+  可用性兩個不同面向的問題，各自扣各自分類的分數可辯護，硬併反而抹掉一個合理訊號。以模糊措辭比對
+  風險（誤殺真發現）不值得，故不做；若日後要降 Agent 重覆噪音，較穩的是把確定性發現餵給 UX agent
+  （第 2 刀對資安 orchestrator 的做法），但那是建議性、無法保證消除，另案再議。
