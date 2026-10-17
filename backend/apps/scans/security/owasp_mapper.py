@@ -52,6 +52,12 @@ _RULE_OWASP_MAP: dict[str, tuple[str, str]] = {
     "exposure-file-backup": ("A05", "CWE-530"),
     "exposure-file-actuator": ("A05", "CWE-200"),
     "exposure-file-data": ("A01", "CWE-200"),
+    "security-unauth-api-records": ("A01", "CWE-862"),
+    # ADR-0005 §2：移植自 ZAP 被動的自家檢查
+    "security-mixed-content": ("A02", "CWE-319"),
+    "header-permissions-policy": ("A05", "CWE-693"),
+    "security-sensitive-url-param": ("A05", "CWE-598"),
+    "security-error-disclosure": ("A05", "CWE-209"),
     "exposure-file-phpinfo": ("A05", "CWE-200"),
     "exposure-file-server-status": ("A05", "CWE-200"),
     "exposure-file-apidoc": ("A05", "CWE-200"),

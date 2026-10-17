@@ -188,11 +188,14 @@ class TestHeaderScanner(TestCase):
         self.assertEqual(rules["header-hsts-preload-ineligible"]["severity"], "info")
         eligible = header_scanner.analyze_headers(self._page({
             "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+            "permissions-policy": "geolocation=()",
         }))
         self.assertEqual(eligible, [])
 
     def test_clean_headers_no_findings(self):
-        findings = header_scanner.analyze_headers(self._page({"server": "cloudflare"}))
+        findings = header_scanner.analyze_headers(self._page({
+            "server": "cloudflare", "permissions-policy": "geolocation=()",
+        }))
         self.assertEqual(findings, [])
 
     def test_no_pages_returns_empty(self):
