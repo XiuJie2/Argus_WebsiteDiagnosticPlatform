@@ -131,6 +131,17 @@ class TestCookieScanner(TestCase):
         rules = {f["rule_id"] for f in findings}
         self.assertIn("cookie-samesite-none", rules)
 
+    def test_missing_samesite_attribute_is_low(self):
+        # SameSite 屬性完全缺失（ZAP 10054 移植，退 ZAP 被動後補回）
+        headers = {"set-cookie": "sid=abc; Secure; HttpOnly"}
+        rules = {f["rule_id"] for f in cookie_scanner.analyze_cookies(headers, "https://example.com")}
+        self.assertIn("cookie-no-samesite", rules)
+
+    def test_samesite_present_no_samesite_finding(self):
+        headers = {"set-cookie": "sid=abc; Secure; HttpOnly; SameSite=Lax"}
+        rules = {f["rule_id"] for f in cookie_scanner.analyze_cookies(headers, "https://example.com")}
+        self.assertNotIn("cookie-no-samesite", rules)
+
     def test_secure_httponly_strict_no_findings(self):
         headers = {"set-cookie": "sid=abc; Secure; HttpOnly; SameSite=Strict"}
         self.assertEqual(cookie_scanner.analyze_cookies(headers, "https://example.com"), [])

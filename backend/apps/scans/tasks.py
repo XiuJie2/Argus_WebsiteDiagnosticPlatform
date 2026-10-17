@@ -1046,12 +1046,33 @@ def _run_nuclei_for_scan(ctx: ScanRunContext, target: str, rate_limit: int) -> N
     )
 
 
-def _run_site_active_tools(ctx: ScanRunContext, target: str) -> None:
-    """全網站主動掃描：Katana 與 Nuclei 共享 ARGUS_ACTIVE_MAX_RPS 預算。"""
+def _run_site_active_tools(
+    ctx: ScanRunContext, target: str, skip_nuclei: bool = False
+) -> None:
+    """全網站主動掃描：Katana 與 Nuclei 共享 ARGUS_ACTIVE_MAX_RPS 預算。
+
+    `skip_nuclei`（目標位於全代理 CDN 後）時只跑 Katana，並讓它獨佔整個 RPS 預算；
+    Nuclei 的覆蓋紀錄與說明由呼叫端 `stage_active_probe` 處理。
+    """
     scan_job = ctx.scan_job
     scan_job_id = ctx.scan_job_id
-    append_log(scan_job_id, "全網站主動掃描：Katana 與 Nuclei 執行受控探測")
     active_rps = max(int(settings.ARGUS_ACTIVE_MAX_RPS), 1)
+
+    if skip_nuclei:
+        append_log(scan_job_id, "全網站主動掃描：略過 Nuclei（位於 CDN 後），Katana 獨佔 RPS 預算")
+        try:
+            ctx.katana_findings, ctx.katana_tech = run_katana(
+                target, scan_job.max_depth, scan_job.max_pages,
+                rate_limit=active_rps, scan_job_id=scan_job_id,
+            )
+            ctx.coverage.mark("katana", COMPLETED)
+        except ScanCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _tool_failed(ctx, "katana", "Katana", exc)
+        return
+
+    append_log(scan_job_id, "全網站主動掃描：Katana 與 Nuclei 執行受控探測")
     katana_rps = max(active_rps // 2, 1)
     nuclei_rps = max(active_rps - katana_rps, 1)
 
@@ -1174,25 +1195,85 @@ def _waf_blocked_nuclei_note(ctx: ScanRunContext) -> list[dict]:
     }]
 
 
+def _behind_waf_cdn(ctx: ScanRunContext) -> str:
+    """目標前方若是全代理型 WAF／CDN（會過濾 root-URL KEV 探測）就回供應商名稱，否則回 ""。
+
+    用爬蟲已抓到的首頁回應標頭判定（cf-ray、x-amz-cf-id…，`infra_scanner.detect_edge`），
+    退而求其次用 fingerprint 階段記的 edge 供應商字串；只認 `_WAF_CAPABLE`（Cloudflare 等
+    會把流量停在邊緣的服務，不含 Vercel／Netlify 這種直接代管應用的平台）。
+    """
+    from apps.scans.security.infra_scanner import _WAF_CAPABLE, detect_edge
+
+    root = next((p for p in ctx.crawled_pages if p.get("headers")), None)
+    edge = detect_edge((root or {}).get("headers") or {}, [], [])
+    if edge and edge.get("waf_capable"):
+        return str(edge["provider"])
+    provider = str((ctx.scan_job.fingerprint or {}).get("edge") or "")
+    return provider if provider in _WAF_CAPABLE else ""
+
+
+def _nuclei_skipped_cdn_note(ctx: ScanRunContext, provider: str) -> list[dict]:
+    """目標位於全代理 CDN 後、刻意略過 Nuclei 時補的 info 說明（0 項不等於沒弱點）。"""
+    append_log(
+        ctx.scan_job_id,
+        f"目標位於 {provider} 之後，已略過 root-URL KEV Nuclei 掃描（會被邊緣過濾），節省掃描時間",
+    )
+    return [{
+        "category": "security",
+        "severity": "info",
+        "title": f"已略過主動弱點掃描：目標位於 {provider} 之後",
+        "description": (
+            f"目標流量先經過 {provider}（全代理型 CDN／WAF），Nuclei 的已知被利用漏洞（KEV）模板"
+            "探測網站根網址時會停在邊緣節點、幾乎到不了原始主機，實測一律 0 項發現卻耗時十餘分鐘。"
+            "為縮短掃描時間已略過。這不代表網站沒有弱點，也不能證明防護規則有在運作。"
+        ),
+        "remediation": (
+            "此為資訊性提示，不需要修復。如需完整的已知漏洞掃描，可在沒有 CDN／WAF 的測試環境、"
+            "或在邊緣規則暫時放行授權掃描來源後執行。"
+        ),
+        "evidence": f"偵測到前端邊緣：{provider}；已略過網站根網址的 KEV Nuclei 掃描",
+        "selector": "",
+        "bounding_box": None,
+        "impact_area": "vulnerability",
+        "confidence": 0.5,
+        "priority_score": 10.0,
+        "ai_handoff_prompt": (
+            f"網站位於 {provider} 之後，Argus 已略過 Nuclei root-URL 主動掃描（會被邊緣過濾）。"
+            "請建議如何在授權環境下完成更完整的已知漏洞掃描。"
+        ),
+    }]
+
+
 def stage_active_probe(ctx: ScanRunContext) -> None:
     """主動探測（Nuclei／Katana），同時遵守「單頁／全網站」範圍與 active 授權。
 
-    被動模式不發任何探針；單頁主動只讓 Nuclei 掃輸入頁。
+    被動模式不發任何探針；單頁主動只讓 Nuclei 掃輸入頁。目標位於全代理型 CDN／WAF 後時，
+    root-URL KEV Nuclei 會被邊緣過濾（實測 0 發現卻耗十餘分鐘），略過並改出一筆說明。
     """
     plan = ctx.execution_plan
     raise_if_cancelled(ctx.scan_job_id)
     _collect_probe_targets(ctx)
     target = assert_public_http_url(ctx.scan_job.normalized_url)
 
-    if plan.run_nuclei:
+    behind_cdn = _behind_waf_cdn(ctx) if plan.run_nuclei else ""
+    skip_nuclei = bool(behind_cdn) and settings.ARGUS_NUCLEI_SKIP_BEHIND_CDN
+    run_nuclei_now = plan.run_nuclei and not skip_nuclei
+
+    if run_nuclei_now:
         ctx.scanning_progress(ctx.scanning_total, "active_probe")
     if plan.run_katana:
-        _run_site_active_tools(ctx, target)
-    elif plan.run_nuclei:
+        _run_site_active_tools(ctx, target, skip_nuclei=skip_nuclei)
+    elif run_nuclei_now:
         _run_single_page_nuclei(ctx, target)
-    else:
+    elif not plan.run_nuclei:
         append_log(ctx.scan_job_id, "被動模式：略過 Nuclei、Katana 與其他主動探測工具")
-    if not plan.run_nuclei:
+    if skip_nuclei:
+        ctx.nuclei_findings = _nuclei_skipped_cdn_note(ctx, behind_cdn)
+        ctx.coverage.mark(
+            "nuclei", SKIPPED,
+            f"位於 {behind_cdn} 等全代理 CDN 之後，root-URL KEV 探測會被邊緣過濾，已略過",
+        )
+    elif not plan.run_nuclei:
         ctx.coverage.mark("nuclei", SKIPPED, "未授權主動測試")
     if not plan.run_katana:
         ctx.coverage.mark("katana", SKIPPED, "單頁或未授權主動測試")
