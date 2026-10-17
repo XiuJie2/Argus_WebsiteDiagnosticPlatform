@@ -138,3 +138,24 @@ class CrawledBrokenPageTests(SimpleTestCase):
         finding = broken_internal_links(report, audits, "example.com")
         self.assertIsNotNone(finding)
         self.assertIn(target, finding["evidence"])
+
+
+class OutboundLinkBudgetTests(SimpleTestCase):
+    """站內連結很多時，子網域／站外仍保留部分檢查額度（2026-10-17 實掃：站外全部未檢查）。"""
+
+    def test_outbound_gets_reserved_share(self):
+        internal = [f"{ORIGIN}/p/{i}" for i in range(300)]
+        outbound = [f"https://other{i}.org/" for i in range(30)]
+        targets = {**dict.fromkeys(internal, "internal"), **dict.fromkeys(outbound, "external")}
+        ordered = collect._reserve_outbound(internal + outbound, targets, 100)
+        checked = ordered[:100]
+        self.assertEqual(sum(1 for u in checked if targets[u] == "external"), 25)
+        self.assertEqual(len(ordered), 330)
+
+    def test_few_outbound_leaves_rest_to_internal(self):
+        internal = [f"{ORIGIN}/p/{i}" for i in range(300)]
+        outbound = ["https://other.org/"]
+        targets = {**dict.fromkeys(internal, "internal"), **dict.fromkeys(outbound, "external")}
+        checked = collect._reserve_outbound(internal + outbound, targets, 100)[:100]
+        self.assertIn("https://other.org/", checked)
+        self.assertEqual(sum(1 for u in checked if targets[u] == "internal"), 99)

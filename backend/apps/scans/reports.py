@@ -1165,6 +1165,8 @@ def _report_summary(scan_job: ScanJob, previous, grouped: list[dict]) -> dict:
             # 與本次的 scan_date 同一個格式（舊版只印月日，與「2026-10-09」並列像兩種日期）
             "date": timezone.localtime(previous.completed_at).strftime("%Y-%m-%d"),
             "score": previous.overall_score,
+            # 評分版本不同時，分數差與「新出現」都可能只是規則改了（導讀句已說明，圖表也要一致）
+            "comparable": versions.comparable(scan_job, previous),
         }
         previous_rules = {
             rule for rule in previous.findings.values_list("rule_id", flat=True) if rule
