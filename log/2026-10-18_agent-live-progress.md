@@ -25,7 +25,17 @@
 ## 刻意不做
 - 不砍 `ARGUS_AGENT_MAX_SPECIALIST_DISPATCH`／`_SPECIALIST_MAX_STEPS`／加牆鐘上限——那會少跑專家、
   可能少抓 critical，是另一個取捨；使用者這次只要「看得出活著」。
-- 不加「目前在跑哪個專家」的前端文字標籤（需動前端＋build）；回呼已帶 role_label，日後要顯示只差前端一行。
+
+## 追加：前端顯示「專家名稱」（2026-10-18，使用者要求「補上前端的『專家名稱』顯示」）
+前一版回呼已帶 role_label，只差落地到進度與前端顯示，這次補上：
+- 後端 `tasks._write_progress` 新增 `detail=""` 參數，有值才寫入 `progress["step_detail"]`（其他步驟不留此鍵）。
+- `tasks.stage_agent`：`_AGENT_ROLE_LABELS`／`_AGENT_SPECIALIST_LABELS`＋`_agent_role_label()` 把 runner 的
+  role_label（recon／orchestrator／ux／specialist／specialist:<8 角色>）轉成中文；`_report_agent_step`
+  每步帶 `detail=_agent_role_label(role_label)`。8 種專家代號對齊 `runner.SPECIALIST_ROLES`。
+- 前端 `ScanExperience.CrawlingAnimation`：agent 階段時 `crawl-anim-step-hint` 顯示 `progress.step_detail`
+  （`agentDetail || current.hint`），其餘階段不受影響；`scanProgress()` 既有邏輯不動、免動 build 以外的計算。
+- 測試：`tests_progress.py` 加 `AgentStepDetailTests`（detail 只在有值時寫入、角色→中文對映含未知 fallback）；
+  前端 `ScanExperience.jsx` 過 ESLint。`apps.scans.tests_progress`＋`apps.agent.tests_progress_callback` 19 項通過。
 
 ## 驗證
 - 新增 `agent/tests_progress_callback.py`（4）：回呼第一步就觸發、回呼爆炸不中斷迴圈、無回呼正常、
