@@ -114,12 +114,21 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - **階段合併刻意不做**：exposure 與 active_probe 本就循序執行、無 RPS 競用，合併成單一相位是 cosmetic
   結構搬動，效益小而動覆蓋契約／測試，風險不值得。保持現狀。
 
-### §4 利用相位：ZAP active 併入、加「利用計畫」分工
-- `zap_active` 不再是獨立頂層階段，與 Nuclei fuzz／sqlmap 併入**利用相位**。
-- 新增**利用計畫（exploitation plan）**：以攻擊面為輸入，把每個 (端點 × 弱點類) 指派給唯一一個工具，
-  避免 XSS/SQLi 被多引擎重打。分工原則（初版）：SQLi→sqlmap（最專）、一般注入/XSS/設定類→ZAP ascan、
-  已知 CVE/KEV→Nuclei。
-- `zap_passive` 的被動部分已於 §2 處理；ZAP 在新架構只保留 active 這一半。
+### §4 利用相位：正式「利用計畫」分工——審計後**刻意不建**（2026-10-17）
+原構想：把每個 (端點 × 弱點類) 指派給唯一一個工具（SQLi→sqlmap、注入/XSS→ZAP ascan、CVE→Nuclei），
+從源頭不重打。實作審計後**放棄建這個框架**，理由：
+
+1. **黑箱引擎無法被細緻約束**：Nuclei 吃的是整組模板策略（`-tags/-severity/-etags`），**沒有「對某端點
+   排除某弱點類」的 API**；ZAP ascan 跑的是掃描政策、sqlmap 天生只做 SQLi。無法真的叫 Nuclei「XSS 交給
+   ZAP 別測」。一個控制不了引擎的 dispatch 框架＝架構裝飾，給「有在協調」的錯覺卻無實效，違反簡潔優先。
+2. **真實重疊早已處理**：唯一會實際重疊的利用情境 agent↔sqlmap 的 SQLi，已由 `kali_policy.reserve_sqlmap_targets`
+   的 SHA-256 指紋＋Redis `sismember` 去重（fallback 只處理 agent 沒驗證過的 target）。
+3. **預設部署下是假想問題**：`ARGUS_ZAP_ACTIVE_ENABLED` 與 Kali 預設都關，「三引擎對同一端點各打一次」
+   在預設部署不會發生。
+
+利用層的重疊因此由三道既有機制覆蓋，不需正式 planner：(a) agent↔sqlmap Redis 指紋去重；
+(b) §5 agent 吃確定性發現、不重報；(c) `cross_layer` 跨層去重（最後保險）。ZAP active 維持獨立階段
+（§6 的「併入利用相位」屬 §3 同款 cosmetic 合併，一併不做）。
 
 ### §5 Agent 相位：吃既有結果，不盲跑 **（已實作 2026-10-17）**
 - `run_agent_for_scan(known_findings=...)` 由 `tasks.stage_agent` 傳入本次確定性工具已找到的資安發現；
@@ -130,9 +139,11 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - 這直接消掉「Agent 盲跑 → 撞一堆重複 → 事後去重」的浪費（使用者最在意的點）。
 
 ### §6 階段順序
-相依順序固定為 **發現 → 被動 → 主動探測 → 利用 → Agent → 計分**。修掉現況「`zap_active`（利用）排在
-`exposure`（探測）之前」「Agent 排最後卻重新發現前面已找到的端點」兩個倒置。非資安階段
-（seo_links、geo_site、pagespeed、favicon、aeo_answers）與資安相位正交，維持現狀交錯即可。
+原構想：相依順序固定為 **發現 → 被動 → 主動探測 → 利用 → Agent → 計分**，修掉兩個倒置。審計後：
+- 「Agent 排最後卻重新發現前面已找到的端點」——**已由 §5 解決**（agent 吃 `known_findings`，不重報）。
+- 「`zap_active` 排在 `exposure` 之前」——`zap_active` 從**爬蟲 HAR** 建站台樹、不吃 exposure 結果，
+  重排不會讓它多拿到端點；純 cosmetic，**不做**（同 §3/§4 的階段搬動結論）。
+非資安階段（seo_links、geo_site、pagespeed、favicon、aeo_answers）與資安相位正交，維持現狀交錯。
 
 ---
 
@@ -189,4 +200,16 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - **第 4 刀已實作（縮小範圍）**：authz 探測端點上限改 `ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS`（20→60、可調）。
   審計後**刻意不做**：盲目放寬 Nuclei 模板集／掃描範圍（噪音與時間退步，需獨立拍板＋實機量測）、
   exposure＋active_probe 階段合併（cosmetic、風險不值得）。
-- 下一步：第 5 刀（利用相位＋分工計畫，高風險，動到授權／計分／取消）。
+- **第 5 刀：評估後決定不建**（§4）。正式「利用計畫」分工對黑箱引擎（Nuclei/ZAP/sqlmap）控制不了，
+  且真實利用重疊已由 agent↔sqlmap Redis 指紋去重＋§5＋`cross_layer` 覆蓋，預設部署下更是假想問題；
+  硬建＝架構裝飾。階段搬動（§6）同屬 cosmetic，一併不做。
+
+## 收尾（2026-10-17）
+ADR-0005 的五相位分析完成，落地成果：
+- **實作**：§1 crawler JS 秘鑰（第 1 刀）、§5 agent 吃確定性發現不重報（第 2 刀）、§2 退 ZAP 被動＋移植
+  獨有規則（第 3 刀）、§3 authz 端點上限可調（第 4 刀）。加上本輪稍早的 `cross_layer` 跨層去重、
+  `zap_active` 觀測性、`authz_probe` BOLA 確定性探測。
+- **評估後不建**：§4 利用計畫 planner、§3/§4/§6 的階段合併與重排（cosmetic 或引擎控制不了）、
+  §1 主動重抓未載入 .js（增量，待需要時再做）、Nuclei 模板集放寬（需產品拍板＋實機量噪音）。
+- **去重現況**：設計性重疊已從源頭消除（被動不再跑兩引擎、agent 不盲跑重報）；殘餘由三道確定性
+  機制（Redis 指紋、known_findings、cross_layer）覆蓋，**非 AI 事後審查**。
