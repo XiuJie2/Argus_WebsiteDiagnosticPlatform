@@ -377,7 +377,10 @@ class NucleiBudgetTests(TestCase):
             categories=["security"], max_pages=10,
         )
         ctx = self._ctx(scan=scan, elapsed=900)
-        without_agent = tasks._nuclei_timeout_seconds(ctx)
+        # 基準必須明確關掉 agent：正式環境 .env 可能已開 ARGUS_AGENT_ENABLED，
+        # 不 pin 的話基準也會預約 900 秒給 agent，without_agent 掉到 ~900 而誤判失敗。
+        with override_settings(ARGUS_AGENT_ENABLED=False):
+            without_agent = tasks._nuclei_timeout_seconds(ctx)
         with override_settings(ARGUS_AGENT_ENABLED=True):
             with_agent = tasks._nuclei_timeout_seconds(ctx)
         self.assertLessEqual(without_agent, 1800)  # 3300 - 900 - 600
