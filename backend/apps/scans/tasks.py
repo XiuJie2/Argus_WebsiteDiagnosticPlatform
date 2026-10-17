@@ -1811,23 +1811,41 @@ def stage_agent(ctx: ScanRunContext) -> None:
 
     scan_hostname = get_hostname(scan_job.normalized_url or scan_job.original_url or "")
     may_submit_forms = bool(plan.run_agent) or user_owns_domain(scan_job.user, scan_hostname)
+    from apps.agent.runner import max_total_steps_estimate, run_agent_for_scan
+
     agent_phase_started = timezone.now().isoformat()
+    # agent 跑十餘分鐘，過去進度一路停在 0／20（那 20 還只是單一子代理的上限），看起來像卡住。
+    # 以最壞情況總步數當分母，再由 runner 每步回報累計步數，進度條才會動、看得出活著（2026-10-18）。
+    agent_total = max(max_total_steps_estimate(), 1)
+    agent_steps_seen = {"n": 0}
+
+    def _report_agent_step(role_label: str, round_no: int) -> None:
+        """runner 每個子代理每步回呼：累加全域步數並回寫進度（fail-safe，不影響掃描）。"""
+        try:
+            agent_steps_seen["n"] += 1
+            done = min(agent_steps_seen["n"], agent_total)
+            _write_progress(
+                scan_job_id, phase="agent_testing", done=done, total=agent_total,
+                phase_started_at=agent_phase_started, step="agent", steps=ctx.steps,
+                step_done=done, step_total=agent_total,
+            )
+        except Exception:  # noqa: BLE001 — 進度回報失敗不得影響 agent 與掃描
+            pass
+
     scan_job.status = ScanJob.Status.AGENT_TESTING
     scan_job.progress = {
         "pages_done": 0,
-        "pages_total": settings.ARGUS_AGENT_MAX_STEPS,
+        "pages_total": agent_total,
         "phase": "agent_testing",
         "phase_started_at": agent_phase_started,
         "step": "agent",
         "step_done": 0,
-        "step_total": settings.ARGUS_AGENT_MAX_STEPS,
+        "step_total": agent_total,
         "step_started_at": agent_phase_started,
         "steps": ctx.steps,
     }
     scan_job.save(update_fields=["status", "progress", "updated_at"])
     try:
-        from apps.agent.runner import run_agent_for_scan
-
         # 把確定性工具這次已找到的資安問題餵給 agent，叫它別重報（ADR-0005 §5）——
         # 消掉「agent 盲跑 → 撞一堆重複 → 事後去重」的浪費
         known_findings = [f for f in ctx.all_findings if f.get("category") == "security"]
@@ -1837,6 +1855,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
                 recon_intel=ctx.discovered_endpoints,
                 may_submit_forms=may_submit_forms,
                 known_findings=known_findings,
+                progress_cb=_report_agent_step,
             )
         )
         ctx.agent_result = agent_result
@@ -1853,8 +1872,8 @@ def stage_agent(ctx: ScanRunContext) -> None:
             _write_progress(
                 scan_job_id,
                 phase="agent_testing",
-                done=agent_result.steps,
-                total=settings.ARGUS_AGENT_MAX_STEPS,
+                done=min(max(agent_result.steps, agent_steps_seen["n"]), agent_total),
+                total=agent_total,
                 phase_started_at=agent_phase_started,
                 step="agent",
                 steps=ctx.steps,
