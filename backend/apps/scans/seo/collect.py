@@ -39,15 +39,20 @@ def build_link_report(
         if isinstance(status, int) and not 300 <= status < 400
     }
     site_host = urlsplit(start_url).hostname or ""
-    # 爬蟲已直接造訪、沒有轉址的頁面不必再檢查一次
+    # 爬蟲已直接造訪、沒有轉址的頁面不必再檢查一次；但要把爬蟲拿到的狀態碼記成連結結果，
+    # 否則被很多頁連到、爬蟲造訪時回 404 的頁面不會出現在失效連結裡（2026-10-17 實掃：
+    # 導覽列連到的 /service/1 在 8 頁出現，報告表格有、「站內連結失效」發現卻漏掉）
     known = {
-        page.url for page in pages
+        page.url: page.status_code for page in pages
         if page.status_code is not None and page.url == (page.final_url or page.url)
     }
     targets: dict[str, str] = {}
+    crawled_links: dict[str, dict] = {}
     for page in pages:
         for link in audit_page(page)["links"]:
-            if link["url"] not in known:
+            if link["url"] in known:
+                crawled_links.setdefault(link["url"], known_result(link["url"], known[link["url"]]))
+            else:
                 targets.setdefault(link["url"], classify_link(link["url"], site_host))
     reused_links = {url: prefetched[url] for url in targets if url in prefetched}
     ordered = sorted(
@@ -60,6 +65,7 @@ def build_link_report(
         should_stop=should_stop,
     )
     results.update(reused_links)
+    results.update(crawled_links)
     if should_stop:
         should_stop()
     robots_url = urljoin(start_url, "/robots.txt")

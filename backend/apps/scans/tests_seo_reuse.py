@@ -106,3 +106,35 @@ class CrawlerRecordsFetchedTests(SimpleTestCase):
         fetched: dict = {}
         await crawler.discover_sitemap_urls(context, ORIGIN, [], 10, fetched)
         self.assertEqual(fetched, {f"{ORIGIN}/sitemap.xml": 200})
+
+
+class CrawledBrokenPageTests(SimpleTestCase):
+    """爬蟲已造訪、回 404 的頁面要算進失效連結（2026-10-17 實掃：導覽列連到的頁面漏報）。"""
+
+    def test_crawled_404_page_is_broken_link_and_reported(self):
+        from apps.scans.seo.site_findings import broken_internal_links
+
+        home = _page("/", "<a href='/service/9'>服務</a><a href='/about'>關於</a>")
+        about = _page("/about", "<a href='/service/9'>服務</a>")
+        missing = _page("/service/9", "<h1>404</h1>")
+        missing.status_code = 404
+
+        def fake_check_links(urls, **_kwargs):
+            return {url: _ok(url) for url in urls}, {"over_limit": 0, "budget_exhausted": 0}
+
+        with (
+            patch.object(collect, "check_links", side_effect=fake_check_links) as links,
+            patch.object(link_check, "check_url", side_effect=_ok),
+            patch.object(collect, "fetch_robots", return_value=link_check.parse_robots(
+                f"{ORIGIN}/robots.txt", 404, "")),
+        ):
+            report = collect.build_link_report(f"{ORIGIN}/", [home, about, missing])
+
+        target = f"{ORIGIN}/service/9"
+        # 爬蟲已造訪，不再另外送請求，但狀態寫進連結結果
+        self.assertNotIn(target, links.call_args[0][0])
+        self.assertEqual(report["links"][target]["verdict"], "broken")
+        audits = [collect.audit_page(p) for p in (home, about, missing)]
+        finding = broken_internal_links(report, audits, "example.com")
+        self.assertIsNotNone(finding)
+        self.assertIn(target, finding["evidence"])
