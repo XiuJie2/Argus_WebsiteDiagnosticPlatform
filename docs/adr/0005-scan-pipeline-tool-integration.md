@@ -113,10 +113,12 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
   已知 CVE/KEV→Nuclei。
 - `zap_passive` 的被動部分已於 §2 處理；ZAP 在新架構只保留 active 這一半。
 
-### §5 Agent 相位：吃既有結果，不盲跑
-- `run_agent_for_scan` 的輸入除了 `recon_intel`，加上「本次 deterministic findings 摘要」與完整攻擊面。
-- prompt 明示：這些已被確定性層找到，不要重報；你的工作是（a）情境判斷找出確定性層找不到的
-  （差異式未授權、邏輯串接），（b）對既有發現做工具驗證/升級。
+### §5 Agent 相位：吃既有結果，不盲跑 **（已實作 2026-10-17）**
+- `run_agent_for_scan(known_findings=...)` 由 `tasks.stage_agent` 傳入本次確定性工具已找到的資安發現；
+  `_summarize_known_findings` 組成摘要（只給標題／端點／嚴重度，**不送 evidence**，去重上限 20）放進
+  `ORCHESTRATOR_PROMPT` 的「確定性工具已找到的問題——不要重報」段。
+- prompt 明示：這些已被確定性層找到，不要派專家重複確認或重報；你的工作是（a）情境判斷找出確定性層
+  找不到的（差異式未授權、邏輯串接），（b）對既有發現做工具驗證/升級。
 - 這直接消掉「Agent 盲跑 → 撞一堆重複 → 事後去重」的浪費（使用者最在意的點）。
 
 ### §6 階段順序
@@ -170,4 +172,6 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
   補上外部 .js bundle 秘鑰的真實漏報；JS 讀取上限 40→80。測試 `tests_js_secrets.py`。
   **未完**：主動抓齊未自然載入的 .js（瀏覽器 context 重抓）、強化端點抽取深度——因動到無單元測試
   保護的爬行迴圈，列為此刀後續增量，先不混入。
-- 下一步：第 2 刀（Agent 吃既有 findings 當輸入、prompt 不重報）。
+- **第 2 刀已實作**：Agent 吃確定性發現、不重報（`runner._summarize_known_findings` →
+  `ORCHESTRATOR_PROMPT`，`stage_agent` 傳 `known_findings`）。測試 `agent/tests_known_findings.py`。
+- 下一步：第 3 刀（ZAP 被動二選一、移植獨有規則、退 `zap_passive`）。

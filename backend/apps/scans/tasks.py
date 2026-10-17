@@ -1800,11 +1800,15 @@ def stage_agent(ctx: ScanRunContext) -> None:
     try:
         from apps.agent.runner import run_agent_for_scan
 
+        # 把確定性工具這次已找到的資安問題餵給 agent，叫它別重報（ADR-0005 §5）——
+        # 消掉「agent 盲跑 → 撞一堆重複 → 事後去重」的浪費
+        known_findings = [f for f in ctx.all_findings if f.get("category") == "security"]
         agent_result = _run_async(
             lambda: run_agent_for_scan(
                 scan_job,
                 recon_intel=ctx.discovered_endpoints,
                 may_submit_forms=may_submit_forms,
+                known_findings=known_findings,
             )
         )
         ctx.agent_result = agent_result
