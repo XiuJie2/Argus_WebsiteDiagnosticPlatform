@@ -106,3 +106,16 @@ class AnalyzeUnauthorizedResultsTests(SimpleTestCase):
 
     def test_empty_results(self):
         self.assertEqual(analyze_unauthorized_results([]), [])
+
+
+class MaxEndpointsSettingTests(SimpleTestCase):
+    def test_default_and_override(self):
+        from django.test import override_settings
+
+        from apps.scans.security.authz_probe import _max_endpoints
+
+        self.assertEqual(_max_endpoints(), 60)  # 預設放寬值
+        with override_settings(ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS=10):
+            self.assertEqual(_max_endpoints(), 10)
+        with override_settings(ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS=0):
+            self.assertEqual(_max_endpoints(), 1)  # 下限 1

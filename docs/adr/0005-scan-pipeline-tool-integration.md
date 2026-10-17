@@ -104,10 +104,15 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - 審計發現：ZAP 被動的「重複發現」早由 `OVERLAP_RULES`（13 條）抑制表解掉，退階段屬**簡化＋補獨有**，
   不是修去重。
 
-### §3 主動探測相位：合併為一個「主動探測」階段，放寬預算
-- `exposure`（檔案/authz）、Nuclei 收斂到同一相位，共用同一份攻擊面與同一個 RPS/取消時鐘。
-- 不限重抓 → Nuclei 可放寬模板集與掃描範圍（不再只 KEV、只根網址）；authz 探測解除 20 端點上限。
-  以涵蓋率為目標，逾時與預算改為「盡量跑完」而非「省請求」。
+### §3 主動探測相位：放寬可安全放寬的預算
+- **authz 探測端點上限放寬**（已實作 2026-10-17）：`ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS` 預設 20→60、可調；
+  不限重抓時提高 BOLA 涵蓋率。60 端點 ÷ active RPS 仍在掃描時間預算內。
+- **Nuclei 刻意不盲目放寬**（審計結論）：`CLAUDE.md`「Nuclei 模板治理」已實測——全模板集 6680 個、
+  9535 請求、1–2 RPS 要約 80 分鐘，KEV 是 511／628；「只掃根網址」是因模板多為站台層級、逐頁重掃只是
+  乘頁數。這兩個是**噪音與時間的產品取捨**，不是「為省請求」，不因不限重抓而該放寬；盲目放寬＝掃描動輒
+  一小時＋大量低訊號告警＝退步。若要放寬模板集，是需要明確拍板＋實機量噪音的獨立決定，不在本刀。
+- **階段合併刻意不做**：exposure 與 active_probe 本就循序執行、無 RPS 競用，合併成單一相位是 cosmetic
+  結構搬動，效益小而動覆蓋契約／測試，風險不值得。保持現狀。
 
 ### §4 利用相位：ZAP active 併入、加「利用計畫」分工
 - `zap_active` 不再是獨立頂層階段，與 Nuclei fuzz／sqlmap 併入**利用相位**。
@@ -181,4 +186,7 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
   （`security/passive_checks.py` ＋ `header_scanner` 的 Permissions-Policy）。測試 `tests_passive_checks.py`；
   更新 `tests_pipeline_stages`（階段順序去 zap_passive）、`tests_zap_passive`（移除 StageTests）、
   `tests_security_scanners`（clean headers 補 permissions-policy）。
-- 下一步：第 4 刀（主動探測合併＋放寬 Nuclei/authz 預算）與第 5 刀（利用相位＋分工計畫）。
+- **第 4 刀已實作（縮小範圍）**：authz 探測端點上限改 `ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS`（20→60、可調）。
+  審計後**刻意不做**：盲目放寬 Nuclei 模板集／掃描範圍（噪音與時間退步，需獨立拍板＋實機量測）、
+  exposure＋active_probe 階段合併（cosmetic、風險不值得）。
+- 下一步：第 5 刀（利用相位＋分工計畫，高風險，動到授權／計分／取消）。

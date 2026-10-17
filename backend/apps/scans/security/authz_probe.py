@@ -32,8 +32,13 @@ from apps.scans.security.redaction import redact_pii_in_text, redact_url_query_v
 from apps.scans.security.secret_scanner import redact_secrets_in_text
 from apps.scans.services import assert_public_http_url
 
-# 每次掃描最多探測幾個端點（送無憑證請求，受 active RPS 限制，數量要有上限）
-MAX_ENDPOINTS = 20
+# 每次掃描最多探測幾個端點（送無憑證請求，受 active RPS 限制，數量要有上限）。
+# 預設值；實際以 settings.ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS 為準（ADR-0005 §3 放寬，不限重抓）。
+MAX_ENDPOINTS = 60
+
+
+def _max_endpoints() -> int:
+    return max(int(getattr(settings, "ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS", MAX_ENDPOINTS)), 1)
 
 # 成批記錄常見的外層鍵（REST 包一層 {data:[...]}）
 _LIST_KEYS = ("data", "result", "results", "items", "list", "rows", "content", "records")
@@ -185,6 +190,7 @@ async def probe_unauthorized_endpoints(
     """對候選 API 端點做無憑證 GET，回傳 raw 結果。任何例外回已收集結果（不影響主掃描）。"""
     from playwright.async_api import async_playwright  # 延遲匯入
 
+    max_endpoints = _max_endpoints()
     urls: list[str] = []
     seen: set[str] = set()
     for raw in candidate_urls:
@@ -195,7 +201,7 @@ async def probe_unauthorized_endpoints(
         if safe not in seen:
             seen.add(safe)
             urls.append(safe)
-        if len(urls) >= MAX_ENDPOINTS:
+        if len(urls) >= max_endpoints:
             break
 
     results: list[dict] = []

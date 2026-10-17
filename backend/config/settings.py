@@ -376,6 +376,9 @@ ARGUS_ZAP_ACTIVE_ENABLED = env_bool("ARGUS_ZAP_ACTIVE_ENABLED", default=False)
 ARGUS_ZAP_ACTIVE_TIMEOUT_SECONDS = float(os.getenv("ARGUS_ZAP_ACTIVE_TIMEOUT_SECONDS", "600"))
 # spider 階段的時間上限（秒，含在上面的總上限內）；CF 後面 spider 幾乎無效，主要靠 HAR 建樹
 ARGUS_ZAP_ACTIVE_SPIDER_SECONDS = float(os.getenv("ARGUS_ZAP_ACTIVE_SPIDER_SECONDS", "120"))
+# 未授權存取探測（authz_probe）每次掃描最多探測幾個 API 端點（ADR-0005 §3：不限重抓，放寬以提高
+# BOLA 涵蓋率；仍受 ARGUS_ACTIVE_MAX_RPS 速率限制）。
+ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS = int(os.getenv("ARGUS_AUTHZ_PROBE_MAX_ENDPOINTS", "60"))
 # 已知漏洞優先序補強（apps/scans/security/vuln_intel.py）：EPSS 被利用機率＋OSV.dev 修補版本。
 # 只送出函式庫名稱、版本與 CVE 編號（不含受測網址）；查不到時原樣保留問題。
 ARGUS_VULN_INTEL_ENABLED = env_bool("ARGUS_VULN_INTEL_ENABLED", default=True)
