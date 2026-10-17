@@ -23,7 +23,7 @@ Claude Code 進 `backend/apps/scans/security/` 工作時，本檔在 `scans/CLAU
 | 檔案 | 職責（待建） | 狀態 |
 |---|---|---|
 | `ssl_scanner.py` | SSL/TLS 深度分析：憑證到期、弱 cipher、過期協議（TLS 1.0/1.1）| 已建 |
-| `cookie_scanner.py` | Cookie 安全旗標：Secure、HttpOnly、SameSite | 已建 |
+| `cookie_scanner.py` | Cookie 安全旗標：Secure（`cookie-no-secure`）、HttpOnly（`cookie-no-httponly`）、SameSite＝None 無 Secure（`cookie-samesite-none`）、**SameSite 屬性缺失（`cookie-no-samesite`，低；ZAP 10054 移植，2026-10-17 退 ZAP 被動後補回，原本只報 None 不報缺失）** | 已建 |
 | `header_scanner.py` | 資訊洩露標頭（X-Powered-By 技術棧）、CORS 設定、CSP 品質分析、HSTS 標示 preload 卻不符預載條件（info）、**Permissions-Policy 缺失**（`header-permissions-policy`，低，ADR-0005 §2 移植自 ZAP 10063）；Server 版本→CVE 已移交 service_cve_scanner | 已建 |
 | `passive_checks.py` | 自家被動 HTML 檢查（ADR-0005 §2，移植自退役的 ZAP 被動；只讀已抓頁面、零新請求）：`analyze_mixed_content`（`security-mixed-content`，HTTPS 載 http:// 子資源，active 類中／passive 類低）、`analyze_sensitive_url_params`（`security-sensitive-url-param`，網址查詢字串帶 password／token／apikey 等敏感參數，中）、`analyze_error_disclosure`（`security-error-disclosure`，頁面含堆疊追蹤／框架除錯頁，重用 api_scanner 的 `_stack_kind`，中）；`analyze_passive_html` 彙整，由 `stage_deep_security` 呼叫。ZAP 10027「註解可疑字詞」不移植（低訊號、秘鑰已由 secret_scanner 覆蓋） | 已建 |
 | `owasp_mapper.py` | Finding 對映 OWASP Top 10（A01~A10）與 CWE 編號（`tag()` + `backfill()`）。DB 的 `owasp_category` 存 2021 版代號；**2025 版（2026-10-11）由 `owasp_2025()` 依 `OWASP_2021_TO_2025` 推導**（CWE-209 例外歸 A10:2025 例外狀況處理不當），`Finding.owasp_2025`／`owasp_2025_label` property、`FindingSerializer`、報告技術索引（`2025 代號（2021 代號）`）與掃描詳情顯示，不需 migration。每月 `.github/workflows/scanner-update-check.yml` 比對 Dockerfile 鎖定的 Nuclei 引擎／模板版本與最新版，有新版就開 issue（只提醒、不自動升級） | 已建 |
@@ -87,7 +87,7 @@ def analyze_cookies(cookies: list[dict], url: str) -> list[dict]:
 
 - Secure flag 缺失且 URL 為 HTTPS → MEDIUM
 - HttpOnly flag 缺失 → LOW
-- SameSite 為 None 且無 Secure → MEDIUM
+- SameSite 為 None 且無 Secure → MEDIUM；SameSite 屬性完全缺失 → LOW（`cookie-no-samesite`）
 
 ---
 

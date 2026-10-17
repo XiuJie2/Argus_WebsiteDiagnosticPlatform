@@ -100,6 +100,18 @@ class AbsentIssueStatusTests(SimpleTestCase):
     def test_same_check_completed_means_resolved(self):
         self.assertEqual(self._status(COMPLETED), RESOLVED)
 
+    def test_agent_observed_key_never_resolved(self):
+        # Agent 發現的鍵隨措辭／端點微調而變，鍵消失不代表修好，一律本次未確認（非 resolved）
+        status = absent_issue_status(
+            previous_coverage=self._coverage(COMPLETED, ["agent-observed-security-abc123"]),
+            current_coverage=self._coverage(COMPLETED),
+            key="agent-observed-security-abc123",
+            category="security",
+            urls=(),
+            analysed_urls=set(),
+        )
+        self.assertEqual(status, NOT_OBSERVED)
+
     def test_tool_failure_is_not_resolved(self):
         self.assertEqual(self._status(FAILED), "inconclusive")
 

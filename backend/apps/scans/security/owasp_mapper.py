@@ -20,6 +20,7 @@ _RULE_OWASP_MAP: dict[str, tuple[str, str]] = {
     "cookie-no-secure": ("A05", "CWE-614"),
     "cookie-no-httponly": ("A05", "CWE-1004"),
     "cookie-samesite-none": ("A05", "CWE-1275"),
+    "cookie-no-samesite": ("A05", "CWE-1275"),
     # Header / CORS / CSP（本套件新 scanner）
     "header-x-powered-by": ("A05", "CWE-200"),
     "header-cors-wildcard": ("A05", "CWE-942"),

@@ -101,6 +101,10 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - 移植：混合內容（`security-mixed-content`）、URL 敏感參數（`security-sensitive-url-param`）、
   頁面錯誤洩漏（`security-error-disclosure`）放 `security/passive_checks.py`；Permissions-Policy 缺失
   （`header-permissions-policy`）放 `header_scanner`。ZAP 10027「註解可疑字詞」不移植（低訊號）。
+- **補遺（2026-10-17，實機重掃發現）**：ZAP 10054「Cookie 未設定 SameSite（屬性缺失）」當初漏列——
+  `cookie_scanner` 原本只報 SameSite=None 無 Secure，不報「屬性完全缺失」，退 ZAP 被動後這塊變成沒人查。
+  已補 `cookie-no-samesite`（低）回 `cookie_scanner`。教訓：退引擎前的獨有規則審計要逐條核到「自家是否
+  真的等價覆蓋」，不能看到相近檢查就當覆蓋。
 - 審計發現：ZAP 被動的「重複發現」早由 `OVERLAP_RULES`（13 條）抑制表解掉，退階段屬**簡化＋補獨有**，
   不是修去重。
 
