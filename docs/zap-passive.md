@@ -103,6 +103,19 @@ worker 的 `argus.io/config-revision` 已改為 `zap-2026-10-12`，同步時會�
   覆蓋紀錄 `zap_passive=completed`；ZAP 上 `alert/view/numberOfAlerts?baseurl=<origin>` 回 0（已清理）。
 - 觀察 ZAP 的 CPU／記憶體（`kubectl -n argus-zap top pod`）與 `zap_passive` 階段耗時，記錄到本檔。
 
+## 疑難排解：ZAP API 回 HTTP 502（2026-10-18）
+
+症狀：worker 呼叫 ZAP（例如 `GET /JSON/core/view/version/`）回 **502**，ZAP log 同時出現
+`PassiveScanTask - ... took N seconds to scan http://zap.argus-zap.svc.cluster.local:8090/JSON/core/view/version/`
+——ZAP 把 worker 的 API 請求當成「要轉發／掃描的流量」。
+
+根因：`api.addrs` 是**清單**，`-config` 必須帶索引 `api.addrs.addr(0).name`／`api.addrs.addr(0).regex`。
+原本寫成沒有索引的 `api.addrs.addr.name=.*`，ZAP 不會註冊這條，預設只認 `localhost`／`127.0.0.1`；
+worker 用服務 FQDN（`zap.argus-zap.svc.cluster.local`）連進來時，Host 不在自身位址集合內，ZAP 走
+forward-proxy 路徑把請求轉發出去（失敗 → 502）。`12-zap-passive.yaml` 與 `docker-compose.yml` 都已改成
+帶 `(0)` 索引；`tests/test_zap_contract.py` 鎖定此格式。只改 `k8s/**` 不觸發 image build，但 Deployment
+的啟動參數變了，同步時 ZAP Pod 會重建並讀到正確設定。
+
 ## 回滾
 
 ConfigMap 設 `ARGUS_ZAP_ENABLED: "false"`、改 worker 的 `argus.io/config-revision` 後同步：爬蟲不再錄 HAR、不呼叫 ZAP，
