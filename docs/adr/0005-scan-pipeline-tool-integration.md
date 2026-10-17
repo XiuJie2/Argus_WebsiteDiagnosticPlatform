@@ -88,9 +88,10 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 ```
 
 ### §1 發現相位：JS 分析搬進 crawler，取代 Katana JS 功能
-- crawler 新增「抓齊所有發現到的 .js（透過瀏覽器 request API，帶 CF clearance）→ 端點抽取＋秘鑰偵測」。
-  因為使用者不限重抓，crawler 可主動抓頁面沒自然載入的 JS，不只被動攔截到的。
-- JS 端點與 JS 秘鑰的**唯一真相來源**改為 crawler。補上「外部 .js 秘鑰偵測」這個現有真實漏報。
+- crawler 對讀到的 JS body 除了抽端點，另跑秘鑰偵測（`_collect_js_secrets`）。補上「外部 .js 秘鑰
+  偵測」這個現有真實漏報，且走真瀏覽器（CF-safe）。**（已實作 2026-10-17，見下方進度）**
+- 後續（同刀未完）：主動抓齊頁面沒自然載入的 .js（透過瀏覽器 request API 帶 CF clearance），
+  不只被動攔截到的；提高 JS 端點抽取深度。被動載入已涵蓋導航會載入的 bundle，此為增量補強。
 - Katana **不刪**，降為非 CF 站的補充：主動爬到瀏覽器沒點進去的頁、較廣的技術辨識（`-td`）。
   CF 後面它本就歸零，降級不損失覆蓋。
 
@@ -162,7 +163,11 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 ---
 
 ## 狀態／進度（2026-10-17）
-- 本 ADR 建立，**尚未改動掃描程式**。
 - 既有相關已落地（本輪稍早）：`cross_layer` 跨層去重（最後保險，將保留）、`zap_active` 觀測性
   skip 原因、`authz_probe` 未授權存取確定性探測。
-- 下一步：依遷移計畫第 1 刀（crawler JS 抓齊＋秘鑰）開始。
+- **第 1 刀核心已實作**：crawler 對讀到的 JS body 加跑秘鑰偵測（`crawler._collect_js_secrets` →
+  `site_signals.js_secrets`，`tasks._js_secret_findings` 於 `stage_deep_security` 轉 finding），
+  補上外部 .js bundle 秘鑰的真實漏報；JS 讀取上限 40→80。測試 `tests_js_secrets.py`。
+  **未完**：主動抓齊未自然載入的 .js（瀏覽器 context 重抓）、強化端點抽取深度——因動到無單元測試
+  保護的爬行迴圈，列為此刀後續增量，先不混入。
+- 下一步：第 2 刀（Agent 吃既有 findings 當輸入、prompt 不重報）。

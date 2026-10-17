@@ -1245,6 +1245,7 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
         + analyze_dns(host)
         + analyze_js_libraries(ctx.crawled_pages)
         + analyze_services(ctx.crawled_pages)
+        + _js_secret_findings(ctx)
     )
     # WAF／防護機制封鎖偵測（被動：統計已落地 Page 的 403/429 與 challenge 特徵，
     # 達閾值才產出單一 info finding，未達閾值回 None 不打擾使用者）
@@ -1267,6 +1268,26 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
             "scoring",
         ),
     )
+
+
+def _js_secret_findings(ctx: ScanRunContext) -> list[dict]:
+    """外部 JS bundle 的秘鑰 finding（ADR-0005 §1）：crawler 已掃好，這裡按來源檔分組成 finding。
+
+    與逐頁的 HTML／inline script 秘鑰（`_analyze_one_page`）互補——那只看頁面本身，不看外部 .js。
+    """
+    by_source: dict[str, list[dict]] = {}
+    for secret in ctx.site_signals.get("js_secrets") or []:
+        by_source.setdefault(secret.get("source") or "JavaScript 檔案", []).append(secret)
+    findings: list[dict] = []
+    for source, secrets in by_source.items():
+        location = redact_url_query_values(source)
+        secret_finding = build_secret_finding(secrets, location, source="js_bundle")
+        if secret_finding:
+            findings.append(secret_finding)
+        browser_key_finding = build_browser_key_finding(secrets, location, source="js_bundle")
+        if browser_key_finding:
+            findings.append(browser_key_finding)
+    return findings
 
 
 def _passive_api_check(ctx: ScanRunContext) -> None:
