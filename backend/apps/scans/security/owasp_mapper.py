@@ -52,6 +52,7 @@ _RULE_OWASP_MAP: dict[str, tuple[str, str]] = {
     "exposure-file-backup": ("A05", "CWE-530"),
     "exposure-file-actuator": ("A05", "CWE-200"),
     "exposure-file-data": ("A01", "CWE-200"),
+    "security-unauth-api-records": ("A01", "CWE-862"),
     "exposure-file-phpinfo": ("A05", "CWE-200"),
     "exposure-file-server-status": ("A05", "CWE-200"),
     "exposure-file-apidoc": ("A05", "CWE-200"),

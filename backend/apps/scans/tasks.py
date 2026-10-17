@@ -55,11 +55,16 @@ from apps.scans.scanners import (
 )
 from apps.scans.security import exposure_scanner, owasp_mapper
 from apps.scans.security.api_scanner import MAX_SURFACE_ENDPOINTS, analyze_api
+from apps.scans.security.authz_probe import (
+    analyze_unauthorized_results,
+    probe_unauthorized_endpoints,
+)
 from apps.scans.security.content_injection import (
     build_injection_finding,
     detect_content_injection,
 )
 from apps.scans.security.cookie_scanner import analyze_cookies
+from apps.scans.security.cross_layer import consolidate_cross_layer
 from apps.scans.security.dns_scanner import analyze_dns
 from apps.scans.security.form_scanner import analyze_password_fields
 from apps.scans.security.header_scanner import analyze_headers
@@ -603,6 +608,23 @@ def _runs_zap_active(scan_job: ScanJob) -> bool:
     if "security" not in scan_job.effective_categories or not zap_active_enabled():
         return False
     return build_scan_execution_plan(scan_job).run_zap_active
+
+
+def _zap_active_skip_reason(scan_job: ScanJob) -> str | None:
+    """沒跑主動掃描時的原因（覆蓋說明用）；回 None 代表這次本來就與主動掃描無關、不標。
+
+    主動沒跑時原本完全不留痕跡，判讀報告的人分不清是「旗標沒開」「沒授權」還是「跑了沒發現」
+    （某授權掃描實測：覆蓋只見 zap_passive，看不出主動為何缺席）。只有勾了資安才標。
+    """
+    if "security" not in scan_job.effective_categories:
+        return None
+    if not build_scan_execution_plan(scan_job).run_zap_active:
+        return "僅「全站＋主動模式＋網域已驗證」的掃描會執行主動掃描"
+    if not zap_enabled():
+        return "平台未部署或未啟用 ZAP"
+    if not zap_active_enabled():
+        return "平台未開啟 ZAP 主動掃描（ARGUS_ZAP_ACTIVE_ENABLED）"
+    return None
 
 
 def _discard_har(ctx: ScanRunContext) -> None:
@@ -1346,6 +1368,9 @@ def stage_zap_active(ctx: ScanRunContext) -> None:
     """
     scan_job = ctx.scan_job
     if not _runs_zap_active(scan_job):
+        reason = _zap_active_skip_reason(scan_job)
+        if reason:
+            ctx.coverage.mark("zap_active", SKIPPED, reason)
         return
     raise_if_cancelled(ctx.scan_job_id)
     ctx.scanning_progress(ctx.scanning_total + 3, "zap_active")
@@ -1465,10 +1490,13 @@ def stage_exposure(ctx: ScanRunContext) -> None:
                 f"敏感檔案外洩探測略過（{exc.__class__.__name__}）",
                 level="warn",
             )
+        _run_authz_probe(ctx)
     else:
         ctx.coverage.mark("exposure_probe", SKIPPED, "單頁或未授權主動測試")
+        ctx.coverage.mark("authz_probe", SKIPPED, "單頁或未授權主動測試")
         if ctx.execution_plan.active_authorized:
             append_log(scan_job_id, "單頁範圍：略過整站敏感檔案路徑探測")
+
 
     if ctx.katana_tech:
         updated_warnings = dict(scan_job.warning_summary or {})
@@ -1484,6 +1512,48 @@ def stage_exposure(ctx: ScanRunContext) -> None:
         f"Nuclei {len(ctx.nuclei_findings)} 項"
         + (f"，技術棧：{', '.join(ctx.katana_tech)}" if ctx.katana_tech else ""),
     )
+
+
+def _run_authz_probe(ctx: ScanRunContext) -> None:
+    """未授權存取探測：對發現的 API 端點做無憑證 GET，成批帳號／成員記錄匿名可讀即報。
+
+    把 Agent 偶然打到的未授權個資 API 沉澱成確定性檢查；失敗不影響主掃描。
+    """
+    scan_job_id = ctx.scan_job_id
+    origin = ctx.scan_job.origin
+    candidates = [
+        f"{origin}/{path.lstrip('/')}"
+        for path in dict.fromkeys(_observed_api_paths(ctx))  # 去重保序
+        if path
+    ]
+    if not candidates:
+        ctx.coverage.mark("authz_probe", SKIPPED, "沒有發現可探測的 API 端點")
+        return
+    raise_if_cancelled(scan_job_id)
+    try:
+        results = _run_async(
+            lambda: probe_unauthorized_endpoints(candidates, scan_job_id)
+        )
+        findings = [
+            owasp_mapper.tag(f) for f in analyze_unauthorized_results(results)
+        ]
+        ctx.record(findings, check="authz_probe")
+        ctx.coverage.mark("authz_probe", COMPLETED)
+        append_log(
+            scan_job_id,
+            f"未授權存取探測完成：探測 {len(results)} 個 API 端點，"
+            f"發現 {len(findings)} 項未授權記錄外洩",
+        )
+    except ScanCancelled:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 探測失敗不影響主掃描
+        logger.exception("掃描子步驟失敗 scan_job_id=%s", scan_job_id)
+        ctx.coverage.mark("authz_probe", FAILED, exc.__class__.__name__)
+        append_log(
+            scan_job_id,
+            f"未授權存取探測略過（{exc.__class__.__name__}）",
+            level="warn",
+        )
 
 
 def stage_geo_site(ctx: ScanRunContext) -> None:
@@ -1920,6 +1990,19 @@ def stage_scoring(ctx: ScanRunContext) -> None:
             "掃描有效性警示：未抓到任何頁面（目標可能不可達或全 timeout）；"
             "SEO/AEO 未評估，總分僅反映站台層級檢查，不應解讀為網站安全。",
             level="warn",
+        )
+    # 跨層去重：確定性探測與 Agent 打到同一端點＋同類型時只留確定性那筆，否則計分扣兩次、
+    # 報告列兩次（實測某授權掃描的 API 規格端點同時出現確定性 high 與 Agent high）
+    ctx.all_findings, dropped = consolidate_cross_layer(ctx.all_findings)
+    if dropped:
+        Finding.objects.filter(
+            scan_job=scan_job,
+            rule_id__in=[str(f.get("rule_id") or "") for f in dropped],
+        ).delete()
+        append_log(
+            scan_job_id,
+            f"跨層去重：{len(dropped)} 筆 Agent 觀察與確定性探測指向同一端點，"
+            "已合併，保留可重現的確定性發現",
         )
     overall_score, category_scores, top_actions = calculate_scores(
         ctx.all_findings,

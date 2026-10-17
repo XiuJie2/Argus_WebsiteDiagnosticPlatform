@@ -56,6 +56,8 @@ _EXACT = {
     "api-error-stack-trace": EXPOSURE,
     "api-cors-wildcard": CONFIG,
     "form-password-unmasked": CONFIG,
+    # 主動以未登入請求實際取得成批記錄＝已驗證的存取控制失效
+    "security-unauth-api-records": VERIFIED,
 }
 _PREFIXES = (
     ("header-", CONFIG),
