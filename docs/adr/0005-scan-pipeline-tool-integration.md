@@ -95,11 +95,14 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
 - Katana **不刪**，降為非 CF 站的補充：主動爬到瀏覽器沒點進去的頁、較廣的技術辨識（`-td`）。
   CF 後面它本就歸零，降級不損失覆蓋。
 
-### §2 被動相位：ZAP 被動與自家被動二選一
-- 不再兩個引擎並存＋手動抑制。決策方向：**保留 Argus 自家被動**（可控、已與計分/覆蓋/報告整合），
-  把 ZAP 被動**獨有的約 5 條規則移植**成自家規則，然後 `zap_passive` 階段退役。
-- 理由：自家被動已是計分與覆蓋契約的一等公民；留 ZAP 要維護對照表、版本綁定與重複運算。
-  （替代方案「改用 ZAP 當被動引擎、退自家」成本更高：要重接計分/覆蓋/報告/遮罩，不採。）
+### §2 被動相位：ZAP 被動與自家被動二選一 **（已實作 2026-10-17）**
+- 不再兩個引擎並存＋手動抑制。**保留 Argus 自家被動**，把 ZAP 被動獨有規則移植成自家規則，
+  `zap_passive` 階段退役（`zap_passive.py` 模組保留為 ZAP 共用元件供 `zap_active` 用）。
+- 移植：混合內容（`security-mixed-content`）、URL 敏感參數（`security-sensitive-url-param`）、
+  頁面錯誤洩漏（`security-error-disclosure`）放 `security/passive_checks.py`；Permissions-Policy 缺失
+  （`header-permissions-policy`）放 `header_scanner`。ZAP 10027「註解可疑字詞」不移植（低訊號）。
+- 審計發現：ZAP 被動的「重複發現」早由 `OVERLAP_RULES`（13 條）抑制表解掉，退階段屬**簡化＋補獨有**，
+  不是修去重。
 
 ### §3 主動探測相位：合併為一個「主動探測」階段，放寬預算
 - `exposure`（檔案/authz）、Nuclei 收斂到同一相位，共用同一份攻擊面與同一個 RPS/取消時鐘。
@@ -174,4 +177,8 @@ Agent 內部合併）。結果是同一個問題可能被多個工具各測一�
   保護的爬行迴圈，列為此刀後續增量，先不混入。
 - **第 2 刀已實作**：Agent 吃確定性發現、不重報（`runner._summarize_known_findings` →
   `ORCHESTRATOR_PROMPT`，`stage_agent` 傳 `known_findings`）。測試 `agent/tests_known_findings.py`。
-- 下一步：第 3 刀（ZAP 被動二選一、移植獨有規則、退 `zap_passive`）。
+- **第 3 刀已實作**：退 `zap_passive` 階段，移植 4 條獨有規則成自家被動檢查
+  （`security/passive_checks.py` ＋ `header_scanner` 的 Permissions-Policy）。測試 `tests_passive_checks.py`；
+  更新 `tests_pipeline_stages`（階段順序去 zap_passive）、`tests_zap_passive`（移除 StageTests）、
+  `tests_security_scanners`（clean headers 補 permissions-policy）。
+- 下一步：第 4 刀（主動探測合併＋放寬 Nuclei/authz 預算）與第 5 刀（利用相位＋分工計畫）。

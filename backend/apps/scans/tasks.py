@@ -70,6 +70,7 @@ from apps.scans.security.form_scanner import analyze_password_fields
 from apps.scans.security.header_scanner import analyze_headers
 from apps.scans.security.js_library_scanner import analyze_js_libraries
 from apps.scans.security.kali_tools import validate_findings_with_kali
+from apps.scans.security.passive_checks import analyze_passive_html
 from apps.scans.security.redaction import (
     redact_pii_in_text,
     redact_url_query_values,
@@ -89,7 +90,6 @@ from apps.scans.security.zap_active import active_enabled as zap_active_enabled
 from apps.scans.security.zap_active import run_active as run_zap_active
 from apps.scans.security.zap_passive import ZapBusy, ZapError, alerts_to_findings
 from apps.scans.security.zap_passive import enabled as zap_enabled
-from apps.scans.security.zap_passive import run_passive as run_zap_passive
 from apps.scans.seo.collect import build_link_report
 from apps.scans.seo.link_trend import (
     coverage_text,
@@ -147,8 +147,6 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
     if execution_plan.run_nuclei:
         steps.append("active_probe")
     steps.append("deep_security")
-    if _runs_zap_passive(scan_job):
-        steps.append("zap_passive")
     if _runs_zap_active(scan_job):
         steps.append("zap_active")
     if execution_plan.run_exposure:
@@ -441,7 +439,7 @@ class ScanRunContext:
     runtime_stage: str = "target_validation"
     # 覆蓋紀錄（coverage.py）：各項檢查是否完整跑完、產生了哪些問題
     coverage: ScanCoverage = field(default_factory=ScanCoverage)
-    # ZAP 被動分析用的 HAR 暫存目錄（爬取時錄、stage_zap_passive 用完即刪）
+    # ZAP 主動掃描用的 HAR 暫存目錄（爬取時錄、stage_zap_active 用完即刪；被動已退役）
     har_dir: Path | None = None
 
     @property
@@ -550,7 +548,7 @@ def stage_crawl(ctx: ScanRunContext) -> None:
         scan_job_id,
         f"開始爬取，最大深度 {scan_job.max_depth}，最大頁數 {scan_job.max_pages}",
     )
-    if _runs_zap_passive(scan_job) or _runs_zap_active(scan_job):
+    if _runs_zap_active(scan_job):
         ctx.har_dir = Path(tempfile.mkdtemp(prefix=f"argus-har-{scan_job_id}-"))
     crawled_pages, warnings, site_signals, discovered_endpoints = _run_async(
         lambda: crawl_site(
@@ -596,11 +594,6 @@ def stage_crawl(ctx: ScanRunContext) -> None:
             f"爬取期間觀察到 {len(discovered_endpoints)} 個 same-origin API 端點"
             "（XHR/fetch 被動攔截，供主動工具作為攻擊面輸入）",
         )
-
-
-def _runs_zap_passive(scan_job: ScanJob) -> bool:
-    """ZAP 被動分析：勾資安且已部署 ZAP 才跑（只分析已爬到的流量，被動模式也可以）。"""
-    return "security" in scan_job.effective_categories and zap_enabled()
 
 
 def _runs_zap_active(scan_job: ScanJob) -> bool:
@@ -1246,6 +1239,8 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
         + analyze_js_libraries(ctx.crawled_pages)
         + analyze_services(ctx.crawled_pages)
         + _js_secret_findings(ctx)
+        # ADR-0005 §2：移植自 ZAP 被動的自家檢查（混合內容／URL 敏感參數／頁面錯誤洩漏）
+        + analyze_passive_html(ctx.crawled_pages)
     )
     # WAF／防護機制封鎖偵測（被動：統計已落地 Page 的 403/429 與 challenge 特徵，
     # 達閾值才產出單一 info finding，未達閾值回 None 不打擾使用者）
@@ -1264,7 +1259,7 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
     ctx.scanning_progress(
         ctx.scanning_total + 3,
         _first_step(
-            ctx.steps, "zap_passive", "exposure_probe", "geo_site", "seo_links", "agent",
+            ctx.steps, "zap_active", "exposure_probe", "geo_site", "seo_links", "agent",
             "scoring",
         ),
     )
@@ -1328,56 +1323,6 @@ def _passive_api_check(ctx: ScanRunContext) -> None:
         ctx.scan_job_id,
         f"被動 API 檢查：執行期 {surface['total']} 個、靜態 {len(static_rows)} 個端點，"
         f"{len(api_findings)} 項發現",
-    )
-
-
-def stage_zap_passive(ctx: ScanRunContext) -> None:
-    """OWASP ZAP 被動分析：把爬到的同網站流量交給 ZAP，只跑被動規則，對目標零新增請求。
-
-    與 Argus 既有檢查重複的規則不另外產生問題；ZAP 無法使用時只標覆蓋 failed，掃描照常完成。
-    """
-    scan_job = ctx.scan_job
-    if not _runs_zap_passive(scan_job):
-        _discard_har(ctx)
-        return
-    raise_if_cancelled(ctx.scan_job_id)
-    ctx.scanning_progress(ctx.scanning_total + 3, "zap_passive")
-    har_files = sorted(ctx.har_dir.glob("*.har")) if ctx.har_dir else []
-    try:
-        result = run_zap_passive(
-            har_files, scan_job.origin, scan_job.id,
-            cancel_check=lambda: raise_if_cancelled(ctx.scan_job_id),
-        )
-    except ZapBusy as exc:
-        append_log(ctx.scan_job_id, f"ZAP 被動分析略過：{exc}", level="warn")
-        ctx.coverage.mark("zap_passive", SKIPPED, str(exc))
-        return
-    except ZapError as exc:
-        append_log(ctx.scan_job_id, f"ZAP 被動分析失敗：{exc}", level="warn")
-        ctx.coverage.mark("zap_passive", FAILED, str(exc))
-        return
-    finally:
-        # 主動 ZAP 也要用這份 HAR 建站台樹，留到 stage_zap_active 跑完才刪
-        if not _runs_zap_active(scan_job):
-            _discard_har(ctx)
-    if not result.entries:
-        ctx.coverage.mark("zap_passive", SKIPPED, "沒有錄到可分析的流量")
-        return
-    findings, overlap = alerts_to_findings(result.alerts, result.version)
-    if result.version:
-        warnings = dict(scan_job.warning_summary or {})
-        warnings["tools"] = {**(warnings.get("tools") or {}), "OWASP ZAP": result.version}
-        scan_job.warning_summary = warnings
-        scan_job.save(update_fields=["warning_summary", "updated_at"])
-    ctx.record(findings, check="zap_passive")
-    if result.queue_drained:
-        ctx.coverage.mark("zap_passive", COMPLETED)
-    else:
-        ctx.coverage.mark("zap_passive", PARTIAL, "ZAP 被動規則在時限內沒有跑完")
-    append_log(
-        ctx.scan_job_id,
-        f"ZAP {result.version} 被動分析：{result.entries} 筆流量、{len(result.alerts)} 則告警，"
-        f"新增 {len(findings)} 項問題；另有 {sum(overlap.values())} 則與既有檢查相同、不重複列出",
     )
 
 
@@ -2132,7 +2077,6 @@ SCAN_PIPELINE: tuple[tuple[str, Callable[[ScanRunContext], None]], ...] = (
     ("site_security", stage_site_security),
     ("active_probe", stage_active_probe),
     ("deep_security", stage_deep_security),
-    ("zap_passive", stage_zap_passive),
     ("zap_active", stage_zap_active),
     ("exposure", stage_exposure),
     ("geo_site", stage_geo_site),
