@@ -286,6 +286,43 @@ class ActiveProbeCoverageTests(TestCase):
         self.assertEqual(coverage["checks"]["nuclei"]["status"], COMPLETED)
         self.assertEqual(coverage["checks"]["nuclei"]["keys"], ["nuclei-xss"])
 
+    def _cloudflare_page(self) -> dict:
+        return {
+            "headers": {"cf-ray": "7abc-IAD", "server": "cloudflare"},
+            "url": "https://site.example.test/",
+            "final_url": "https://site.example.test/",
+        }
+
+    def test_nuclei_skipped_behind_full_proxy_cdn(self):
+        # 位於 Cloudflare 後：略過 root-URL KEV Nuclei（會被邊緣過濾），改出 info 說明
+        self.ctx.crawled_pages = [self._cloudflare_page()]
+        with mock.patch("apps.scans.tasks.run_nuclei") as run:
+            tasks.stage_active_probe(self.ctx)
+        run.assert_not_called()
+        self.assertEqual(self.ctx.coverage.status_of("nuclei"), SKIPPED)
+        self.assertTrue(self.ctx.nuclei_findings)
+        self.assertIn("Cloudflare", self.ctx.nuclei_findings[0]["title"])
+        self.assertEqual(self.ctx.nuclei_findings[0]["severity"], "info")
+
+    def test_skip_disabled_still_runs_nuclei_behind_cdn(self):
+        # 旗標關閉時照跑（可回復行為）
+        self.ctx.crawled_pages = [self._cloudflare_page()]
+        with override_settings(ARGUS_NUCLEI_SKIP_BEHIND_CDN=False):
+            with mock.patch("apps.scans.tasks.run_nuclei", return_value=NucleiRun()) as run:
+                tasks.stage_active_probe(self.ctx)
+        run.assert_called()
+        self.assertEqual(self.ctx.coverage.status_of("nuclei"), COMPLETED)
+
+    def test_no_cdn_runs_nuclei(self):
+        # 沒有 CDN 標頭：照常跑 Nuclei
+        self.ctx.crawled_pages = [{
+            "headers": {"server": "nginx"},
+            "url": "https://site.example.test/", "final_url": "https://site.example.test/",
+        }]
+        with mock.patch("apps.scans.tasks.run_nuclei", return_value=NucleiRun()) as run:
+            tasks.stage_active_probe(self.ctx)
+        run.assert_called()
+
 
 class NucleiBudgetTests(TestCase):
     """Nuclei 逾時上限要跟著整體掃描剩餘預算調整（2026-10-12：大型網站 660 秒跑不完）。"""
