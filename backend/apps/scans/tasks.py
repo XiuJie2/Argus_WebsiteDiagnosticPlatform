@@ -161,8 +161,14 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
         steps.append("seo_links")
     if "ux" in cats and pagespeed_enabled():
         steps.append("pagespeed")
-    if settings.ARGUS_AGENT_ENABLED and (execution_plan.run_agent or execution_plan.run_agent_ux):
-        steps.append("agent")
+    # 進度步驟區分兩種 agent：有勾深度資安（run_agent）才叫「AI 深度資安測試」(agent)；
+    # 否則只跑擬真使用者 UX 測試，顯示為「AI 擬真使用者測試」(agent_ux)——不要讓沒買深度資安的
+    # 掃描看到會誤以為是付費滲透測試的「AI Agent」階段。
+    if settings.ARGUS_AGENT_ENABLED:
+        if execution_plan.run_agent:
+            steps.append("agent")
+        elif execution_plan.run_agent_ux:
+            steps.append("agent_ux")
     steps.append("scoring")
     return steps
 
@@ -1350,7 +1356,7 @@ def stage_deep_security(ctx: ScanRunContext) -> None:
         ctx.scanning_total + 3,
         _first_step(
             ctx.steps, "zap_active", "exposure_probe", "geo_site", "seo_links", "agent",
-            "scoring",
+            "agent_ux", "scoring",
         ),
     )
 
@@ -1572,7 +1578,8 @@ def stage_exposure(ctx: ScanRunContext) -> None:
         scan_job.warning_summary = updated_warnings
         scan_job.save(update_fields=["warning_summary", "updated_at"])
     ctx.scanning_progress(
-        ctx.deep_scan_total, _first_step(ctx.steps, "geo_site", "seo_links", "agent", "scoring")
+        ctx.deep_scan_total,
+        _first_step(ctx.steps, "geo_site", "seo_links", "agent", "agent_ux", "scoring"),
     )
     append_log(
         scan_job_id,
@@ -1942,6 +1949,8 @@ def stage_agent(ctx: ScanRunContext) -> None:
     from apps.agent.runner import max_total_steps_estimate, run_agent_for_scan
 
     agent_phase_started = timezone.now().isoformat()
+    # 進度步驟鍵：有勾深度資安才是「agent」，否則只跑 UX 測試＝「agent_ux」（同 planned_scan_steps）
+    agent_step_key = "agent" if plan.run_agent else "agent_ux"
     # agent 跑十餘分鐘，過去進度一路停在 0／20（那 20 還只是單一子代理的上限），看起來像卡住。
     # 以最壞情況總步數當分母，再由 runner 每步回報累計步數，進度條才會動、看得出活著（2026-10-18）。
     agent_total = max(max_total_steps_estimate(), 1)
@@ -1954,7 +1963,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
             done = min(agent_steps_seen["n"], agent_total)
             _write_progress(
                 scan_job_id, phase="agent_testing", done=done, total=agent_total,
-                phase_started_at=agent_phase_started, step="agent", steps=ctx.steps,
+                phase_started_at=agent_phase_started, step=agent_step_key, steps=ctx.steps,
                 step_done=done, step_total=agent_total,
                 detail=_agent_role_label(role_label),
             )
@@ -1967,7 +1976,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
         "pages_total": agent_total,
         "phase": "agent_testing",
         "phase_started_at": agent_phase_started,
-        "step": "agent",
+        "step": agent_step_key,
         "step_done": 0,
         "step_total": agent_total,
         "step_started_at": agent_phase_started,
@@ -2004,7 +2013,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
                 done=min(max(agent_result.steps, agent_steps_seen["n"]), agent_total),
                 total=agent_total,
                 phase_started_at=agent_phase_started,
-                step="agent",
+                step=agent_step_key,
                 steps=ctx.steps,
             )
             for issue in agent_result.issues:
