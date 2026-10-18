@@ -123,11 +123,12 @@ agent 已是 opt-in（勾選才跑），所以「沒勾的掃描」headline 本�
 2. ✅ **比較改用正典鍵**（v2＋v2 才用，否則回退）；`compare_issues`／總覽 `changes.resolved` 接上。
    （`projects.compare_issues`、`absent_issue_status(by_identity)`、`tests_coverage.IdentityComparisonTests`；
    `issue_streaks` 仍以 issue_key 計算，未改。）
-3. ✅ **正向重探 resolved**（決策 B）：收尾重探併入既有無憑證探測，回 401/403/404 且本次沒再被報才
-   標 resolved；bulk/IDOR 的漏報自癒由正常分析器達成。**保守偏差**：exposure 檔案型仍可讀時未自動
-   補報（避免以舊 finding 複製產生過期證據）、IDOR `#` 模板不直接重探；resolved 一律要有成功重探。
-   （`tasks._previous_deterministic_endpoints`／`_mark_reverify_resolved`、coverage `reverify_resolved`、
-   `tests_coverage.ReverifyResolvedTests`）
+3. ✅ **正向重探 resolved**（決策 B）：把上次端點型確定性發現依層分流併入本次探測——authz 端點進
+   無憑證 authz 探測、exposure 檔案端點進 `probe_paths(extra_paths=...)`——仍存在的由該層分析器
+   重新找到（**漏報自癒，含仍可讀的 exposure 檔案**），回 401/403/404 且本次沒再被報才標 resolved。
+   IDOR `#` 模板不直接重探（保守）；resolved 一律要有成功重探（回封鎖狀態），絕不靠「消失」推斷。
+   （`tasks._previous_deterministic_endpoints`／`_mark_reverify_resolved`、`exposure_scanner.probe_paths`
+   的 `extra_paths`、coverage `reverify_resolved`、`tests_coverage.ReverifyResolvedTests`）
 4. ✅ **分數分離**（決策 C）：headline 只吃確定性 finding（`is_agent_observation` 濾掉 agent 觀察），
    agent 另出 `agent_findings_summary`（migration 0037）；`SCORING_VERSION` 5；報告導讀句與資安分析頁
    註明基準分不含 AI 深度測試；競賽 Word 內容 md 同步。**只分離 `agent-observed-security-*`**（使用者
