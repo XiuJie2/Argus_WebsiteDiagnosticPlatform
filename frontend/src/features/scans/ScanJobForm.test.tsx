@@ -97,3 +97,46 @@ describe("ScanJobForm（2026-10-07 定價：首次免費、部分掃描、深度
     expect(screen.getByText("570 coin")).toBeInTheDocument();
   });
 });
+
+describe("ScanJobForm（測試帳密：供 agent 登入後測試）", () => {
+  beforeEach(() => {
+    useArgusStore.setState({
+      wallet: { balance: 2000, coin_per_category: 2, agent_ux_fee: 0, agent_deep_fee: 0 },
+    });
+  });
+
+  it("被動模式不顯示測試帳密欄位", () => {
+    renderForm(project(1, "a.example"));
+    expect(screen.queryByLabelText(/測試帳號（Email/)).not.toBeInTheDocument();
+  });
+
+  it("主動模式填入測試帳密後，送出內容帶 test_auth_*", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 11 } });
+    renderForm(project(1, "a.example"));
+    await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
+    await user.type(screen.getByLabelText(/測試帳號（Email/), "test-user@a.example");
+    await user.type(screen.getByLabelText(/測試密碼/), "Secret123!");
+    await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith(
+      "/scans/",
+      expect.objectContaining({
+        scan_mode: "active",
+        test_auth_email: "test-user@a.example",
+        test_auth_password: "Secret123!",
+      }),
+    );
+  });
+
+  it("只填帳號沒填密碼時不送 test_auth_*（避免半套）", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 12 } });
+    renderForm(project(1, "a.example"));
+    await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
+    await user.type(screen.getByLabelText(/測試帳號（Email/), "only-email@a.example");
+    await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
+    const payload = vi.mocked(api.post).mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("test_auth_email");
+    expect(payload).not.toHaveProperty("test_auth_password");
+  });
+});

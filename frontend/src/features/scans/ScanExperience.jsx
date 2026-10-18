@@ -363,6 +363,10 @@ function ScanJobForm({ onCreated, project = null }) {
   const [url, setUrl] = useState(initial.url || "");
   const [activeMode, setActiveMode] = useState(initial.activeMode || false);
   const [activeAuthorized, setActiveAuthorized] = useState(initial.activeAuthorized || false);
+  // 測試帳密：供 agent 登入被測網站後測試登入後的攻擊面（IDOR／業務邏輯）。
+  // 只放 state、**不寫進 localStorage 草稿**（比照 access token 不落 localStorage）。
+  const [testAuthEmail, setTestAuthEmail] = useState("");
+  const [testAuthPassword, setTestAuthPassword] = useState("");
   // 掃描維度多選（至少一項；費用＝頁數 × 勾選維度數 × 每維單價）
   const [categories, setCategories] = useState(initial.categories || DEFAULT_SCAN_CATEGORIES);
   const [error, setError] = useState("");
@@ -509,6 +513,10 @@ function ScanJobForm({ onCreated, project = null }) {
         third_party_reconfirmed: true,
         scan_mode: activeMode ? "active" : "passive",
         active_testing_authorized: activeMode && activeAuthorized,
+        // 測試帳密只在主動模式且兩欄都填時送出；後端加密存、只注入 agent 登入用，不落 log/報告
+        ...(activeMode && testAuthEmail.trim() && testAuthPassword
+          ? { test_auth_email: testAuthEmail.trim(), test_auth_password: testAuthPassword }
+          : {}),
         categories,
         max_pages: scope === "single" ? 1 : sitePageLimit,
         max_depth: scope === "single" ? 1 : SITE_SCAN_DEPTH,
@@ -518,6 +526,8 @@ function ScanJobForm({ onCreated, project = null }) {
       setUrl(defaults.url || "");
       setActiveMode(false);
       setActiveAuthorized(false);
+      setTestAuthEmail("");
+      setTestAuthPassword("");
       setCategories(defaults.categories || DEFAULT_SCAN_CATEGORIES);
       setEstimate(null);
       setScope(defaults.scope || "site");
@@ -745,6 +755,43 @@ function ScanJobForm({ onCreated, project = null }) {
           />
           我同意進行侵入式測試，並理解系統會限制 RPS ≤ 2。
         </label>
+      )}
+      {activeMode && (
+        <div className="scan-auth-creds">
+          <p className="scan-auth-creds-title">測試帳號（選填）</p>
+          <p className="scan-auth-creds-hint">
+            填入被測網站的一組測試帳密，AI Agent 會用它登入，檢查「登入後」才看得到的問題
+            （越權存取 IDOR、業務邏輯漏洞等）。請用<strong>專供測試的帳號</strong>，不要填正式管理員帳號
+            —— Agent 會以此帳號實際操作、可能送出表單。帳密會加密保存，不會出現在報告或紀錄中。
+          </p>
+          <div>
+            <label className="text-xs text-slate-500" htmlFor="scan-auth-email">
+              測試帳號（Email 或使用者名稱）
+            </label>
+            <input
+              id="scan-auth-email"
+              className="input"
+              autoComplete="off"
+              placeholder="test-user@example.com"
+              value={testAuthEmail}
+              onChange={(event) => setTestAuthEmail(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500" htmlFor="scan-auth-password">
+              測試密碼
+            </label>
+            <input
+              id="scan-auth-password"
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              placeholder="僅用於這次掃描登入"
+              value={testAuthPassword}
+              onChange={(event) => setTestAuthPassword(event.target.value)}
+            />
+          </div>
+        </div>
       )}
       {activeMode && (
         <p className="coin-estimate-hint">
