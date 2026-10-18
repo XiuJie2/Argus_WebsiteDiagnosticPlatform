@@ -363,6 +363,8 @@ function ScanJobForm({ onCreated, project = null }) {
   const [url, setUrl] = useState(initial.url || "");
   const [activeMode, setActiveMode] = useState(initial.activeMode || false);
   const [activeAuthorized, setActiveAuthorized] = useState(initial.activeAuthorized || false);
+  // AI Agent 深度資安測試：使用者可選加項，勾了才跑才加收（全站＋主動＋已授權為前置）
+  const [deepAgent, setDeepAgent] = useState(initial.deepAgent || false);
   // 測試帳密：供 agent 登入被測網站後測試登入後的攻擊面（IDOR／業務邏輯）。
   // 只放 state、**不寫進 localStorage 草稿**（比照 access token 不落 localStorage）。
   const [testAuthEmail, setTestAuthEmail] = useState("");
@@ -432,9 +434,10 @@ function ScanJobForm({ onCreated, project = null }) {
     scope !== "single" && categories.includes("ux")
       ? (wallet?.agent_ux_fee ?? 0)
       : 0;
-  // 深度資安 Agent 附加費：主動＋已授權＋整站時預扣；agent 沒實際執行，結算會退回。
+  // 深度資安 Agent 附加費：使用者勾選「AI Agent 深度資安測試」且前置（整站＋主動＋已授權）
+  // 成立時才預扣；agent 沒實際執行，結算會退回。
   const agentDeepFee =
-    scope !== "single" && activeMode && activeAuthorized
+    scope !== "single" && activeMode && activeAuthorized && deepAgent
       ? (wallet?.agent_deep_fee ?? 0)
       : 0;
   // 首次免費完整掃描：被動＋整站＋五面向全選、帳號還沒用過（後端同一規則再判一次）
@@ -485,9 +488,10 @@ function ScanJobForm({ onCreated, project = null }) {
       url,
       activeMode,
       activeAuthorized,
+      deepAgent,
       categories,
     }, draftKey);
-  }, [draftKey, scope, url, activeMode, activeAuthorized, categories]);
+  }, [draftKey, scope, url, activeMode, activeAuthorized, deepAgent, categories]);
 
   useEffect(() => {
     if (!submitting) return undefined;
@@ -513,6 +517,8 @@ function ScanJobForm({ onCreated, project = null }) {
         third_party_reconfirmed: true,
         scan_mode: activeMode ? "active" : "passive",
         active_testing_authorized: activeMode && activeAuthorized,
+        // AI Agent 深度資安測試：勾選才送（後端只在全站＋主動＋已授權時真的跑、才加收）
+        deep_agent_requested: scope !== "single" && activeMode && activeAuthorized && deepAgent,
         // 測試帳密只在主動模式且兩欄都填時送出；後端加密存、只注入 agent 登入用，不落 log/報告
         ...(activeMode && testAuthEmail.trim() && testAuthPassword
           ? { test_auth_email: testAuthEmail.trim(), test_auth_password: testAuthPassword }
@@ -526,6 +532,7 @@ function ScanJobForm({ onCreated, project = null }) {
       setUrl(defaults.url || "");
       setActiveMode(false);
       setActiveAuthorized(false);
+      setDeepAgent(false);
       setTestAuthEmail("");
       setTestAuthPassword("");
       setCategories(defaults.categories || DEFAULT_SCAN_CATEGORIES);
@@ -754,6 +761,19 @@ function ScanJobForm({ onCreated, project = null }) {
             onChange={(event) => setActiveAuthorized(event.target.checked)}
           />
           我同意進行侵入式測試，並理解系統會限制 RPS ≤ 2。
+        </label>
+      )}
+      {activeMode && activeAuthorized && scope !== "single" && (
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={deepAgent}
+            onChange={(event) => setDeepAgent(event.target.checked)}
+          />
+          加做 AI Agent 深度資安測試
+          {(wallet?.agent_deep_fee ?? 0) > 0 && `（另加 ${wallet.agent_deep_fee} 點）`}
+          — 由 AI 像滲透測試員實際操作網站，找越權存取、業務邏輯等需要推理串接的弱點
+          （較花時間；Agent 實際執行才收費，沒執行會退回）。
         </label>
       )}
       {activeMode && (

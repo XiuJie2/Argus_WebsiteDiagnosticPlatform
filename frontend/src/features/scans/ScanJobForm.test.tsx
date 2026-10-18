@@ -93,8 +93,42 @@ describe("ScanJobForm（2026-10-07 定價：首次免費、部分掃描、深度
     renderForm(full());
     await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
     await user.click(screen.getByRole("checkbox", { name: /同意進行侵入式測試/ }));
+    // 深度資安附加費現在要勾「加做 AI Agent 深度資安測試」才算（opt-in）
+    expect(screen.queryByText(/深度資安 AI Agent 另加 50 coin/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /加做 AI Agent 深度資安測試/ }));
     expect(screen.getByText(/深度資安 AI Agent 另加 50 coin/)).toBeInTheDocument();
     expect(screen.getByText("570 coin")).toBeInTheDocument();
+  });
+
+  it("勾 AI Agent 深度測試後，送出內容帶 deep_agent_requested", async () => {
+    const user = userEvent.setup();
+    useArgusStore.setState({
+      wallet: { balance: 2000, coin_per_category: 2, agent_ux_fee: 0, agent_deep_fee: 50 },
+    });
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 21 } });
+    renderForm(full());
+    await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
+    await user.click(screen.getByRole("checkbox", { name: /同意進行侵入式測試/ }));
+    await user.click(screen.getByRole("checkbox", { name: /加做 AI Agent 深度資安測試/ }));
+    await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith(
+      "/scans/", expect.objectContaining({ deep_agent_requested: true }),
+    );
+  });
+
+  it("沒勾 AI Agent 深度測試：不收深度費、送出 deep_agent_requested=false", async () => {
+    const user = userEvent.setup();
+    useArgusStore.setState({
+      wallet: { balance: 2000, coin_per_category: 2, agent_ux_fee: 0, agent_deep_fee: 50 },
+    });
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 22 } });
+    renderForm(full());
+    await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
+    await user.click(screen.getByRole("checkbox", { name: /同意進行侵入式測試/ }));
+    await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith(
+      "/scans/", expect.objectContaining({ deep_agent_requested: false }),
+    );
   });
 });
 
@@ -135,7 +169,7 @@ describe("ScanJobForm（測試帳密：供 agent 登入後測試）", () => {
     await user.click(screen.getByRole("checkbox", { name: /啟用主動式資安測試/ }));
     await user.type(screen.getByLabelText(/測試帳號（Email/), "only-email@a.example");
     await user.click(screen.getByRole("button", { name: /建立掃描|開始掃描|送出/ }));
-    const payload = vi.mocked(api.post).mock.calls[0][1] as Record<string, unknown>;
+    const [, payload] = vi.mocked(api.post).mock.calls[0] ?? [];
     expect(payload).not.toHaveProperty("test_auth_email");
     expect(payload).not.toHaveProperty("test_auth_password");
   });

@@ -63,7 +63,7 @@ queued → crawling → scanning → [agent_testing] → completed
 | 單頁 + passive | 否 | 否 | 否 | 否 | 否 | 否 |
 | 全網站 + passive | 否 | 否 | 否 | 否 | 勾 UX 才跑 | 否 |
 | 單頁 + active 且已授權 | 網站根網址（KEV 模板） | 否 | 否 | 否 | 否 | 可執行既有同源候選驗證 |
-| 全網站 + active 且已授權 | 網站根網址（KEV 模板） | 是 | 是 | 是（另受總開關控制） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
+| 全網站 + active 且已授權 | 網站根網址（KEV 模板） | 是 | 是 | 勾選 `deep_agent_requested` 才跑（另受總開關控制；2026-10-18 改 opt-in＋加收 `agent_deep_fee`） | 勾 UX 才跑 | 可執行既有同源候選驗證 |
 
 Katana 與 Nuclei 並行時必須共享 `ARGUS_ACTIVE_MAX_RPS`（2026-10-17 預設 2→**6**，兩工具對半各 3；授權目標是使用者自己的網站，2 RPS 太保守拖慢掃描；敏感檔探測與未授權探測吃全額一併加速，可用環境變數下修）；若總預算只有 1 RPS，必須改為依序執行。Nuclei 被 CDN-skip 略過時 Katana 獨佔整個預算。單頁不得用 Katana、敏感路徑字典或 Agent 擴張成全站掃描。
 

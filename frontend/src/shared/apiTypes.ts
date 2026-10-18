@@ -1069,7 +1069,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description 公開：前端是否要顯示 Turnstile 元件，以及要用的 site key（公開值）。 */
+        /**
+         * @description 公開：前端是否要顯示 Turnstile 元件，以及要用的 site key（公開值）。
+         *
+         *     登入頁一進來就呼叫，順便設定 csrftoken cookie，登入端點的 CSRF 驗證才有 token 可比對。
+         */
         get: operations["auth_turnstile_retrieve"];
         put?: never;
         post?: never;
@@ -3642,6 +3646,8 @@ export interface components {
             max_pages: number;
             /** @default true */
             respect_robots: boolean;
+            /** @default false */
+            deep_agent_requested: boolean;
             project: number | null;
         };
         ScanJobCreateRequest: {
@@ -3671,6 +3677,8 @@ export interface components {
             respect_robots: boolean;
             test_auth_email?: string;
             test_auth_password?: string;
+            /** @default false */
+            deep_agent_requested: boolean;
             project?: number | null;
         };
         ScanJobStatus: {
