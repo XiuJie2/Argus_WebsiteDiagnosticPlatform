@@ -1946,14 +1946,22 @@ def stage_agent(ctx: ScanRunContext) -> None:
 
     scan_hostname = get_hostname(scan_job.normalized_url or scan_job.original_url or "")
     may_submit_forms = bool(plan.run_agent) or user_owns_domain(scan_job.user, scan_hostname)
-    from apps.agent.runner import max_total_steps_estimate, run_agent_for_scan
+    from apps.agent.runner import (
+        max_total_steps_estimate,
+        run_agent_for_scan,
+        ux_steps_estimate,
+    )
 
     agent_phase_started = timezone.now().isoformat()
     # 進度步驟鍵：有勾深度資安才是「agent」，否則只跑 UX 測試＝「agent_ux」（同 planned_scan_steps）
     agent_step_key = "agent" if plan.run_agent else "agent_ux"
     # agent 跑十餘分鐘，過去進度一路停在 0／20（那 20 還只是單一子代理的上限），看起來像卡住。
     # 以最壞情況總步數當分母，再由 runner 每步回報累計步數，進度條才會動、看得出活著（2026-10-18）。
-    agent_total = max(max_total_steps_estimate(), 1)
+    # 深度資安是 recon＋orchestrator＋多專家的最壞估計；UX 只有單一 session，分母用 UX 估計，
+    # 否則沒勾深度資安的掃描會顯示像在跑數百步的資安 agent（2026-10-18）。
+    agent_total = max(
+        max_total_steps_estimate() if plan.run_agent else ux_steps_estimate(), 1
+    )
     agent_steps_seen = {"n": 0}
 
     def _report_agent_step(role_label: str, round_no: int) -> None:
