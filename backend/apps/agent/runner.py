@@ -524,6 +524,18 @@ def _summarize_known_findings(known: list[dict] | None) -> str:
     return "\n".join(rows) or "（無）"
 
 
+# 不論目標網站是中文或英文，一律用繁體中文回報（report_security_issue／report_ux_issue 的
+# title／description／remediation 等給人看的欄位）。英文網站（如 OWASP Juice Shop）過去會讓
+# agent 整段用英文回報，在全繁中報告裡夾大段英文。技術字串保留原文、不翻譯。附加在每個 session
+# 的 task_prompt 尾端（recon／orchestrator／各專家／UX 都走 _run_session）。
+_LANGUAGE_RULE = (
+    "\n\n【輸出語言｜鐵律】不論目標網站是中文還是英文，凡是呼叫 report_security_issue／"
+    "report_ux_issue 等工具，其 title、description、remediation 等「給人看的」欄位一律用"
+    "繁體中文書寫，不得整段用英文。URL、HTTP 方法、標頭名稱、參數名、payload、程式碼、JSON "
+    "欄位名等技術字串保留原文、不要翻譯。"
+)
+
+
 async def run_agent_for_scan(
     scan_job: ScanJob,
     chain: ProviderChain | None = None,
@@ -617,7 +629,7 @@ async def run_agent_for_scan(
                         if progress_cb else None
                     ),
                 )
-                return await agent.run(task_prompt=role_prompt)
+                return await agent.run(task_prompt=role_prompt + _LANGUAGE_RULE)
             finally:
                 await browser.close()
 
