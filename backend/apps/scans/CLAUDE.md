@@ -524,6 +524,10 @@ Worker 每完成一頁需更新此 JSON 欄位，前端輪詢後顯示進度條�
 - **新增檢查**：在 `CHECK_CATEGORIES`／`CHECK_LABELS` 登記，成功、失敗、沒執行三種情況都要 mark。測試：`tests_coverage.py`。
 - 尚未做：rule／resource 級細分、把檢查狀態接到計費。
 
+## 分數分離：確定性基準分 vs AI 深度測試（ADR-0006 決策 C，2026-10-18）
+
+`stage_scoring` 把 `ctx.all_findings` 以 `scanners.is_agent_observation`（rule_id `agent-observed-security-*`）分成兩層：**確定性層**餵 `calculate_scores` 算 `category_scores`／`overall_score`／`top_actions`（headline、趨勢、`comparable` 比較用，同站同碼每次一致）；**AI Agent 觀察**不進衰減，改以 `summarize_agent_security` 產 `ScanJob.agent_findings_summary`（`{count, severity_counts, max_severity}`，migration 0037）獨立呈現。**Kali 已驗證（`kali-*`）與其他確定性規則照常計分**；agent 觀察即使 tool_verified（rule_id 仍是 agent-observed-security-*）也不進基準分。`SCORING_VERSION` 升 5（公式改了）。serializer 出 `agent_findings_summary`；`project_security` 回同欄位；報告導讀句（`RENDERER_VERSION` 35）與資安分析頁註明「基準分不含 AI 深度測試」。AI 觀察仍以 Finding 列在問題清單／報告資安章節，只是不計分。
+
 ## 評分與規則版本（`versions.py`，2026-10-07，roadmap P1）
 
 - `ScanJob.scoring_version`（計分公式，`SCORING_VERSION`）與 `ruleset_version`（判定規則集，`RULESET_VERSION`）由 `stage_scoring` 寫入（migration 0029）；`rerun_scan` 兩個都更新，`finding_normalization._rescore` 只更新計分版本（只重跑部分規則）。舊掃描為空字串＝版本不明。

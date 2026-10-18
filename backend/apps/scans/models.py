@@ -218,6 +218,10 @@ class ScanJob(models.Model):
     # AI 掃描解讀（ai_insight.py）：掃描完成後由 AI 依問題與證據寫整體診斷、優先處理建議，
     # 並複核高風險問題是否可能誤報。只是參考說明，不改任何問題的嚴重度與分數
     ai_insight = models.JSONField(default=dict, blank=True)
+    # AI 深度資安測試（Agent 觀察）摘要（ADR-0006 決策 C）：{count, severity_counts, max_severity}。
+    # Agent 觀察是非確定性深測，不計入可比較的 category_scores／overall_score（基準分只由確定性層算），
+    # 另以此摘要獨立呈現。migration 0037
+    agent_findings_summary = models.JSONField(default=dict, blank=True)
     # 即時進度（worker 寫入；前端輪詢顯示）
     # {pages_done: int, pages_total: int, phase: "crawling"|"scanning"|"agent_testing",
     #  phase_started_at: ISO8601 str}

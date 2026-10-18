@@ -508,6 +508,8 @@ def project_security(project: SiteProject, scan: ScanJob | None = None) -> dict:
         "strengths": [
             s for s in profile.get("strengths") or [] if s.get("category") == "security"
         ],
+        # AI 深度測試（Agent 觀察）摘要：獨立呈現、不計入上面的 score（ADR-0006 決策 C）
+        "agent_findings_summary": scan.agent_findings_summary or {},
     }
 
 

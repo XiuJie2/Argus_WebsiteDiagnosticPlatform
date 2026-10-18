@@ -285,6 +285,7 @@ class ScanJobSerializer(serializers.ModelSerializer):
             "overall_score",
             "category_scores",
             "top_actions",
+            "agent_findings_summary",
             "warning_summary",
             "aeo_report",
             "site_profile",

@@ -3597,6 +3597,7 @@ export interface components {
             readonly overall_score: number | null;
             readonly category_scores: unknown;
             readonly top_actions: unknown;
+            readonly agent_findings_summary: unknown;
             readonly warning_summary: unknown;
             readonly aeo_report: unknown;
             readonly site_profile: unknown;

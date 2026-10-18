@@ -52,6 +52,8 @@ from apps.scans.scanners import (
     analyze_security_site_level,
     analyze_site_signals,
     calculate_scores,
+    is_agent_observation,
+    summarize_agent_security,
 )
 from apps.scans.security import exposure_scanner, owasp_mapper
 from apps.scans.security.api_scanner import MAX_SURFACE_ENDPOINTS, analyze_api
@@ -2187,18 +2189,24 @@ def stage_scoring(ctx: ScanRunContext) -> None:
             f"跨層去重：{len(dropped)} 筆 Agent 觀察與確定性探測指向同一端點，"
             "已合併，保留可重現的確定性發現",
         )
+    # ADR-0006 決策 C：headline／可比較基準分只由確定性層計算，AI Agent 觀察（非確定性深測、
+    # 有無隨運氣跳動）不進衰減、另以 agent_findings_summary 獨立呈現（Kali 已驗證仍計分）。
+    deterministic_findings = [f for f in ctx.all_findings if not is_agent_observation(f)]
     overall_score, category_scores, top_actions = calculate_scores(
-        ctx.all_findings,
+        deterministic_findings,
         tested_categories=tested_categories,
         base_scores=base_scores_for(ctx),
     )
+    agent_findings_summary = summarize_agent_security(ctx.all_findings)
     append_log(
         scan_job_id,
-        f"掃描完成 — 總分 {overall_score}，共 {len(ctx.all_findings)} 項發現",
+        f"掃描完成 — 資安基準分 {overall_score}（確定性層；不含 AI 深度測試），"
+        f"共 {len(ctx.all_findings)} 項發現，其中 AI 深度測試 {agent_findings_summary['count']} 項",
     )
     scan_job.overall_score = overall_score
     scan_job.category_scores = category_scores
     scan_job.top_actions = top_actions
+    scan_job.agent_findings_summary = agent_findings_summary
     scan_job.coverage = coverage_for(ctx, tested_categories)
     scan_job.scoring_version = SCORING_VERSION
     scan_job.ruleset_version = RULESET_VERSION
@@ -2219,6 +2227,7 @@ def stage_scoring(ctx: ScanRunContext) -> None:
         overall_score=overall_score,
         category_scores=category_scores,
         top_actions=top_actions,
+        agent_findings_summary=agent_findings_summary,
         warning_summary=scan_job.warning_summary,
         coverage=scan_job.coverage,
         scoring_version=SCORING_VERSION,

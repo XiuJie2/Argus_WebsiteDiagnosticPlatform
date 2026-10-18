@@ -990,7 +990,10 @@ def _headline(
     score = scan_job.overall_score
     parts = []
     if isinstance(score, int):
-        parts.append(f"分數落在「{_score_band_label(score)}」區間")
+        parts.append(
+            f"分數落在「{_score_band_label(score)}」區間"
+            "（確定性檢查基準分，不含 AI 深度測試）"
+        )
     if previous is not None and isinstance(score, int) and not versions.comparable(
         scan_job, previous
     ):
@@ -1010,6 +1013,11 @@ def _headline(
         parts.append(f"已解決 {len(resolved)} 項")
     if unconfirmed:
         parts.append(f"另有 {unconfirmed} 項本次未出現，但檢查不完整、無法確認已修好")
+    agent_count = (scan_job.agent_findings_summary or {}).get("count") or 0
+    if agent_count:
+        parts.append(
+            f"另有 AI 深度測試發現 {agent_count} 項（獨立呈現、不計入基準分，詳見資安章節）"
+        )
     weakest = sorted(
         ((name, value) for name, value in category_scores.items() if isinstance(value, int)),
         key=lambda item: item[1],
