@@ -93,6 +93,25 @@ _KEYWORD_OWASP_MAP: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Agent 觀察發現沒有固定 rule_id（`agent-observed-security-<雜湊>`），精確表／關鍵字表都查不到；
+# 改由弱點類別（`agent.findings.vuln_class`）補 OWASP／CWE（ADR-0006 決策 A，讓正典身分帶標籤）。
+# 代號採 2021 版，與 DB 其餘 security finding 一致（2025 版由 owasp_2025 推導）。
+_AGENT_CLASS_OWASP: dict[str, tuple[str, str]] = {
+    "sqli": ("A03", "CWE-89"),
+    "xss": ("A03", "CWE-79"),
+    "injection": ("A03", "CWE-74"),
+    "ssrf": ("A10", "CWE-918"),
+    "redirect": ("A01", "CWE-601"),
+    "upload": ("A08", "CWE-434"),
+    "jwt": ("A07", "CWE-345"),
+    "idor": ("A01", "CWE-639"),
+    "auth": ("A01", "CWE-862"),
+    "csrf": ("A01", "CWE-352"),
+    "cors": ("A05", "CWE-942"),
+    "exposure": ("A01", "CWE-200"),
+}
+
+
 # OWASP Top 10:2021 → 2025 類別對照（官方調整：SSRF 併入 A01、易受攻擊元件擴大為供應鏈 A03、
 # 安全設定錯誤升到 A02、加密失誤降到 A04、注入 A05、不安全設計 A06）
 OWASP_2021_TO_2025: dict[str, str] = {
@@ -143,12 +162,29 @@ def _lookup(rule_id: str) -> tuple[str, str]:
     return ("", "")
 
 
+def _agent_lookup(finding: dict) -> tuple[str, str]:
+    """Agent 觀察發現（雜湊 rule_id，精確／關鍵字表查不到）：以弱點類別補 OWASP／CWE。"""
+    from apps.agent.findings import vuln_class
+
+    cls = vuln_class(finding.get("title", ""), finding.get("description", ""))
+    return _AGENT_CLASS_OWASP.get(cls, ("", ""))
+
+
 def tag(finding: dict) -> dict:
-    """對 category='security' 的 finding dict 填入 owasp_category/cwe_id；其他原樣回傳。"""
+    """對 category='security' 的 finding dict 填入 owasp_category/cwe_id；其他原樣回傳。
+
+    Agent 觀察發現的雜湊 rule_id 查不到精確對映時，退回以弱點類別補標籤（ADR-0006 決策 A），
+    讓正典身分（finding_identity）帶得到穩定的 OWASP／CWE；不動既有確定性規則的對映。
+    """
     try:
         if finding.get("category") != "security":
             return finding
         owasp, cwe = _lookup(finding.get("rule_id", ""))
+        if not owasp and not cwe:
+            from apps.agent.findings import is_agent_security_rule
+
+            if is_agent_security_rule(finding.get("rule_id")):
+                owasp, cwe = _agent_lookup(finding)
         finding["owasp_category"] = owasp
         finding["cwe_id"] = cwe
     except Exception:

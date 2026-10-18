@@ -25,7 +25,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-COVERAGE_VERSION = 1
+# v2（ADR-0006 第 1 刀）：每項檢查除了舊的 issue_key，另存一份跨掃描正典身分（identities），
+# 為第 2 刀把歷史比較切換到正典鍵鋪路；v1 的 checks/keys 結構不動，identities 為新增欄位。
+COVERAGE_VERSION = 2
 
 COMPLETED = "completed"
 PARTIAL = "partial"
@@ -120,23 +122,29 @@ class ScanCoverage:
     def mark(self, check: str, status: str, reason: str = "") -> None:
         """記錄某項檢查的結果；同一項檢查以最後一次為準，但已記錄的問題代號保留。"""
         entry = self._checks.setdefault(
-            check, {"category": CHECK_CATEGORIES.get(check), "keys": set()}
+            check, {"category": CHECK_CATEGORIES.get(check), "keys": set(), "identities": set()}
         )
         entry["status"] = status
         entry["reason"] = reason
 
     def add_findings(self, check: str, findings: Iterable[dict]) -> None:
-        """記下這項檢查產生了哪些問題（歷史比較時用來找回「是誰產生的」）。"""
+        """記下這項檢查產生了哪些問題（歷史比較時用來找回「是誰產生的」）。
+
+        同時記舊的 issue_key 與跨掃描正典身分（ADR-0006 第 1 刀，兩種鍵並存）。
+        """
+        from apps.scans.finding_identity import finding_identity
+
         entry = self._checks.setdefault(
             check,
-            {"category": CHECK_CATEGORIES.get(check), "keys": set(), "status": COMPLETED,
-             "reason": ""},
+            {"category": CHECK_CATEGORIES.get(check), "keys": set(), "identities": set(),
+             "status": COMPLETED, "reason": ""},
         )
         for finding in findings:
             entry["keys"].add(
                 issue_key(finding.get("rule_id"), finding.get("category", ""),
                           finding.get("title", ""))
             )
+            entry["identities"].add(finding_identity(finding))
 
     def status_of(self, check: str) -> str | None:
         entry = self._checks.get(check)
@@ -149,6 +157,7 @@ class ScanCoverage:
                 "category": entry["category"],
                 "reason": entry.get("reason", ""),
                 "keys": sorted(entry["keys"]),
+                "identities": sorted(entry.get("identities", set())),
             }
             for name, entry in sorted(self._checks.items())
         }
