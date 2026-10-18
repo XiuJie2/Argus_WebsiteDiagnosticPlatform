@@ -5436,13 +5436,9 @@ components:
         owasp_category:
           type: string
           maxLength: 16
-        owasp_2025:
+        owasp_label:
           type: string
-          description: OWASP Top 10:2025 代號（由 2021 代號與 CWE 推導；DB 只存 2021 代號）。
-          readOnly: true
-        owasp_2025_label:
-          type: string
-          description: 顯示用：「A02:2025 安全設定錯誤」。
+          description: 顯示用：「A02:2025 安全設定錯誤」。owasp_category 已直接存 2025 代號。
           readOnly: true
         cwe_id:
           type: string
@@ -5502,9 +5498,8 @@ components:
       - impact_area
       - llm_generated_at
       - llm_model
-      - owasp_2025
-      - owasp_2025_label
       - owasp_category
+      - owasp_label
       - page
       - priority_score
       - remediation
