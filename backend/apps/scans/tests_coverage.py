@@ -303,6 +303,67 @@ class IdentityComparisonTests(TestCase):
         self.assertEqual(missing[0]["status"], NOT_OBSERVED)
 
 
+class ReverifyResolvedTests(SimpleTestCase):
+    """ADR-0006 第 3 刀：收尾重探只在正向確認（回 401/403/404）時才標 resolved。"""
+
+    def _ctx(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(coverage=ScanCoverage())
+
+    def test_blocked_status_marks_resolved(self):
+        from apps.scans.tasks import _mark_reverify_resolved
+
+        ctx = self._ctx()
+        prev = {"auth|/visits|A01|CWE-862": "/backend/visits"}
+        results = [{"url": "https://x.example/backend/visits", "status": 403}]
+        _mark_reverify_resolved(ctx, prev, results)
+        self.assertIn("auth|/visits|A01|CWE-862", ctx.coverage.to_json([])["reverify_resolved"])
+
+    def test_still_200_not_resolved(self):
+        from apps.scans.tasks import _mark_reverify_resolved
+
+        ctx = self._ctx()
+        prev = {"auth|/visits|A01|CWE-862": "/backend/visits"}
+        results = [{"url": "https://x.example/backend/visits", "status": 200}]
+        _mark_reverify_resolved(ctx, prev, results)
+        self.assertEqual(ctx.coverage.to_json([])["reverify_resolved"], [])
+
+    def test_unreachable_not_resolved(self):
+        from apps.scans.tasks import _mark_reverify_resolved
+
+        ctx = self._ctx()
+        prev = {"auth|/visits|A01|CWE-862": "/backend/visits"}
+        _mark_reverify_resolved(ctx, prev, [])  # 沒打到任何回應
+        self.assertEqual(ctx.coverage.to_json([])["reverify_resolved"], [])
+
+    def test_still_found_this_scan_skipped(self):
+        from apps.scans.tasks import _mark_reverify_resolved
+
+        ctx = self._ctx()
+        ident = "auth|/visits|A01|CWE-862"
+        ctx.coverage.add_findings("authz_probe", [{
+            "rule_id": "security-unauth-api-records", "category": "security",
+            "title": "未授權存取", "owasp_category": "A01", "cwe_id": "CWE-862",
+            "evidence_json": {"endpoint": "/backend/visits"},
+        }])
+        # 即使重探回 403，本次仍找到＝仍存在，不可標 resolved
+        _mark_reverify_resolved(ctx, {ident: "/backend/visits"},
+                                [{"url": "https://x.example/backend/visits", "status": 403}])
+        self.assertNotIn(ident, ctx.coverage.to_json([])["reverify_resolved"])
+
+    def test_absent_status_uses_reverify_resolved(self):
+        current = ScanCoverage()
+        current.mark("exposure_probe", COMPLETED)
+        current.mark_resolved("exposure|/old-file|A05|CWE-200")
+        status = absent_issue_status(
+            previous_coverage={}, current_coverage=current.to_json(["security"]),
+            key="exposure|/old-file|A05|CWE-200", category="security",
+            urls=[], analysed_urls=set(), by_identity=True,
+        )
+        self.assertEqual(status, RESOLVED)
+
+
 class TestedCategoriesCoverageTests(TestCase):
     def test_category_with_every_check_failed_is_not_scored(self):
         user = User.objects.create_user(username="cov-cat", password="safe-test-password")

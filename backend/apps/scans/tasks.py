@@ -1569,6 +1569,70 @@ def stage_exposure(ctx: ScanRunContext) -> None:
     )
 
 
+def _previous_deterministic_endpoints(scan_job) -> dict[str, str]:
+    """上一次完成掃描的『端點型確定性資安發現』：正典身分 → 端點路徑（ADR-0006 第 3 刀）。
+
+    只取確定性層（exposure／authz）且有端點的資安發現；Agent 觀察不在此（其缺席由比較層判
+    not_observed）。供本次收尾重探用（漏報自癒＋resolved 正向驗證）。失敗回空（不影響主掃描）。
+    """
+    try:
+        from apps.scans.finding_identity import finding_identity
+        from apps.scans.projects import previous_completed
+
+        project = scan_job.project
+        if project is None:
+            return {}
+        previous = previous_completed(project, scan_job)
+        if previous is None:
+            return {}
+        out: dict[str, str] = {}
+        rows = previous.findings.filter(
+            category="security",
+            evidence_source__in=("exposure_probe", "authz_probe"),
+        ).values(
+            "rule_id", "category", "title", "description",
+            "owasp_category", "cwe_id", "evidence_json",
+        )
+        for row in rows:
+            endpoint = (row.get("evidence_json") or {}).get("endpoint")
+            if endpoint:
+                out[finding_identity(row)] = str(endpoint)
+        return out
+    except Exception:  # noqa: BLE001 — 重探前置失敗不影響主掃描
+        return {}
+
+
+def _mark_reverify_resolved(
+    ctx: ScanRunContext, prev_endpoints: dict[str, str], results: list[dict]
+) -> None:
+    """收尾重探：上次的確定性端點本次回 401/403/404、且本次沒再被報成發現 → 標 resolved。
+
+    只在「正向確認已修好」時才標；回 200（仍可讀）或打不到（逾時／連線錯誤）一律不標，
+    維持歷史比較的保守值（not_observed），不冒稱已修好（ADR-0006 決策 B 的鐵律）。
+    """
+    from urllib.parse import urlparse
+
+    from apps.scans.finding_identity import canonical_resource
+
+    blocked_by_resource: dict[str, bool] = {}
+    for r in results or []:
+        try:
+            status = int(r.get("status") or 0)
+        except (TypeError, ValueError):
+            continue
+        resource = canonical_resource(urlparse(r.get("url") or "").path)
+        is_blocked = status in (401, 403, 404)
+        blocked_by_resource[resource] = is_blocked and blocked_by_resource.get(resource, True)
+    current_found = ctx.coverage.identities_of("exposure_probe") | ctx.coverage.identities_of(
+        "authz_probe"
+    )
+    for identity, path in prev_endpoints.items():
+        if "#" in path or identity in current_found:
+            continue
+        if blocked_by_resource.get(canonical_resource(path)):
+            ctx.coverage.mark_resolved(identity)
+
+
 def _run_authz_probe(ctx: ScanRunContext) -> None:
     """未授權存取探測：對發現的 API 端點做無憑證 GET，成批帳號／成員記錄匿名可讀即報。
 
@@ -1581,6 +1645,12 @@ def _run_authz_probe(ctx: ScanRunContext) -> None:
         for path in dict.fromkeys(_observed_api_paths(ctx))  # 去重保序
         if path
     ]
+    # ADR-0006 第 3 刀：把上一次完成掃描的端點型確定性資安發現端點也納入本次無憑證探測，
+    # 讓「仍存在」的問題被正常分析器重新找到（漏報自癒）、「已修好」的能正向重探（回 401/403/404）。
+    prev_endpoints = _previous_deterministic_endpoints(ctx.scan_job)
+    for path in prev_endpoints.values():
+        if "#" not in path:  # IDOR 模板（含 #）無法直接重探，略過
+            candidates.append(f"{origin}/{path.lstrip('/')}")
     if not candidates:
         ctx.coverage.mark("authz_probe", SKIPPED, "沒有發現可探測的 API 端點")
         return
@@ -1598,6 +1668,7 @@ def _run_authz_probe(ctx: ScanRunContext) -> None:
         ]
         ctx.record(findings, check="authz_probe")
         ctx.coverage.mark("authz_probe", COMPLETED)
+        _mark_reverify_resolved(ctx, prev_endpoints, results)
         append_log(
             scan_job_id,
             f"未授權存取探測完成：探測 {len(results)} 個 API 端點，"

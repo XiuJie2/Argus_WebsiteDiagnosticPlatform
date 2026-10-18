@@ -118,6 +118,9 @@ class ScanCoverage:
 
     def __init__(self) -> None:
         self._checks: dict[str, dict] = {}
+        # ADR-0006 第 3 刀：收尾重探對「上次有、本次確定性檢查沒再產生」的端點正向確認已修好
+        # （回 401/403/404）的正典身分集合；歷史比較據此才標 resolved（而非靠「身分消失」推斷）。
+        self._reverify_resolved: set[str] = set()
 
     def mark(self, check: str, status: str, reason: str = "") -> None:
         """記錄某項檢查的結果；同一項檢查以最後一次為準，但已記錄的問題代號保留。"""
@@ -146,9 +149,19 @@ class ScanCoverage:
             )
             entry["identities"].add(finding_identity(finding))
 
+    def mark_resolved(self, identity: str) -> None:
+        """記下「收尾重探已正向確認已修好」的正典身分（ADR-0006 第 3 刀）。"""
+        if identity:
+            self._reverify_resolved.add(identity)
+
     def status_of(self, check: str) -> str | None:
         entry = self._checks.get(check)
         return entry.get("status") if entry else None
+
+    def identities_of(self, check: str) -> set[str]:
+        """某項檢查本次產生的正典身分集合（收尾重探用來排除「本次仍存在」的發現）。"""
+        entry = self._checks.get(check)
+        return set(entry.get("identities", set())) if entry else set()
 
     def to_json(self, categories: Iterable[str]) -> dict:
         checks = {
@@ -167,6 +180,7 @@ class ScanCoverage:
             "categories": {
                 category: category_status(checks, category) for category in sorted(categories)
             },
+            "reverify_resolved": sorted(self._reverify_resolved),
         }
 
 
@@ -263,6 +277,9 @@ def absent_issue_status(
     （正向重探在第 3 刀），回 not_observed。
     """
     if by_identity:
+        # 收尾重探已正向確認已修好（回 401/403/404）→ resolved（ADR-0006 決策 B）
+        if key in ((current_coverage or {}).get("reverify_resolved") or []):
+            return RESOLVED
         check = _check_for_identity(previous_coverage, key)
         if check == "agent":
             return NOT_OBSERVED
