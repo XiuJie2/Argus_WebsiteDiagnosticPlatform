@@ -234,6 +234,75 @@ class CompareIssuesCoverageTests(TestCase):
         self.assertEqual(missing[0]["status"], NOT_OBSERVED)
 
 
+class IdentityComparisonTests(TestCase):
+    """ADR-0006 第 2 刀：兩次掃描都 v2 時，以跨掃描正典身分比較，Agent 雜湊 rule_id 漂移
+    不再被誤判成新／已修好。"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="cov-id", password="safe-test-password")
+
+    def _completed(self, coverage, days_ago):
+        return _scan(
+            self.user, status=ScanJob.Status.COMPLETED, coverage=coverage,
+            completed_at=timezone.now() - timezone.timedelta(days=days_ago),
+        )
+
+    def _agent_finding(self, scan, rule_id, title):
+        Finding.objects.create(
+            scan_job=scan, category="security", severity="high", title=title,
+            rule_id=rule_id, owasp_category="A01", cwe_id="CWE-862",
+            evidence_json={"observed_endpoint": "/api/orders"},
+        )
+
+    def test_agent_rule_drift_counts_as_persisting_not_new(self):
+        cov = ScanCoverage()
+        cov.mark("agent", COMPLETED)
+        previous = self._completed(cov.to_json(["security"]), 7)
+        self._agent_finding(
+            previous, "agent-observed-security-aaaaaaaaaa", "未授權存取：/api/orders"
+        )
+        current = self._completed(cov.to_json(["security"]), 0)
+        # 同一個洞，rule_id 漂移、措辭改寫，但同端點／同弱點類別
+        self._agent_finding(current, "agent-observed-security-bbbbbbbbbb", "未授權就能讀取他人訂單")
+
+        issues, missing = compare_issues(current, previous)
+
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["status"], "persisting")
+        self.assertEqual(missing, [])
+
+    def test_vanished_agent_finding_not_resolved_by_absence(self):
+        cov = ScanCoverage()
+        cov.mark("agent", COMPLETED)
+        previous = self._completed(cov.to_json(["security"]), 7)
+        self._agent_finding(
+            previous, "agent-observed-security-aaaaaaaaaa", "未授權存取：/api/orders"
+        )
+        current = self._completed(cov.to_json(["security"]), 0)  # 本次沒有任何 agent 發現
+
+        _issues, missing = compare_issues(current, previous)
+
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0]["status"], NOT_OBSERVED)  # 不得冒稱已修好
+
+    def test_legacy_scan_falls_back_to_issue_key(self):
+        # 前次是舊掃描（coverage 無 version→v1），回退 issue_key：rule_id 不同＝不同問題
+        previous = self._completed({}, 7)
+        self._agent_finding(
+            previous, "agent-observed-security-aaaaaaaaaa", "未授權存取：/api/orders"
+        )
+        cov = ScanCoverage()
+        cov.mark("agent", COMPLETED)
+        current = self._completed(cov.to_json(["security"]), 0)
+        self._agent_finding(current, "agent-observed-security-bbbbbbbbbb", "未授權就能讀取他人訂單")
+
+        issues, missing = compare_issues(current, previous)
+
+        self.assertEqual(issues[0]["status"], "new")  # 回退 issue_key，漂移算新問題
+        self.assertEqual(len(missing), 1)
+        self.assertEqual(missing[0]["status"], NOT_OBSERVED)
+
+
 class TestedCategoriesCoverageTests(TestCase):
     def test_category_with_every_check_failed_is_not_scored(self):
         user = User.objects.create_user(username="cov-cat", password="safe-test-password")

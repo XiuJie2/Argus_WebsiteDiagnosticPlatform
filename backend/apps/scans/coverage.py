@@ -234,6 +234,15 @@ def _check_for_key(coverage: dict | None, key: str) -> str | None:
     return None
 
 
+def _check_for_identity(coverage: dict | None, identity: str) -> str | None:
+    """正典身分（v2）找回「是哪一項檢查產生的」：只查 identities，不做前綴 fallback
+    （正典身分不帶 rule 前綴）。"""
+    for name, entry in ((coverage or {}).get("checks") or {}).items():
+        if identity in (entry.get("identities") or []):
+            return name
+    return None
+
+
 def absent_issue_status(
     *,
     previous_coverage: dict | None,
@@ -242,21 +251,32 @@ def absent_issue_status(
     category: str,
     urls: Iterable[str],
     analysed_urls: set[str],
+    by_identity: bool = False,
 ) -> str:
     """前次有、本次沒出現的問題屬於哪一種狀態。
 
     只有「產生它的同一項檢查本次完整跑完」且「受影響頁面本次有完整分析到」才是 resolved。
     舊掃描沒有覆蓋紀錄時無從判斷，一律 not_observed（不能冒稱已修好）。
+
+    `by_identity`（ADR-0006 第 2 刀）：`key` 是跨掃描正典身分而非 issue_key，改查 coverage 的
+    identities 找產生它的檢查；AI Agent 觀察（檢查 `agent`）一律不靠「身分消失」判已修好
+    （正向重探在第 3 刀），回 not_observed。
     """
-    # AI Agent 觀察的 rule_id 是「弱點類＋端點」的雜湊，描述或觀察端點一有微調就換成新鍵
-    # （弱點類由 LLM 措辭推得、端點也可能是別名）。鍵消失＝換了鍵，不代表問題修好，不可冒稱
-    # resolved（實測：重掃描述微調→舊鍵被誤判「已修好」，可是問題仍在）。一律回本次未確認。
-    if (key or "").startswith(_AGENT_SECURITY_PREFIX):
-        return NOT_OBSERVED
+    if by_identity:
+        check = _check_for_identity(previous_coverage, key)
+        if check == "agent":
+            return NOT_OBSERVED
+    else:
+        # AI Agent 觀察的 rule_id 是「弱點類＋端點」的雜湊，描述或觀察端點一有微調就換成新鍵
+        # （弱點類由 LLM 措辭推得、端點也可能是別名）。鍵消失＝換了鍵，不代表問題修好，不可冒稱
+        # resolved（實測：重掃描述微調→舊鍵被誤判「已修好」，可是問題仍在）。一律回本次未確認。
+        if (key or "").startswith(_AGENT_SECURITY_PREFIX):
+            return NOT_OBSERVED
     current_checks = (current_coverage or {}).get("checks")
     if not current_checks:
         return NOT_OBSERVED
-    check = _check_for_key(previous_coverage, key)
+    if not by_identity:
+        check = _check_for_key(previous_coverage, key)
     if check is not None:
         status = (current_checks.get(check) or {}).get("status")
         if status is None or status in _NOT_RUN:
