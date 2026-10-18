@@ -56,7 +56,9 @@ from apps.scans.scanners import (
 from apps.scans.security import exposure_scanner, owasp_mapper
 from apps.scans.security.api_scanner import MAX_SURFACE_ENDPOINTS, analyze_api
 from apps.scans.security.authz_probe import (
+    analyze_idor_results,
     analyze_unauthorized_results,
+    expand_idor_candidates,
     probe_unauthorized_endpoints,
 )
 from apps.scans.security.content_injection import (
@@ -1581,20 +1583,24 @@ def _run_authz_probe(ctx: ScanRunContext) -> None:
     if not candidates:
         ctx.coverage.mark("authz_probe", SKIPPED, "沒有發現可探測的 API 端點")
         return
+    # 從觀察到的 /集合/:id 反推父集合（成批外洩）與鄰近 id（IDOR 枚舉）一起探；
+    # 併進候選後統一去重、套 MAX_ENDPOINTS 上限（通用、不寫死路徑）。
+    candidates = list(dict.fromkeys(candidates + expand_idor_candidates(candidates)))
     raise_if_cancelled(scan_job_id)
     try:
         results = _run_async(
             lambda: probe_unauthorized_endpoints(candidates, scan_job_id)
         )
         findings = [
-            owasp_mapper.tag(f) for f in analyze_unauthorized_results(results)
+            owasp_mapper.tag(f)
+            for f in analyze_unauthorized_results(results) + analyze_idor_results(results)
         ]
         ctx.record(findings, check="authz_probe")
         ctx.coverage.mark("authz_probe", COMPLETED)
         append_log(
             scan_job_id,
             f"未授權存取探測完成：探測 {len(results)} 個 API 端點，"
-            f"發現 {len(findings)} 項未授權記錄外洩",
+            f"發現 {len(findings)} 項未授權記錄外洩／IDOR",
         )
     except ScanCancelled:
         raise
