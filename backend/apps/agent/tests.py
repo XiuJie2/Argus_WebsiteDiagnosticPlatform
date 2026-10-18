@@ -1236,7 +1236,7 @@ class PersistAgentSecurityFindingsTests(TestCase):
         self.assertEqual(len(created), 1)
         obj = Finding.objects.get(scan_job=self.scan_job, rule_id="kali-sqlmap-sqli")
         self.assertEqual(obj.category, "security")
-        self.assertEqual(obj.owasp_category, "A03")  # owasp_mapper 對 kali-sqlmap-sqli 的對映
+        self.assertEqual(obj.owasp_category, "A05")  # kali-sqlmap-sqli → 2025 A05 注入攻擊
 
     def _observed(self, title, url, severity="medium", verified=False, description="外洩"):
         from apps.agent.findings import agent_security_rule_id

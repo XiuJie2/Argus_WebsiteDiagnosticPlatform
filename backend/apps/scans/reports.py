@@ -772,14 +772,8 @@ def _collect_glossary_terms(grouped_findings) -> list[tuple[str, str]]:
 
 
 def _owasp_cwe_text(finding) -> str:
-    """技術索引的 OWASP／CWE 欄：2025 版為主、括號附 2021 版（2026-10-11）。"""
-    owasp = "—"
-    if finding.owasp_category:
-        code_2025 = finding.owasp_2025
-        owasp = (
-            f"{code_2025}:2025（2021 {finding.owasp_category}）"
-            if code_2025 else finding.owasp_category
-        )
+    """技術索引的 OWASP／CWE 欄：OWASP Top 10:2025 代號（2026-10-18 起原生 2025）。"""
+    owasp = f"{finding.owasp_category}:2025" if finding.owasp_category else "—"
     return f"{owasp} / {finding.cwe_id or '—'}"
 
 

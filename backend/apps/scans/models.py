@@ -219,8 +219,8 @@ class ScanJob(models.Model):
     # 並複核高風險問題是否可能誤報。只是參考說明，不改任何問題的嚴重度與分數
     ai_insight = models.JSONField(default=dict, blank=True)
     # AI 深度資安測試（Agent 觀察）摘要（ADR-0006 決策 C）：{count, severity_counts, max_severity}。
-    # Agent 觀察是非確定性深測，不計入可比較的 category_scores／overall_score（基準分只由確定性層算），
-    # 另以此摘要獨立呈現。migration 0037
+    # Agent 觀察是非確定性深測，不計入可比較的 category_scores／overall_score（基準分只由確定性層
+    # 計算），另以此摘要獨立呈現。migration 0037
     agent_findings_summary = models.JSONField(default=dict, blank=True)
     # 即時進度（worker 寫入；前端輪詢顯示）
     # {pages_done: int, pages_total: int, phase: "crawling"|"scanning"|"agent_testing",
@@ -458,18 +458,11 @@ class Finding(models.Model):
         return KIND_LABELS.get(self.security_kind, "")
 
     @property
-    def owasp_2025(self) -> str:
-        """OWASP Top 10:2025 代號（由 2021 代號與 CWE 推導；DB 只存 2021 代號）。"""
-        from apps.scans.security.owasp_mapper import owasp_2025
+    def owasp_label(self) -> str:
+        """顯示用：「A02:2025 安全設定錯誤」。owasp_category 已直接存 2025 代號。"""
+        from apps.scans.security.owasp_mapper import owasp_label
 
-        return owasp_2025(self.owasp_category, self.cwe_id)
-
-    @property
-    def owasp_2025_label(self) -> str:
-        """顯示用：「A02:2025 安全設定錯誤」。"""
-        from apps.scans.security.owasp_mapper import owasp_2025_text
-
-        return owasp_2025_text(self.owasp_category, self.cwe_id)
+        return owasp_label(self.owasp_category)
 
 
 class SearchConsoleConnection(models.Model):
