@@ -98,7 +98,8 @@ const SCAN_STEP_META = {
   geo_site: { label: "AI 爬蟲", title: "檢查 AI 爬蟲訊號", hint: "檢查 llms.txt 與 robots.txt 對 AI 爬蟲的設定", Icon: StatusScanGlyph },
   seo_links: { label: "連結檢查", title: "檢查連結與網址", hint: "檢查站內外連結的狀態與轉址，以及 robots.txt、HTTPS、www 與 404 頁設定", Icon: StatusScanGlyph },
   pagespeed: { label: "效能量測", title: "效能量測", hint: "以 Google PageSpeed Insights 量測首頁的 Lighthouse 分數與真實使用者體驗", Icon: StatusScanGlyph },
-  agent: { label: "AI Agent", title: "AI Agent 測試", hint: "AI Agent 以擬真使用者操作網站，測試互動流程", Icon: StatusAgentGlyph },
+  agent: { label: "AI 深度資安", title: "AI 深度資安測試", hint: "AI 像滲透測試員實際操作網站，找越權存取、業務邏輯等需推理串接的弱點", Icon: StatusAgentGlyph },
+  agent_ux: { label: "AI 擬真測試", title: "AI 擬真使用者測試", hint: "AI 以擬真使用者操作網站，測試互動流程與可用性（非資安深度測試）", Icon: StatusAgentGlyph },
   scoring: { label: "評分", title: "彙整評分", hint: "計算各維度分數並排出優先處理項目", Icon: StatusScanGlyph },
 };
 
@@ -165,9 +166,10 @@ function CrawlingAnimation({
     detailed, steps, currentIdx: safeIdx, current, stepTotal, stepDone, stepFrac, total, done, hasProgress,
     percent: pct,
   } = scanProgress(status, progress);
-  const stepUnit = current?.key === "agent" ? "步" : "頁";
+  const isAgentStep = current?.key === "agent" || current?.key === "agent_ux";
+  const stepUnit = isAgentStep ? "步" : "頁";
   // agent 階段後端回報目前在跑哪個子代理（偵察／指揮調度／各專家），讓使用者看得出活著在做什麼
-  const agentDetail = current?.key === "agent" ? progress?.step_detail : null;
+  const agentDetail = isAgentStep ? progress?.step_detail : null;
 
   // 已執行時間（從整個 scan 的 started_at 起算）
   const scanStart = startedAt ? new Date(startedAt).getTime() : null;
