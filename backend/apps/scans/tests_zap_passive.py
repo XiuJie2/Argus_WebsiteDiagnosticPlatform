@@ -103,6 +103,38 @@ class BuildHarTests(SimpleTestCase):
         # 圖片只留標頭，不送內容
         self.assertNotIn("text", entries[1]["response"]["content"])
 
+    def test_representative_collapses_templated_pages(self):
+        # 大站同模板的近似頁（/p/#.php）在 active scan 只留代表性的一筆
+        _write_har(self.dir, "b.har", [
+            _entry(f"{ORIGIN}/p/412-1043-1.php"),
+            _entry(f"{ORIGIN}/p/412-1043-6298.php"),
+            _entry(f"{ORIGIN}/p/412-1043-72.php"),
+            _entry(f"{ORIGIN}/about"),
+        ])
+        # 被動（預設）不去重：四筆都在
+        _, passive_count = build_har([self.dir / "b.har"], ORIGIN)
+        self.assertEqual(passive_count, 4)
+        # 代表性去重：/p/#.php 收斂成 1 筆 ＋ /about ＝ 2
+        _, active_count = build_har(
+            [self.dir / "b.har"], ORIGIN, representative=True, max_entries=40
+        )
+        self.assertEqual(active_count, 2)
+
+    def test_representative_respects_max_entries(self):
+        _write_har(self.dir, "c.har", [_entry(f"{ORIGIN}/a/{i}") for i in range(10)])
+        # 10 個不同模板段（/a/#），模板相同 → 去重後只剩 1
+        _, count = build_har(
+            [self.dir / "c.har"], ORIGIN, representative=True, max_entries=5
+        )
+        self.assertEqual(count, 1)
+        # 不同模板（非數字區段不同）也受 max_entries 上限限制
+        letters = "abcdefghij"
+        _write_har(self.dir, "d.har", [_entry(f"{ORIGIN}/{c}/1") for c in letters])
+        _, capped = build_har(
+            [self.dir / "d.har"], ORIGIN, representative=True, max_entries=3
+        )
+        self.assertEqual(capped, 3)
+
     @override_settings(ARGUS_ZAP_MAX_ENTRIES=3, ARGUS_ZAP_MAX_BODY_CHARS=10)
     def test_limits(self):
         _write_har(self.dir, "a.har", [_entry(f"{ORIGIN}/{i}", body="x" * 50) for i in range(5)])

@@ -204,11 +204,33 @@ def _clean_entry(entry: dict, max_body_chars: int) -> dict:
     return {**entry, "request": request, "response": response}
 
 
-def build_har(har_paths: list[Path], origin: str) -> tuple[str, int]:
-    """合併爬蟲錄下的 HAR，只留同 origin 並去除機密；回傳 (JSON 字串, 筆數)。"""
+def _template_key(url: str) -> str:
+    """把網址正規化成「路徑模板」當去重鍵：去查詢字串、數字段換成 #。
+
+    `/p/412-1043-6298.php` 與 `/p/412-1043-72.php`、`/rest/products/1` 與 `/rest/products/2`
+    會收斂成同一個模板——大站常見的「同一支模板吃不同 id」的近似頁，對 active scan 是重複節點。
+    """
+    parts = urlsplit(url)
+    method_path = parts.path or "/"
+    segments = [re.sub(r"\d+", "#", seg) for seg in method_path.split("/")]
+    return f"{parts.scheme}://{parts.netloc}" + "/".join(segments)
+
+
+def build_har(
+    har_paths: list[Path], origin: str, *, max_entries: int | None = None,
+    representative: bool = False,
+) -> tuple[str, int]:
+    """合併爬蟲錄下的 HAR，只留同 origin 並去除機密；回傳 (JSON 字串, 筆數)。
+
+    `representative=True`（主動掃描用）：同一個路徑模板（`_template_key`）只留第一筆，避免大站
+    幾十頁同模板把 active scan 的節點數灌爆；`max_entries` 另給一個比 ARGUS_ZAP_MAX_ENTRIES 更小的
+    上限（被動分析不傳、沿用原行為）。
+    """
+    cap = max_entries if max_entries is not None else settings.ARGUS_ZAP_MAX_ENTRIES
     entries: list[dict] = []
+    seen_templates: set[str] = set()
     for path in har_paths:
-        if len(entries) >= settings.ARGUS_ZAP_MAX_ENTRIES:
+        if len(entries) >= cap:
             break
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -218,8 +240,13 @@ def build_har(har_paths: list[Path], origin: str) -> tuple[str, int]:
             url = str((entry.get("request") or {}).get("url", ""))
             if not _same_origin(url, origin):
                 continue
+            if representative:
+                key = f"{(entry.get('request') or {}).get('method', '')} {_template_key(url)}"
+                if key in seen_templates:
+                    continue
+                seen_templates.add(key)
             entries.append(_clean_entry(entry, settings.ARGUS_ZAP_MAX_BODY_CHARS))
-            if len(entries) >= settings.ARGUS_ZAP_MAX_ENTRIES:
+            if len(entries) >= cap:
                 break
     har = {"log": {"version": "1.2", "creator": {"name": "Argus", "version": "1"},
                    "entries": entries}}
