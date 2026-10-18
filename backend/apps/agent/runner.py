@@ -349,6 +349,14 @@ def max_total_steps_estimate() -> int:
         + settings.ARGUS_AGENT_MAX_SPECIALIST_DISPATCH * _SPECIALIST_MAX_STEPS
     )
 
+
+def ux_steps_estimate() -> int:
+    """擬真使用者 UX 測試的步數估計（給進度條分母用）：單一 session，上限 _SPECIALIST_MAX_STEPS。
+
+    UX 只跑一個 session，不做 recon／orchestrator／specialist 派工，所以分母不是資安滲透的最壞估計
+    （max_total_steps_estimate），否則沒勾深度資安的掃描會顯示像在跑 400 步的資安 agent。"""
+    return _SPECIALIST_MAX_STEPS
+
 SPECIALIST_ROLES: dict[str, dict[str, str]] = {
     "auth_idor": {
         "prompt": AUTH_AGENT_PROMPT,
