@@ -52,6 +52,8 @@ from apps.scans.scanners import (
     analyze_security_site_level,
     analyze_site_signals,
     calculate_scores,
+    is_agent_observation,
+    summarize_agent_security,
 )
 from apps.scans.security import exposure_scanner, owasp_mapper
 from apps.scans.security.api_scanner import MAX_SURFACE_ENDPOINTS, analyze_api
@@ -1514,6 +1516,15 @@ def stage_exposure(ctx: ScanRunContext) -> None:
     if ctx.execution_plan.run_exposure:
         raise_if_cancelled(scan_job_id)
         append_log(scan_job_id, "敏感檔案外洩探測開始（主動內容探測，繞連結直接探隱藏檔）")
+        # ADR-0006 第 3 刀：把上一次完成掃描的 exposure 端點也併入本次探測——仍可讀的檔案會被
+        # exposure 分析器重報（漏報自癒），已修好（回 401/403/404）的在下方做 resolved 正向驗證。
+        exposure_prev = {
+            identity: path
+            for identity, (path, source) in
+            _previous_deterministic_endpoints(scan_job).items()
+            if source == "exposure_probe" and "#" not in path
+        }
+        extra_paths = [f"{scan_job.origin}/{path.lstrip('/')}" for path in exposure_prev.values()]
         try:
             probe_results = _run_async(
                 lambda: exposure_scanner.probe_paths(
@@ -1522,6 +1533,7 @@ def stage_exposure(ctx: ScanRunContext) -> None:
                     scan_job_id,
                     robots_disallow=robots_disallow,
                     api_path_prefixes=exposure_scanner.api_prefixes(_observed_api_paths(ctx)),
+                    extra_paths=extra_paths,
                 )
             )
             exposure_findings = [
@@ -1530,6 +1542,7 @@ def stage_exposure(ctx: ScanRunContext) -> None:
             ]
             ctx.record(exposure_findings, check="exposure_probe")
             ctx.coverage.mark("exposure_probe", COMPLETED)
+            _mark_reverify_resolved(ctx, exposure_prev, probe_results)
             append_log(
                 scan_job_id,
                 f"敏感檔案外洩探測完成：探測 {len(probe_results)} 路徑，"
@@ -1569,6 +1582,72 @@ def stage_exposure(ctx: ScanRunContext) -> None:
     )
 
 
+def _previous_deterministic_endpoints(scan_job) -> dict[str, tuple[str, str]]:
+    """上一次完成掃描的『端點型確定性資安發現』：正典身分 →（端點路徑, evidence_source）
+    （ADR-0006 第 3 刀）。
+
+    只取確定性層（exposure／authz）且有端點的資安發現；Agent 觀察不在此（其缺席由比較層判
+    not_observed）。供本次收尾重探用：exposure 端點走 exposure 探測（可重報仍可讀的檔案），
+    authz 端點走無憑證 authz 探測；兩者都做 resolved 正向驗證。失敗回空（不影響主掃描）。
+    """
+    try:
+        from apps.scans.finding_identity import finding_identity
+        from apps.scans.projects import previous_completed
+
+        project = scan_job.project
+        if project is None:
+            return {}
+        previous = previous_completed(project, scan_job)
+        if previous is None:
+            return {}
+        out: dict[str, tuple[str, str]] = {}
+        rows = previous.findings.filter(
+            category="security",
+            evidence_source__in=("exposure_probe", "authz_probe"),
+        ).values(
+            "rule_id", "category", "title", "description",
+            "owasp_category", "cwe_id", "evidence_json", "evidence_source",
+        )
+        for row in rows:
+            endpoint = (row.get("evidence_json") or {}).get("endpoint")
+            if endpoint:
+                out[finding_identity(row)] = (str(endpoint), row.get("evidence_source") or "")
+        return out
+    except Exception:  # noqa: BLE001 — 重探前置失敗不影響主掃描
+        return {}
+
+
+def _mark_reverify_resolved(
+    ctx: ScanRunContext, prev_endpoints: dict[str, str], results: list[dict]
+) -> None:
+    """收尾重探：上次的確定性端點本次回 401/403/404、且本次沒再被報成發現 → 標 resolved。
+
+    只在「正向確認已修好」時才標；回 200（仍可讀）或打不到（逾時／連線錯誤）一律不標，
+    維持歷史比較的保守值（not_observed），不冒稱已修好（ADR-0006 決策 B 的鐵律）。
+    """
+    from urllib.parse import urlparse
+
+    from apps.scans.finding_identity import canonical_resource
+
+    blocked_by_resource: dict[str, bool] = {}
+    for r in results or []:
+        try:
+            status = int(r.get("status") or 0)
+        except (TypeError, ValueError):
+            continue
+        resource = canonical_resource(urlparse(r.get("url") or "").path)
+        is_blocked = status in (401, 403, 404)
+        blocked_by_resource[resource] = is_blocked and blocked_by_resource.get(resource, True)
+    current_found = ctx.coverage.identities_of("exposure_probe") | ctx.coverage.identities_of(
+        "authz_probe"
+    )
+    for identity, path in prev_endpoints.items():
+        if "#" in path or identity in current_found:
+            continue
+        if blocked_by_resource.get(canonical_resource(path)):
+            ctx.coverage.mark_resolved(identity)
+
+
 def _run_authz_probe(ctx: ScanRunContext) -> None:
     """未授權存取探測：對發現的 API 端點做無憑證 GET，成批帳號／成員記錄匿名可讀即報。
 
@@ -1581,6 +1660,15 @@ def _run_authz_probe(ctx: ScanRunContext) -> None:
         for path in dict.fromkeys(_observed_api_paths(ctx))  # 去重保序
         if path
     ]
+    # ADR-0006 第 3 刀：把上一次完成掃描的 authz 端點也納入本次無憑證探測，讓「仍存在」的
+    # 問題被 authz 分析器重新找到（漏報自癒）、「已修好」的能正向重探（回 401/403/404）。
+    # exposure 檔案端點改走 exposure 探測（stage_exposure），由 exposure 分析器重報仍可讀的檔案。
+    authz_prev = {
+        identity: path
+        for identity, (path, source) in _previous_deterministic_endpoints(ctx.scan_job).items()
+        if source == "authz_probe" and "#" not in path  # IDOR 模板（含 #）無法直接重探
+    }
+    candidates.extend(f"{origin}/{path.lstrip('/')}" for path in authz_prev.values())
     if not candidates:
         ctx.coverage.mark("authz_probe", SKIPPED, "沒有發現可探測的 API 端點")
         return
@@ -1598,6 +1686,7 @@ def _run_authz_probe(ctx: ScanRunContext) -> None:
         ]
         ctx.record(findings, check="authz_probe")
         ctx.coverage.mark("authz_probe", COMPLETED)
+        _mark_reverify_resolved(ctx, authz_prev, results)
         append_log(
             scan_job_id,
             f"未授權存取探測完成：探測 {len(results)} 個 API 端點，"
@@ -2116,18 +2205,24 @@ def stage_scoring(ctx: ScanRunContext) -> None:
             f"跨層去重：{len(dropped)} 筆 Agent 觀察與確定性探測指向同一端點，"
             "已合併，保留可重現的確定性發現",
         )
+    # ADR-0006 決策 C：headline／可比較基準分只由確定性層計算，AI Agent 觀察（非確定性深測、
+    # 有無隨運氣跳動）不進衰減、另以 agent_findings_summary 獨立呈現（Kali 已驗證仍計分）。
+    deterministic_findings = [f for f in ctx.all_findings if not is_agent_observation(f)]
     overall_score, category_scores, top_actions = calculate_scores(
-        ctx.all_findings,
+        deterministic_findings,
         tested_categories=tested_categories,
         base_scores=base_scores_for(ctx),
     )
+    agent_findings_summary = summarize_agent_security(ctx.all_findings)
     append_log(
         scan_job_id,
-        f"掃描完成 — 總分 {overall_score}，共 {len(ctx.all_findings)} 項發現",
+        f"掃描完成 — 資安基準分 {overall_score}（確定性層；不含 AI 深度測試），"
+        f"共 {len(ctx.all_findings)} 項發現，其中 AI 深度測試 {agent_findings_summary['count']} 項",
     )
     scan_job.overall_score = overall_score
     scan_job.category_scores = category_scores
     scan_job.top_actions = top_actions
+    scan_job.agent_findings_summary = agent_findings_summary
     scan_job.coverage = coverage_for(ctx, tested_categories)
     scan_job.scoring_version = SCORING_VERSION
     scan_job.ruleset_version = RULESET_VERSION
@@ -2148,6 +2243,7 @@ def stage_scoring(ctx: ScanRunContext) -> None:
         overall_score=overall_score,
         category_scores=category_scores,
         top_actions=top_actions,
+        agent_findings_summary=agent_findings_summary,
         warning_summary=scan_job.warning_summary,
         coverage=scan_job.coverage,
         scoring_version=SCORING_VERSION,
