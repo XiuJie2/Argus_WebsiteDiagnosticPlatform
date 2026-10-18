@@ -114,14 +114,26 @@ agent 已是 opt-in（勾選才跑），所以「沒勾的掃描」headline 本�
 
 ## 落地順序（每刀完成回來更新本檔與 `apps/scans/CLAUDE.md`）
 
-1. **身分函式**：`finding_identity`＋兩層落地時都帶 owasp/cwe（agent 補 tag）；`coverage` 同時存
+> **實作狀態（2026-10-18）：第 1～4 刀已全部落地並通過測試。** 落地中對決策 B 的「回 200 補一筆
+> finding」採保守做法（見下）；其餘依本計劃實作。
+
+1. ✅ **身分函式**：`finding_identity`＋兩層落地時都帶 owasp/cwe（agent 補 tag）；`coverage` 同時存
    正典鍵與舊 `issue_key`。單元測試鎖「同洞不同措辭／不同掛載前綴 → 同鍵」。
-2. **比較改用正典鍵**（v2＋v2 才用，否則回退）；`compare_issues`／總覽 `changes.resolved` 接上。
-3. **正向重探 resolved**（決策 B）：新收尾重探 + 漏報補登；測試鎖「回 200 不算修好、回 403 才算」。
-4. **分數分離**（決策 C）：`calculate_scores` 只吃確定性 finding，agent 另出 summary；`SCORING_VERSION`
-   +1；報告與前端的分數來源與「AI 深度測試」區塊調整；`tests_scoring_*` 更新。
-5. 文件：`docs/doc-sync-rules.md` 連動、報告 `RENDERER_VERSION`（若版面動）、競賽 Word 內容 md
-   （對外可見的分數語意變了）。
+   （`finding_identity.py`、`owasp_mapper.tag` agent 退回、coverage v2、`tests_finding_identity`）
+2. ✅ **比較改用正典鍵**（v2＋v2 才用，否則回退）；`compare_issues`／總覽 `changes.resolved` 接上。
+   （`projects.compare_issues`、`absent_issue_status(by_identity)`、`tests_coverage.IdentityComparisonTests`；
+   `issue_streaks` 仍以 issue_key 計算，未改。）
+3. ✅ **正向重探 resolved**（決策 B）：收尾重探併入既有無憑證探測，回 401/403/404 且本次沒再被報才
+   標 resolved；bulk/IDOR 的漏報自癒由正常分析器達成。**保守偏差**：exposure 檔案型仍可讀時未自動
+   補報（避免以舊 finding 複製產生過期證據）、IDOR `#` 模板不直接重探；resolved 一律要有成功重探。
+   （`tasks._previous_deterministic_endpoints`／`_mark_reverify_resolved`、coverage `reverify_resolved`、
+   `tests_coverage.ReverifyResolvedTests`）
+4. ✅ **分數分離**（決策 C）：headline 只吃確定性 finding（`is_agent_observation` 濾掉 agent 觀察），
+   agent 另出 `agent_findings_summary`（migration 0037）；`SCORING_VERSION` 5；報告導讀句與資安分析頁
+   註明基準分不含 AI 深度測試；競賽 Word 內容 md 同步。**只分離 `agent-observed-security-*`**（使用者
+   拍板）：agent UX（`AGENT_UX_*`）與 Kali（`kali-*`）仍計分。（`scanners.summarize_agent_security`、
+   `tests_scoring_and_report_grouping.AgentScoreSeparationTests`）
+5. ✅ 文件：`apps/scans/CLAUDE.md`、`RENDERER_VERSION` 35、競賽 Word 內容 md、各刀 log 同步完成。
 
 ## 風險與未決
 
