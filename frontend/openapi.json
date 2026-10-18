@@ -3308,7 +3308,7 @@
         "/api/auth/turnstile/": {
             "get": {
                 "operationId": "auth_turnstile_retrieve",
-                "description": "公開：前端是否要顯示 Turnstile 元件，以及要用的 site key（公開值）。",
+                "description": "公開：前端是否要顯示 Turnstile 元件，以及要用的 site key（公開值）。\n\n登入頁一進來就呼叫，順便設定 csrftoken cookie，登入端點的 CSRF 驗證才有 token 可比對。",
                 "tags": [
                     "auth"
                 ],
@@ -9676,6 +9676,10 @@
                         "type": "boolean",
                         "default": true
                     },
+                    "deep_agent_requested": {
+                        "type": "boolean",
+                        "default": false
+                    },
                     "project": {
                         "type": "integer",
                         "nullable": true
@@ -9685,6 +9689,7 @@
                     "active_testing_authorized",
                     "authorization_confirmed",
                     "categories",
+                    "deep_agent_requested",
                     "max_depth",
                     "max_pages",
                     "project",
@@ -9758,6 +9763,10 @@
                         "type": "string",
                         "writeOnly": true,
                         "maxLength": 255
+                    },
+                    "deep_agent_requested": {
+                        "type": "boolean",
+                        "default": false
                     },
                     "project": {
                         "type": "integer",

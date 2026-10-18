@@ -374,7 +374,7 @@ class NucleiBudgetTests(TestCase):
         """Agent 也會跑時保留時間給它（全網站主動掃描兩者都會開）。"""
         scan = _scan(
             self.scan.user, scan_mode=ScanJob.ScanMode.ACTIVE, active_testing_authorized=True,
-            categories=["security"], max_pages=10,
+            deep_agent_requested=True, categories=["security"], max_pages=10,
         )
         ctx = self._ctx(scan=scan, elapsed=900)
         # 基準必須明確關掉 agent：正式環境 .env 可能已開 ARGUS_AGENT_ENABLED，

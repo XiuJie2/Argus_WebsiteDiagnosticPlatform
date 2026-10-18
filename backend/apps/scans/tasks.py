@@ -149,8 +149,8 @@ def planned_scan_steps(scan_job, execution_plan) -> list[str]:
     if execution_plan.run_nuclei:
         steps.append("active_probe")
     steps.append("deep_security")
-    if _runs_zap_active(scan_job):
-        steps.append("zap_active")
+    # ZAP 主動掃描不另立進度步驟（工具名不適合當階段名）：它緊接在 deep_security 之後、
+    # 送出受控攻擊 payload，進度併入「深度資安」步驟顯示（見 stage_zap_active）。
     if execution_plan.run_exposure:
         steps.append("exposure_probe")
     if "geo" in cats:
@@ -1427,7 +1427,8 @@ def stage_zap_active(ctx: ScanRunContext) -> None:
             ctx.coverage.mark("zap_active", SKIPPED, reason)
         return
     raise_if_cancelled(ctx.scan_job_id)
-    ctx.scanning_progress(ctx.scanning_total + 3, "zap_active")
+    # 併入「深度資安」步驟顯示（不另立 ZAP 工具名的進度 chip）；內部覆蓋仍記 zap_active。
+    ctx.scanning_progress(ctx.scanning_total + 3, "deep_security")
     har_files = sorted(ctx.har_dir.glob("*.har")) if ctx.har_dir else []
     try:
         result = run_zap_active(

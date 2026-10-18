@@ -176,6 +176,11 @@ class ScanJob(models.Model):
     max_pages = models.PositiveSmallIntegerField(default=50)
     respect_robots = models.BooleanField(default=True)
     active_testing_authorized = models.BooleanField(default=False)
+    # AI Agent 深度資安測試（2026-10-18）：使用者在建立掃描時明確勾選才跑、才加收
+    # ARGUS_COIN_AGENT_DEEP 點。預設 False＝主動掃描只跑確定性層（Nuclei／ZAP／敏感檔／
+    # 未授權探測），不跑較慢且耗 token 的 LLM pentest agent。執行閘見 scan_plan.run_agent、
+    # 計費見 billing._scan_is_deep。
+    deep_agent_requested = models.BooleanField(default=False)
     # 首次免費完整掃描（2026-10-07，docs/business-model-plan.md）：被動＋整站＋五面向的
     # 第一次掃描不扣點。失敗或取消的免費掃描不算用掉資格（billing.services.free_trial_available）。
     is_trial = models.BooleanField(default=False)

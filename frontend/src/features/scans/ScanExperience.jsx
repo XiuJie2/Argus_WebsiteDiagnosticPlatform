@@ -92,9 +92,8 @@ const SCAN_STEP_META = {
   aeo_answers: { label: "問答檢測", title: "AEO 問答檢測", hint: "依網站內容出題，在已掃描頁面中找答案並核對原文證據", Icon: StatusScanGlyph },
   analyze_security: { label: "資安", title: "分析資安", hint: "檢查表單 CSRF，以及頁面中外洩的金鑰與個資", Icon: StatusScanGlyph },
   active_probe: { label: "主動探測", title: "主動探測", hint: "以 Nuclei／Katana 對授權目標執行受控探測", Icon: StatusScanGlyph },
-  deep_security: { label: "深度資安", title: "深度資安檢查", hint: "檢查 HTTPS 與安全標頭、TLS 憑證、Cookie、SRI、DNS 與前端套件版本", Icon: StatusScanGlyph },
+  deep_security: { label: "深度資安", title: "深度資安檢查", hint: "檢查 HTTPS 與安全標頭、TLS 憑證、Cookie、SRI、DNS 與前端套件版本；授權的主動掃描另會送出受控的攻擊測試找可被利用的弱點", Icon: StatusScanGlyph },
   zap_passive: { label: "ZAP", title: "OWASP ZAP 被動分析", hint: "把已爬到的流量交給 OWASP ZAP 檢查，不對網站發出新的請求", Icon: StatusScanGlyph },
-  zap_active: { label: "ZAP 主動", title: "OWASP ZAP 主動掃描", hint: "對已授權的網站以 OWASP ZAP 送出受控的攻擊測試，找出可被利用的弱點", Icon: StatusScanGlyph },
   exposure_probe: { label: "敏感檔案", title: "敏感檔案探測", hint: "探測常見的敏感檔案路徑是否外洩", Icon: StatusScanGlyph },
   geo_site: { label: "AI 爬蟲", title: "檢查 AI 爬蟲訊號", hint: "檢查 llms.txt 與 robots.txt 對 AI 爬蟲的設定", Icon: StatusScanGlyph },
   seo_links: { label: "連結檢查", title: "檢查連結與網址", hint: "檢查站內外連結的狀態與轉址，以及 robots.txt、HTTPS、www 與 404 頁設定", Icon: StatusScanGlyph },
@@ -363,6 +362,12 @@ function ScanJobForm({ onCreated, project = null }) {
   const [url, setUrl] = useState(initial.url || "");
   const [activeMode, setActiveMode] = useState(initial.activeMode || false);
   const [activeAuthorized, setActiveAuthorized] = useState(initial.activeAuthorized || false);
+  // AI Agent 深度資安測試：使用者可選加項，勾了才跑才加收（全站＋主動＋已授權為前置）
+  const [deepAgent, setDeepAgent] = useState(initial.deepAgent || false);
+  // 測試帳密：供 agent 登入被測網站後測試登入後的攻擊面（IDOR／業務邏輯）。
+  // 只放 state、**不寫進 localStorage 草稿**（比照 access token 不落 localStorage）。
+  const [testAuthEmail, setTestAuthEmail] = useState("");
+  const [testAuthPassword, setTestAuthPassword] = useState("");
   // 掃描維度多選（至少一項；費用＝頁數 × 勾選維度數 × 每維單價）
   const [categories, setCategories] = useState(initial.categories || DEFAULT_SCAN_CATEGORIES);
   const [error, setError] = useState("");
@@ -428,9 +433,10 @@ function ScanJobForm({ onCreated, project = null }) {
     scope !== "single" && categories.includes("ux")
       ? (wallet?.agent_ux_fee ?? 0)
       : 0;
-  // 深度資安 Agent 附加費：主動＋已授權＋整站時預扣；agent 沒實際執行，結算會退回。
+  // 深度資安 Agent 附加費：使用者勾選「AI Agent 深度資安測試」且前置（整站＋主動＋已授權）
+  // 成立時才預扣；agent 沒實際執行，結算會退回。
   const agentDeepFee =
-    scope !== "single" && activeMode && activeAuthorized
+    scope !== "single" && activeMode && activeAuthorized && deepAgent
       ? (wallet?.agent_deep_fee ?? 0)
       : 0;
   // 首次免費完整掃描：被動＋整站＋五面向全選、帳號還沒用過（後端同一規則再判一次）
@@ -481,9 +487,10 @@ function ScanJobForm({ onCreated, project = null }) {
       url,
       activeMode,
       activeAuthorized,
+      deepAgent,
       categories,
     }, draftKey);
-  }, [draftKey, scope, url, activeMode, activeAuthorized, categories]);
+  }, [draftKey, scope, url, activeMode, activeAuthorized, deepAgent, categories]);
 
   useEffect(() => {
     if (!submitting) return undefined;
@@ -509,6 +516,12 @@ function ScanJobForm({ onCreated, project = null }) {
         third_party_reconfirmed: true,
         scan_mode: activeMode ? "active" : "passive",
         active_testing_authorized: activeMode && activeAuthorized,
+        // AI Agent 深度資安測試：勾選才送（後端只在全站＋主動＋已授權時真的跑、才加收）
+        deep_agent_requested: scope !== "single" && activeMode && activeAuthorized && deepAgent,
+        // 測試帳密只在主動模式且兩欄都填時送出；後端加密存、只注入 agent 登入用，不落 log/報告
+        ...(activeMode && testAuthEmail.trim() && testAuthPassword
+          ? { test_auth_email: testAuthEmail.trim(), test_auth_password: testAuthPassword }
+          : {}),
         categories,
         max_pages: scope === "single" ? 1 : sitePageLimit,
         max_depth: scope === "single" ? 1 : SITE_SCAN_DEPTH,
@@ -518,6 +531,9 @@ function ScanJobForm({ onCreated, project = null }) {
       setUrl(defaults.url || "");
       setActiveMode(false);
       setActiveAuthorized(false);
+      setDeepAgent(false);
+      setTestAuthEmail("");
+      setTestAuthPassword("");
       setCategories(defaults.categories || DEFAULT_SCAN_CATEGORIES);
       setEstimate(null);
       setScope(defaults.scope || "site");
@@ -745,6 +761,56 @@ function ScanJobForm({ onCreated, project = null }) {
           />
           我同意進行侵入式測試，並理解系統會限制 RPS ≤ 2。
         </label>
+      )}
+      {activeMode && activeAuthorized && scope !== "single" && (
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={deepAgent}
+            onChange={(event) => setDeepAgent(event.target.checked)}
+          />
+          加做 AI Agent 深度資安測試
+          {(wallet?.agent_deep_fee ?? 0) > 0 && `（另加 ${wallet.agent_deep_fee} 點）`}
+          — 由 AI 像滲透測試員實際操作網站，找越權存取、業務邏輯等需要推理串接的弱點
+          （較花時間；Agent 實際執行才收費，沒執行會退回）。
+        </label>
+      )}
+      {activeMode && (
+        <div className="scan-auth-creds">
+          <p className="scan-auth-creds-title">測試帳號（選填）</p>
+          <p className="scan-auth-creds-hint">
+            填入被測網站的一組測試帳密，AI Agent 會用它登入，檢查「登入後」才看得到的問題
+            （越權存取 IDOR、業務邏輯漏洞等）。請用<strong>專供測試的帳號</strong>，不要填正式管理員帳號
+            —— Agent 會以此帳號實際操作、可能送出表單。帳密會加密保存，不會出現在報告或紀錄中。
+          </p>
+          <div>
+            <label className="text-xs text-slate-500" htmlFor="scan-auth-email">
+              測試帳號（Email 或使用者名稱）
+            </label>
+            <input
+              id="scan-auth-email"
+              className="input"
+              autoComplete="off"
+              placeholder="test-user@example.com"
+              value={testAuthEmail}
+              onChange={(event) => setTestAuthEmail(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500" htmlFor="scan-auth-password">
+              測試密碼
+            </label>
+            <input
+              id="scan-auth-password"
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              placeholder="僅用於這次掃描登入"
+              value={testAuthPassword}
+              onChange={(event) => setTestAuthPassword(event.target.value)}
+            />
+          </div>
+        </div>
       )}
       {activeMode && (
         <p className="coin-estimate-hint">
