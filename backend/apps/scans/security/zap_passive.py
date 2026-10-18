@@ -142,6 +142,10 @@ _ZH = {
         "回應洩漏原始碼",
         "確認伺服器沒有把程式原始碼當成文字回傳。",
     ),
+    "10028": (
+        "網站有開放重新導向（Open Redirect）風險",
+        "轉址目標不要直接吃使用者輸入；只允許相對路徑或白名單網域，再送出 301／302。",
+    ),
 }
 # ZAP 告警的 risk 是文字（alert/view/alerts 不回傳數字代碼）
 _RISK = {"high": "high", "medium": "medium", "low": "low", "informational": "info"}
@@ -412,6 +416,19 @@ def _severity(alert: dict) -> str:
     return severity
 
 
+def _trim_sentence(text: str, limit: int) -> str:
+    """截斷長文但不切半個字／半個句子：超過上限時退到最後一個句末標點，沒有就整段捨去。
+
+    原本硬切 `[:600]` 會在字中切斷（實測把 ZAP 的 "NOTE:…" 切成孤立的「NO」）。
+    """
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    cut = max(head.rfind(ch) for ch in "。.!?！？；;\n")
+    return (head[: cut + 1] if cut >= limit // 2 else head.rstrip()) + "…"
+
+
 def alerts_to_findings(
     alerts: list[dict], version: str, *, active: bool = False,
 ) -> tuple[list[dict], dict[str, int]]:
@@ -439,9 +456,13 @@ def alerts_to_findings(
     for plugin, items in grouped.items():
         first = items[0]
         severity = max((_severity(a) for a in items), key=["info", "low", "medium", "high"].index)
+        has_zh = plugin in _ZH
         title, remediation = _ZH.get(
             plugin, (f"ZAP：{first.get('alert', plugin)}", str(first.get("solution", "")).strip())
         )
+        # 有中文對照時標題與修法已說明清楚，不再附 ZAP 的英文原文（全繁中報告裡是雜訊）；
+        # 沒有對照時才附英文說明，並在句尾截斷、不留半個字（原本硬切 [:600] 會留下「NO」殘字）。
+        desc_tail = "" if has_zh else _trim_sentence(str(first.get("description", "")).strip(), 600)
         urls = list(dict.fromkeys(a.get("url", "") for a in items))
         locations = [
             {"url": a.get("url", ""), "param": a.get("param", ""),
@@ -454,7 +475,7 @@ def alerts_to_findings(
             title=title,
             description=(
                 f"OWASP ZAP {scan_label}在 {len(urls)} 個網址發現「{first.get('alert', '')}」。"
-                + str(first.get("description", "")).strip()[:600]
+                + desc_tail
             ),
             remediation=remediation or "依 ZAP 說明確認並修正。",
             evidence="\n".join(

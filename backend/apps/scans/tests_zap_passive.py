@@ -331,6 +331,33 @@ class RealZapTests(SimpleTestCase):
         self.assertEqual(messages["numberOfMessages"], "0")
 
 
+class ZapAlertTranslationTests(SimpleTestCase):
+    """ZAP 告警的中文化與英文截斷（2026-10-18）：全繁中報告不該夾大段英文原文或半個字殘字。"""
+
+    def test_off_site_redirect_has_chinese_title_no_english_body(self):
+        # 10028 Off-site Redirect 現在有中文對照 → 標題中文、不再附 ZAP 英文原文
+        english = ("Open redirects are one of the OWASP 2010 Top Ten. NOTE: this is a long "
+                   "English description that used to be appended verbatim. " * 5)
+        findings, _ = alerts_to_findings(
+            [_alert("10028", risk="High", name="Off-site Redirect", description=english)], "2.16.1",
+            active=True,
+        )
+        f = findings[0]
+        self.assertIn("開放重新導向", f["title"])
+        self.assertNotIn("Open redirects are one of", f["description"])
+
+    def test_untranslated_rule_trims_at_sentence_no_broken_word(self):
+        # 沒有中文對照的規則仍附英文，但在句尾截斷、不留半個字（原本硬切會留下「NO」殘字）
+        english = "First sentence ends here. " + ("word " * 300) + "NOTE: trailing note"
+        findings, _ = alerts_to_findings(
+            [_alert("99999", risk="Low", name="Some Rare Rule", description=english)], "2.16.1",
+        )
+        desc = findings[0]["description"]
+        self.assertTrue(desc.endswith("…") or desc.endswith("here."))
+        self.assertNotIn(" NO\n", desc)
+        self.assertFalse(desc.rstrip().endswith("NO"))
+
+
 class ZapClientHostHeaderTests(SimpleTestCase):
     """ZapClient 一律送 Host: zap——ZAP 用 Host 判斷是不是呼叫自己的 API，只認內建
     別名 zap／localhost；用服務 FQDN 連進去時會被當成要轉發的流量並回 502（實機確認）。"""
