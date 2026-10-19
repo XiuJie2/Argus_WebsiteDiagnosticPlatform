@@ -748,6 +748,12 @@ function ProjectIssuesPage() {
       (!keyword || `${issue.title} ${issue.remediation || ""}`.toLowerCase().includes(keyword)),
   );
   const countBy = (key, value) => issues.filter((issue) => issue[key] === value).length;
+  const hasFilter = category !== "all" || severity !== "all" || change !== "all" || Boolean(keyword);
+  function clearFilters() {
+    const params = new URLSearchParams(searchParams);
+    ["category", "severity", "change", "q"].forEach((key) => params.delete(key));
+    setSearchParams(params, { replace: true });
+  }
   const header = (aside) => (
     <ProjectHeader
       project={project}
@@ -843,76 +849,85 @@ function ProjectIssuesPage() {
             ))}
           </div>
         </div>
-        <p className="issue-summary-note">
-          {data.compared_with
-            ? `與 ${formatDateTime(data.compared_with.completed_at)} 的掃描比較：新增 ${countBy("status", "new")}、持續 ${countBy("status", "persisting")}、本次未出現 ${data.missing.length}。`
-            : "這是此網站第一次完成的掃描，下次掃描起會標示新增與持續的問題。"}
-          {issues.some((issue) => issue.streak >= 3) &&
-            ` 有 ${issues.filter((issue) => issue.streak >= 3).length} 個問題已連續 3 次以上出現，建議優先處理。`}
-        </p>
-      </section>
-
-      <section className="panel issue-toolbar">
-        <div className="issue-toolbar-group">
-          <span className="issue-toolbar-label">顯示模式</span>
-          <div className="issue-segmented" role="group" aria-label="顯示模式">
-            <button type="button" className={groupMode === "all" ? "active" : ""} aria-pressed={groupMode === "all"} onClick={() => setParam("group", "all")}>
-              <ListIcon aria-hidden="true" /> 列表模式
-            </button>
-            <button type="button" className={groupMode === "severity" ? "active" : ""} aria-pressed={groupMode === "severity"} onClick={() => setParam("group", "severity")}>
-              <BarsIcon aria-hidden="true" /> 依嚴重度分組
-            </button>
-            {rootCauses.length > 0 && (
-              <button type="button" className={groupMode === "cause" ? "active" : ""} aria-pressed={groupMode === "cause"} onClick={() => setParam("group", "cause")}>
-                <LayersIcon aria-hidden="true" /> 依根本原因
+        <div className="issue-summary-note">
+          {data.compared_with ? (
+            <span className="issue-compare" role="group" aria-label="與上一次掃描比較">
+              <span>與 {formatDateTime(data.compared_with.completed_at)} 的掃描比較：</span>
+              <button
+                type="button"
+                className={`project-change-chip is-new is-button ${change === "new" ? "active" : ""}`}
+                aria-pressed={change === "new"}
+                onClick={() => setParam("change", change === "new" ? "all" : "new")}
+              >
+                新增 {countBy("status", "new")}
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                className={`project-change-chip is-persisting is-button ${change === "persisting" ? "active" : ""}`}
+                aria-pressed={change === "persisting"}
+                onClick={() => setParam("change", change === "persisting" ? "all" : "persisting")}
+              >
+                持續 {countBy("status", "persisting")}
+              </button>
+              {data.missing.length > 0 && (
+                <a className="project-change-chip is-resolved" href="#missing">本次未出現 {data.missing.length}</a>
+              )}
+            </span>
+          ) : (
+            <span>這是此網站第一次完成的掃描，下次掃描起會標示新增與持續的問題。</span>
+          )}
+          {issues.some((issue) => issue.streak >= 3) && (
+            <span>有 {issues.filter((issue) => issue.streak >= 3).length} 個問題已連續 3 次以上出現，建議優先處理。</span>
+          )}
+          {hasFilter && (
+            <button type="button" className="project-text-link" onClick={clearFilters}>清除篩選</button>
+          )}
         </div>
-        <label className="issue-toolbar-group">
-          <span className="issue-toolbar-label">維度</span>
-          <select className="input" value={category} onChange={(event) => setParam("category", event.target.value)}>
-            <option value="all">全部維度</option>
-            {checkedCategories.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-          </select>
-        </label>
-        <label className="issue-toolbar-group">
-          <span className="issue-toolbar-label">嚴重度</span>
-          <select className="input" value={severity} onChange={(event) => setParam("severity", event.target.value)}>
-            <option value="all">全部嚴重度</option>
-            {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}
-          </select>
-        </label>
-        {data.compared_with && (
-          <label className="issue-toolbar-group">
-            <span className="issue-toolbar-label">變化</span>
-            <select className="input" value={change} onChange={(event) => setParam("change", event.target.value)}>
-              <option value="all">全部</option>
-              <option value="new">新增</option>
-              <option value="persisting">持續</option>
-            </select>
-          </label>
-        )}
-        <button
-          type="button"
-          className="secondary-button issue-export"
-          onClick={() => downloadCsv(`${project.hostname}-issues-scan-${data.scan.id}.csv`, issuesToCsv(filtered))}
-          disabled={!filtered.length}
-        >
-          <DownloadIcon aria-hidden="true" /> 匯出 CSV（{filtered.length}）
-        </button>
       </section>
-
-      {query && (
-        <p className="issue-query">
-          搜尋「{query}」：{filtered.length} 個問題
-          <button type="button" className="project-text-link" onClick={() => setParam("q", "")}>清除搜尋</button>
-        </p>
-      )}
 
       <section className="panel issue-table-card">
+        {/* 顯示模式與匯出放在表格自己的標題列，不再是夾在中間的獨立工具列；維度／嚴重度篩選只在上方摘要卡 */}
+        <div className="issue-table-head">
+          <div>
+            <h2 className="project-section-title">
+              {listMode ? `需要處理的問題（${problems.length}）` : `問題清單（${filtered.length}）`}
+            </h2>
+            {query && (
+              <p className="issue-query">
+                搜尋「{query}」：{filtered.length} 個問題
+                <button type="button" className="project-text-link" onClick={() => setParam("q", "")}>清除搜尋</button>
+              </p>
+            )}
+          </div>
+          <div className="issue-table-tools">
+            <div className="issue-segmented" role="group" aria-label="顯示模式">
+              <button type="button" className={groupMode === "all" ? "active" : ""} aria-pressed={groupMode === "all"} onClick={() => setParam("group", "all")}>
+                <ListIcon aria-hidden="true" /> 列表
+              </button>
+              <button type="button" className={groupMode === "severity" ? "active" : ""} aria-pressed={groupMode === "severity"} onClick={() => setParam("group", "severity")}>
+                <BarsIcon aria-hidden="true" /> 依嚴重度分組
+              </button>
+              {rootCauses.length > 0 && (
+                <button type="button" className={groupMode === "cause" ? "active" : ""} aria-pressed={groupMode === "cause"} onClick={() => setParam("group", "cause")}>
+                  <LayersIcon aria-hidden="true" /> 依根本原因
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              className="secondary-button issue-export"
+              onClick={() => downloadCsv(`${project.hostname}-issues-scan-${data.scan.id}.csv`, issuesToCsv(filtered))}
+              disabled={!filtered.length}
+            >
+              <DownloadIcon aria-hidden="true" /> 匯出 CSV（{filtered.length}）
+            </button>
+          </div>
+        </div>
         {filtered.length === 0 ? (
-          <p className="hint-text">{issues.length ? "沒有符合篩選條件的問題。" : "這次掃描沒有發現問題。"}</p>
+          <div className="issue-table-empty">
+            <p className="hint-text">{issues.length ? "沒有符合篩選條件的問題。" : "這次掃描沒有發現問題。"}</p>
+            {hasFilter && <button type="button" className="secondary-button" onClick={clearFilters}>清除篩選</button>}
+          </div>
         ) : listMode && problems.length === 0 ? (
           <p className="hint-text">沒有需要處理的問題，只有下方的建議項目。</p>
         ) : (
