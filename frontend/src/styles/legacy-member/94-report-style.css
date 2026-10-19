@@ -221,6 +221,13 @@
   display: grid;
   gap: 0.5rem;
 }
+.scan-report-notices {
+  display: grid;
+  gap: 0.5rem;
+}
+.scan-report-notices:empty {
+  display: none;
+}
 .scan-report-alert {
   padding: 0.75rem 1rem;
   border: 1px solid #cbd5e1;

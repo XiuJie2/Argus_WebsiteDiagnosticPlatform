@@ -1629,23 +1629,26 @@ function FindingsWorkspace({ scan }) {
         </div>
       )}
 
-      {scan.status === "failed" && (
-        <p className="scan-report-alert is-bad">掃描失敗：{scan.error_message || "未知錯誤"}</p>
-      )}
-      {scan.status === "cancelled" && (
-        <p className="scan-report-alert">掃描已終止。已收集到的頁面與發現仍保留在下方。</p>
-      )}
-
-      {/* 網站位於 CDN／反向代理之後時提醒一次；網站優勢與架構細節在上方導覽的獨立分頁 */}
-      <EdgeNotice profile={scan.site_profile} />
-      {scan.max_pages > 1 && scan.max_pages < MAX_SITE_SCAN_PAGES && (
-        <p className="scan-report-alert">
-          本次為部分掃描：頁數上限 {scan.max_pages} 頁，結果可能沒有涵蓋網站全部頁面。
-        </p>
-      )}
-      {scan.is_trial && (
-        <p className="scan-report-alert">這是你的首次免費完整掃描，沒有扣點。</p>
-      )}
+      {/* 狀態與範圍提醒集中成一組（失敗／終止、CDN、部分掃描、首次免費），
+          同時出現時緊貼成一區，不再各自隔一個頁面間距；全部沒有時整組不佔位（:empty） */}
+      <div className="scan-report-notices">
+        {scan.status === "failed" && (
+          <p className="scan-report-alert is-bad">掃描失敗：{scan.error_message || "未知錯誤"}</p>
+        )}
+        {scan.status === "cancelled" && (
+          <p className="scan-report-alert">掃描已終止。已收集到的頁面與發現仍保留在下方。</p>
+        )}
+        {/* 網站位於 CDN／反向代理之後時提醒一次；網站優勢與架構細節在上方導覽的獨立分頁 */}
+        <EdgeNotice profile={scan.site_profile} />
+        {scan.max_pages > 1 && scan.max_pages < MAX_SITE_SCAN_PAGES && (
+          <p className="scan-report-alert">
+            本次為部分掃描：頁數上限 {scan.max_pages} 頁，結果可能沒有涵蓋網站全部頁面。
+          </p>
+        )}
+        {scan.is_trial && (
+          <p className="scan-report-alert">這是你的首次免費完整掃描，沒有扣點。</p>
+        )}
+      </div>
 
       {/* 摘要：嚴重度、各維度、優先處理——放在問題清單與截圖之前，任何寬度都不會被截圖擠到下方 */}
       {(findingStats?.total > 0 || findings.length > 0 || topActions.length > 0) && (
