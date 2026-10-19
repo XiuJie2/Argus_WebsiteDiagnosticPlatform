@@ -169,7 +169,7 @@ D:\nodejs\npm.cmd install 套件名
 | `/admin/reviews` | `AdminReviewsPage` | 評論治理（官方回覆、評論／回覆檢舉分開統計、隱藏／重新公開；`AdminReviewsPage.tsx`） |
 | `/admin/scans` | `AdminScansPage` | 掃描任務管理（`AdminScansPages.tsx`）|
 | `/admin/scans/:scanId` | `AdminScanDetailPage` | 掃描詳情（管理員視角）；含終止與重排處置、`top_actions`、`warning_summary`（爬取警告最上方顯示爬取預算 `crawl_budget`：結束原因、頁面來源、略過、耗時、內容穩定等待與最慢頁面，2026-10-08） |
-| `/admin/health` | `AdminHealthPage` | 系統健康：動態掃描鏈路圖（資料庫→Redis→Worker→佇列→掃描執行，斷點之後停止流動）＋ 系統資源（CPU／記憶體／磁碟／網路／運行時間）＋ 逐項判定依據；預設每 15 秒自動更新 |
+| `/admin/health` | `AdminHealthPage` | 系統健康（2026-10-19 改為 Kubernetes 叢集視角）：動態掃描鏈路圖（資料庫→Redis→Worker→佇列→掃描執行，斷點之後停止流動）＋ **叢集節點**（`AdminClusterNodes`：master 排第一，每節點 Ready／NotReady、cordon 與壓力籤、CPU／記憶體——有 metrics-server 顯示實際用量、沒有就顯示 pod requests 佔可分配量並明講、pod 數、kubelet 版本、內部 IP）＋ **Argus 工作負載**（`AdminWorkloads`：argus／argus-zap／argus-kali 的 pod 依元件分組，就緒數、所在節點、狀態（優先 CrashLoopBackOff 等 waiting reason）、重啟、啟動時間）＋ 逐項判定依據（含「Kubernetes 叢集」一項）；原本只量回應請求的 web pod 容器的四張資源卡縮成頁尾一行附註；本機不在叢集內時叢集區塊顯示原因。資料 `GET /api/admin/health/` 的 `cluster`（後端 `admin_api/cluster_status.py`，RBAC `k8s/13-cluster-status-rbac.yaml`）；預設每 15 秒自動更新 |
 | `/admin/domains` | `AdminDomainsPage` | 網域驗證管理（搜尋／狀態篩選、人工核准與否決）（`AdminDomainsPage.tsx`；篩選在網址上）|
 | `/admin/content` | `AdminContentPage` | CMS 內容管理 |
 | `/admin/partner-inquiries` | `AdminPartnerInquiriesPage` | 商業合作洽談（`/partners` 表單送來的資料；只能改處理狀態與內部備註，含「疑似垃圾訊息」狀態）|
@@ -264,7 +264,8 @@ npm run typecheck
 | `src/features/admin/AdminOverviewPage.jsx` | 概覽（後台首頁）|
 | `src/features/admin/AdminHealthPage.jsx` | 系統健康頁 |
 | `src/components/admin/AdminScanChain.jsx` | 掃描鏈路圖（節點狀態＋流動動畫，斷點後停止）|
-| `src/components/admin/AdminSystemStats.jsx` | 系統資源卡片（含容器／主機量測範圍標示）|
+| `src/components/admin/AdminClusterNodes.jsx` | 叢集節點卡（角色徽章、Ready、壓力籤、CPU／記憶體用量或 requests 佔比、pod 數）|
+| `src/components/admin/AdminWorkloads.jsx` | Argus 工作負載表（依元件分組的 pod：節點、狀態、重啟、啟動）|
 | `src/components/admin/AdminStatCard.tsx` | 統計卡與內嵌 sparkline |
 | `src/components/admin/AdminMiniChart.jsx` | 後台多序列折線圖 |
 | `src/components/admin/AdminModal.tsx` | 後台統一 modal 與 `AdminField` 表單欄位（label／hint／error 三段式）|
