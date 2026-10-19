@@ -165,7 +165,7 @@ D:\nodejs\npm.cmd install 套件名
 | `/admin/users` | `AdminUsersPage` | 使用者管理（`AdminUsersPages.tsx`）|
 | `/admin/users/:userId` | `AdminUserDetailPage` | 使用者詳情 + 帳號狀態（停用／恢復、輸入「刪除帳號」後永久刪除，原因選填寫入操作日誌；對自己、超級管理員、已刪除帳號只顯示說明，對象是管理員時只有超級管理員能操作——與後端 `_manage_target_error` 相同）+ 管理權限（只有超級管理員看得到：設為／取消一般管理員，確認對話框；自己與超級管理員帳號不顯示按鈕）、點數調整、訂閱、登入記錄（`AdminUsersPages.tsx`）|
 | `/admin/orders` | `AdminOrdersPage` | 訂單管理（狀態分段切換、搜尋 email／姓名／公司／統編、發票類型篩選、明細 modal 含載具）＋下方「訂閱每期扣款」（`AdminSubscriptionCharges.jsx`，`/api/admin/subscription-charges/`，預設只看成功）。電子發票由管理員依這兩份資料人工開立 |
-| `/admin/transactions` | `AdminTransactionsPage` | 點數交易紀錄（`AdminTransactionsPage.tsx`；類型篩選涵蓋 `CoinTransaction.Kind` 全部 11 種）|
+| `/admin/transactions` | `AdminTransactionsPage` | 點數交易紀錄（`AdminTransactionsPage.tsx`；類型篩選涵蓋 `CoinTransaction.Kind` 全部 11 種；2026-10-19 加「使用者」欄連到使用者詳情（後端 `AdminCoinTransactionSerializer` 補 `user_id`／`username`）、`?user=` 只看單一使用者（使用者詳情「查看全部交易」帶入）、「對象」欄＝掃描網址或方案、「操作者」只在管理員調整時有值）|
 | `/admin/reviews` | `AdminReviewsPage` | 評論治理（官方回覆、評論／回覆檢舉分開統計、隱藏／重新公開；`AdminReviewsPage.tsx`） |
 | `/admin/scans` | `AdminScansPage` | 掃描任務管理（`AdminScansPages.tsx`）|
 | `/admin/scans/:scanId` | `AdminScanDetailPage` | 掃描詳情（管理員視角）；含終止與重排處置、`top_actions`、`warning_summary`（爬取警告最上方顯示爬取預算 `crawl_budget`：結束原因、頁面來源、略過、耗時、內容穩定等待與最慢頁面，2026-10-08） |

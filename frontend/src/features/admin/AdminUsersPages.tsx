@@ -596,7 +596,14 @@ export function AdminUserDetailPage() {
       </section>
 
       <section className="admin-panel">
-        <h3><span className="admin-panel-icon-chip"><AdminOrdersIcon /></span>最近 30 筆交易</h3>
+        <div className="admin-panel-head-row">
+          <h3><span className="admin-panel-icon-chip"><AdminOrdersIcon /></span>最近 30 筆交易</h3>
+          {user.recent_transactions.length > 0 && (
+            <NavLink to={`/admin/transactions?user=${user.id}`} className="admin-panel-more">
+              查看全部交易 →
+            </NavLink>
+          )}
+        </div>
         <div className="admin-table-scroll">
           <table className="admin-table compact">
           <thead>
