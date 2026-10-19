@@ -1624,6 +1624,8 @@ function FindingsWorkspace({ scan }) {
               已偵測到 {scan.warning_summary.blocked_urls.length} 個被阻擋的 URL（403/429/robots.txt）。
             </p>
           )}
+          {/* 進行中時執行紀錄是即時動態，緊接在進度條下方展開、自動捲到最新一筆 */}
+          <ScanLogPanel entries={scan.scan_log} live />
         </div>
       )}
 
@@ -1797,28 +1799,43 @@ function FindingsWorkspace({ scan }) {
         </div>
       </div>
 
-      {scan.scan_log?.length > 0 && (
-        <details className="scan-log-panel">
-          <summary className="scan-log-summary">
-            執行紀錄
-            <span className="scan-log-count">{scan.scan_log.length} 筆</span>
-          </summary>
-          <div className="scan-log-body">
-            {scan.scan_log.map((entry, i) => (
-              <div key={i} className={`scan-log-entry scan-log-${entry.lvl}`}>
-                <span className="scan-log-time">
-                  {new Date(entry.t).toLocaleTimeString("zh-TW", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                </span>
-                <span className="scan-log-lvl">{entry.lvl === "error" ? "ERR" : entry.lvl === "warn" ? "WRN" : "INF"}</span>
-                <span className="scan-log-msg">{entry.msg}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+      {/* 掃描完成後執行紀錄只是診斷資料，收合放最後；進行中時改放進度區塊下方（見上） */}
+      {!isInProgress(scan.status) && <ScanLogPanel entries={scan.scan_log} />}
     </section>
     {dialogHost}
     </>
+  );
+}
+
+/**
+ * 執行紀錄。live（掃描進行中）：預設展開、標題寫「即時」、每次有新紀錄就捲到最底；
+ * 非 live（已完成／失敗／終止）：預設收合，只是診斷資料。
+ */
+function ScanLogPanel({ entries, live = false }) {
+  const bodyRef = useRef(null);
+  const count = entries?.length || 0;
+  useEffect(() => {
+    if (live && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [live, count]);
+  if (!count) return null;
+  return (
+    <details className={`scan-log-panel${live ? " is-live" : ""}`} open={live || undefined}>
+      <summary className="scan-log-summary">
+        {live ? "即時執行紀錄" : "執行紀錄"}
+        <span className="scan-log-count">{count} 筆</span>
+      </summary>
+      <div className="scan-log-body" ref={bodyRef}>
+        {entries.map((entry, i) => (
+          <div key={i} className={`scan-log-entry scan-log-${entry.lvl}`}>
+            <span className="scan-log-time">
+              {new Date(entry.t).toLocaleTimeString("zh-TW", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+            <span className="scan-log-lvl">{entry.lvl === "error" ? "ERR" : entry.lvl === "warn" ? "WRN" : "INF"}</span>
+            <span className="scan-log-msg">{entry.msg}</span>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
