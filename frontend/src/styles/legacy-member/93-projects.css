@@ -831,6 +831,9 @@
 .pages-summary {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
+.aeo-summary {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
 .project-section-head .project-search {
   @apply flex-1;
   min-width: min(100%, 220px);

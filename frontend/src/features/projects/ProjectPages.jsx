@@ -1144,47 +1144,58 @@ function ProjectAeoPage() {
       ) : (
         <>
           {report.status === "evaluated" && (
-            <dl className="project-portfolio">
-              <div className="project-portfolio-item">
-                <dt>AEO 分數</dt>
-                <dd className={scoreToneClass(aeoScore)}>{aeoScore == null ? "—" : Math.round(aeoScore)}</dd>
+            <div className="project-site-summary aeo-summary">
+              <div className="project-site-tile">
+                <span className="project-site-tile-label">AEO 分數</span>
+                <span className={`project-site-tile-value ${aeoScore == null ? "is-muted" : `tone-${scoreTone(aeoScore)}`}`}>
+                  {aeoScore == null ? "—" : Math.round(aeoScore)}
+                  {aeoScore != null && <small> {scoreGrade(aeoScore)}</small>}
+                </span>
+                <span className="project-site-tile-hint">依可回答性計算，逐題結果不再重複扣分</span>
               </div>
-              <div className="project-portfolio-item">
-                <dt>題目</dt>
-                <dd>{report.questions_total}</dd>
+              <div className="project-site-tile">
+                <span className="project-site-tile-label">題目</span>
+                <span className="project-site-tile-value">{report.questions_total}<small> 題</small></span>
+                <span className="project-site-tile-hint">
+                  {report.not_scored ? `其中 ${report.not_scored} 題不計分（網站沒談到該主題）` : "依網站內容與固定意圖出題"}
+                </span>
               </div>
-              <div className="project-portfolio-item">
-                <dt>可從網站找到答案</dt>
-                <dd>{report.answered_ratio == null ? "—" : `${Math.round(report.answered_ratio * 100)}%`}</dd>
+              <div className="project-site-tile">
+                <span className="project-site-tile-label">可從網站找到答案</span>
+                <span className="project-site-tile-value">
+                  {report.answered_ratio == null ? "—" : Math.round(report.answered_ratio * 100)}<small> %</small>
+                </span>
+                <span className="project-site-tile-hint">可回答 {report.counts?.answered ?? 0} 題</span>
               </div>
-              <div className="project-portfolio-item">
-                <dt>答案附有原文</dt>
-                <dd>{report.evidence_ratio == null ? "—" : `${Math.round(report.evidence_ratio * 100)}%`}</dd>
+              <div className="project-site-tile">
+                <span className="project-site-tile-label">答案附有原文</span>
+                <span className="project-site-tile-value">
+                  {report.evidence_ratio == null ? "—" : Math.round(report.evidence_ratio * 100)}<small> %</small>
+                </span>
+                <span className="project-site-tile-hint">能指出答案出自哪一段</span>
               </div>
               {report.citation && (
-                <div className="project-portfolio-item">
-                  <dt>答案可被引用</dt>
-                  <dd>{`${Math.round(report.citation.citable_ratio * 100)}%`}</dd>
+                <div className="project-site-tile">
+                  <span className="project-site-tile-label">答案可被引用</span>
+                  <span className="project-site-tile-value">{Math.round(report.citation.citable_ratio * 100)}<small> %</small></span>
+                  <span className="project-site-tile-hint">沒被 noindex／nosnippet 擋住、原始 HTML 就有</span>
                 </div>
               )}
-            </dl>
+            </div>
           )}
-          <section className="panel">
-            <AeoAnswerPanel report={report} withFilter />
-          </section>
+          {/* 判讀注意事項放在逐題結果之前，看結果時才知道「無答案」的意思 */}
           <p className="project-note">
             「無答案」與「資訊不足」代表在這次已掃描的頁面中找不到明確答案；答案若在沒被掃到的頁面，
             請確認該頁可從首頁或選單連到，或已列在 sitemap。
           </p>
+          <section className="panel">
+            <h2 className="project-section-title">逐題結果{report.status === "evaluated" && `（${report.questions_total} 題）`}</h2>
+            <AeoAnswerPanel report={report} withFilter />
+          </section>
         </>
       )}
     </div>
   );
-}
-
-function scoreToneClass(score) {
-  if (score === null || score === undefined) return "";
-  return score >= 80 ? "is-good" : score >= 60 ? "is-medium" : "is-bad";
 }
 
 function ProjectPagesPage() {
