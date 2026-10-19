@@ -35,10 +35,8 @@ import {
   BrowserIcon,
   BulbIcon,
   CalendarIcon,
-  CheckCircleIcon,
   ClockIcon,
   DownloadIcon,
-  FlagIcon,
   LayersIcon,
   ListIcon,
   PlayIcon,
@@ -263,15 +261,6 @@ function ProjectOverviewPage() {
               </p>
             </section>
             <section className="project-kpi">
-              <p className="project-kpi-label">掃描狀態</p>
-              <p className="project-kpi-status"><CheckCircleIcon /> 掃描完成</p>
-              <dl className="project-kpi-facts">
-                <div><dt><BrowserIcon /> 掃描頁數</dt><dd>{latest.stats.pages} 頁</dd></div>
-                <div><dt><FlagIcon /> 發現問題</dt><dd>{latest.issues_count} 個</dd></div>
-                <div><dt><ClockIcon /> 掃描時間</dt><dd>{formatDuration(latest.stats.duration_seconds)}</dd></div>
-              </dl>
-            </section>
-            <section className="project-kpi">
               <p className="project-kpi-label">最近一次掃描</p>
               <p className="project-kpi-date">
                 <span className="project-kpi-date-icon" aria-hidden="true"><CalendarIcon /></span>
@@ -280,10 +269,10 @@ function ProjectOverviewPage() {
                   <small>{formatRelative(latest.completed_at)}</small>
                 </span>
               </p>
-              <p className="project-kpi-sub">與上次相比</p>
-              <p className="project-kpi-change">
-                分數變化 <b>{delta === null ? deltaText : delta > 0 ? `+${delta}` : delta}</b>
-              </p>
+              <dl className="project-kpi-facts">
+                <div><dt><BrowserIcon /> 掃描頁數</dt><dd>{latest.stats.pages} 頁</dd></div>
+                <div><dt><ClockIcon /> 掃描時間</dt><dd>{formatDuration(latest.stats.duration_seconds)}</dd></div>
+              </dl>
               <Link className="project-text-link" to={`/scans/${latest.id}`}>查看這次結果 →</Link>
             </section>
           </div>
@@ -302,6 +291,49 @@ function ProjectOverviewPage() {
                 <span className="project-section-hint">共 {latest.issues_count} 個問題</span>
               </div>
               <SeverityDonut counts={data.severity_counts} />
+            </section>
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">優先改善建議</h2>
+                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
+              </div>
+              {latest.top_actions.length ? (
+                <ol className="project-priority-list">
+                  {latest.top_actions.map((action, index) => (
+                    <li key={`${action.category}-${action.title}`}>
+                      <span className="project-priority-num">{index + 1}</span>
+                      <Link
+                        className="project-priority-title"
+                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
+                      >
+                        {action.title}
+                      </Link>
+                      <SeverityChip severity={action.severity} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="hint-text">這次沒有需要優先處理的項目。</p>
+              )}
+            </section>
+          </div>
+
+          <div className="project-grid-3">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">各維度問題的數量</h2>
+              </div>
+              <CountBars
+                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
+                  key: c,
+                  label: CATEGORY_META[c].label,
+                  desc: CATEGORY_META[c].desc,
+                  value: latest.category_counts[c] || 0,
+                  tone: scoreTone(latest.category_scores?.[c]),
+                }))}
+                emptyText="這次掃描沒有發現問題。"
+                linkFor={(item) => `${issuesPath}?category=${item.key}`}
+              />
             </section>
             <section className="panel">
               <div className="project-section-head">
@@ -328,9 +360,6 @@ function ProjectOverviewPage() {
                 </p>
               )}
             </section>
-          </div>
-
-          <div className="project-grid-3">
             <section className="panel">
               <div className="project-section-head">
                 <h2 className="project-section-title">AEO 問答檢測</h2>
@@ -338,46 +367,6 @@ function ProjectOverviewPage() {
               <AeoTiles aeo={latest.aeo} />
               {latest.aeo && (
                 <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
-              )}
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">各維度問題的數量</h2>
-              </div>
-              <CountBars
-                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
-                  key: c,
-                  label: CATEGORY_META[c].label,
-                  desc: CATEGORY_META[c].desc,
-                  value: latest.category_counts[c] || 0,
-                  tone: scoreTone(latest.category_scores?.[c]),
-                }))}
-                emptyText="這次掃描沒有發現問題。"
-                linkFor={(item) => `${issuesPath}?category=${item.key}`}
-              />
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">優先改善建議</h2>
-                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
-              </div>
-              {latest.top_actions.length ? (
-                <ol className="project-priority-list">
-                  {latest.top_actions.map((action, index) => (
-                    <li key={`${action.category}-${action.title}`}>
-                      <span className="project-priority-num">{index + 1}</span>
-                      <Link
-                        className="project-priority-title"
-                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
-                      >
-                        {action.title}
-                      </Link>
-                      <SeverityChip severity={action.severity} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="hint-text">這次沒有需要優先處理的項目。</p>
               )}
             </section>
           </div>

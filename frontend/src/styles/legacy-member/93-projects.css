@@ -1033,7 +1033,7 @@
   height: 1rem;
 }
 
-/* ── 總覽：四張數字卡 ── */
+/* ── 總覽：三張數字卡（綜合評分、問題、最近一次掃描；2026-10-19 由四張合併） ── */
 .project-kpis {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
@@ -1093,13 +1093,6 @@
 .project-kpi-hint a {
   @apply font-semibold text-blue-700 hover:underline;
 }
-.project-kpi-status {
-  @apply flex items-center gap-2 text-lg font-bold text-emerald-600;
-}
-.project-kpi-status svg {
-  width: 2rem;
-  height: 2rem;
-}
 .project-kpi-facts {
   @apply m-0 grid gap-1.5 border-t border-slate-100 pt-2;
 }
@@ -1131,12 +1124,6 @@
 }
 .project-kpi-date small {
   @apply text-xs text-slate-500;
-}
-.project-kpi-change {
-  @apply flex items-baseline gap-3 text-sm text-slate-600;
-}
-.project-kpi-change b {
-  @apply text-2xl font-bold text-slate-900;
 }
 
 /* ── 總覽：第二、三排 ── */
