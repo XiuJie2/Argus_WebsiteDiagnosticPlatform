@@ -827,6 +827,17 @@
 .project-search {
   @apply block max-w-md;
 }
+/* 頁面分頁：數字磚（2026-10-19）與清單標題列下的篩選籤 */
+.pages-summary {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.project-section-head .project-search {
+  @apply flex-1;
+  min-width: min(100%, 220px);
+}
+.pages-filter-row {
+  @apply mb-3;
+}
 .project-search .input {
   @apply w-full;
 }

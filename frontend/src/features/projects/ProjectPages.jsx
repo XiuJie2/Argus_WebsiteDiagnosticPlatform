@@ -1264,42 +1264,91 @@ function ProjectPagesPage() {
     const loads = pages.map((page) => page.load_time_ms).filter((ms) => typeof ms === "number");
     return loads.length ? Math.round(loads.reduce((a, b) => a + b, 0) / loads.length) : null;
   })();
+  const issuePages = pages.filter(PAGE_FILTERS.issues.test).length;
+  const errorPages = pages.filter(PAGE_FILTERS.errors.test).length;
+  const hasFilter = filter !== "all" || Boolean(keyword);
+  function clearFilters() {
+    setQuery("");
+    setParam("filter", "all");
+  }
 
   return (
     <div className="project-page">
       <ProjectHeader
         project={project}
         section="頁面"
-        description={`這次掃描實際檢查的 ${pages.length} 個頁面，平均載入 ${avgLoad == null ? "—" : `${(avgLoad / 1000).toFixed(1)} 秒`}${data.site_level_findings ? `；另有 ${data.site_level_findings} 個站台層級的發現（不屬於特定頁面，見問題分析）` : ""}。按「優化此頁」可依診斷產生優化版，並分享連結給設計或工程師。`}
+        description="這次掃描實際檢查的每個頁面：狀態碼、載入時間與問題數。按「優化此頁」可依診斷產生優化版，並分享連結給設計或工程師。"
         aside={<ScanTimeCard completed={completed} current={data.scan} value={scanParam} onChange={(value) => setParam("scan", value)} />}
       />
 
-      <section className="panel project-filters">
-        <FilterChips
-          label="篩選"
-          value={filter}
-          onChange={(value) => setParam("filter", value)}
-          options={Object.entries(PAGE_FILTERS).map(([value, item]) => ({
-            value,
-            label: item.label,
-            count: pages.filter(item.test).length,
-          }))}
-        />
-        <label className="project-search">
-          <span className="project-sr-only">搜尋頁面</span>
-          <input
-            type="search"
-            className="input"
-            placeholder="搜尋網址或頁面標題"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-      </section>
+      {/* 數字磚沿用總覽的 .project-site-tile；原本這些數字全塞在頁首說明的一句話裡 */}
+      <div className="project-site-summary pages-summary">
+        <div className="project-site-tile">
+          <span className="project-site-tile-label">檢查頁數</span>
+          <span className="project-site-tile-value">{pages.length}<small> 頁</small></span>
+          <span className="project-site-tile-hint">
+            {data.site_level_findings ? (
+              <Link className="project-text-link" to={projectPath(project.id, "issues")}>
+                另有 {data.site_level_findings} 個站台層級的發現 →
+              </Link>
+            ) : "沒有站台層級的發現"}
+          </span>
+        </div>
+        <div className="project-site-tile">
+          <span className="project-site-tile-label">平均載入</span>
+          <span className={`project-site-tile-value ${avgLoad == null ? "is-muted" : avgLoad > SLOW_PAGE_MS ? "tone-bad" : "tone-good"}`}>
+            {avgLoad == null ? "—" : (avgLoad / 1000).toFixed(1)}<small> 秒</small>
+          </span>
+          <span className="project-site-tile-hint">超過 {SLOW_PAGE_MS / 1000} 秒算載入慢</span>
+        </div>
+        <div className="project-site-tile">
+          <span className="project-site-tile-label">有問題的頁面</span>
+          <span className={`project-site-tile-value ${issuePages ? "tone-medium" : "tone-good"}`}>
+            {issuePages}<small> / {pages.length} 頁</small>
+          </span>
+          <span className="project-site-tile-hint">問題數最多的排最前面</span>
+        </div>
+        <div className="project-site-tile">
+          <span className="project-site-tile-label">錯誤或被阻擋</span>
+          <span className={`project-site-tile-value ${errorPages ? "tone-bad" : "tone-good"}`}>
+            {errorPages}<small> 頁</small>
+          </span>
+          <span className="project-site-tile-hint">4xx／5xx 或 robots、WAF 擋下</span>
+        </div>
+      </div>
 
       <section className="panel">
+        {/* 篩選與搜尋併進頁面清單自己的標題列，不再是獨立一張卡 */}
+        <div className="project-section-head">
+          <h2 className="project-section-title">頁面清單（{visible.length}{hasFilter ? ` / ${pages.length}` : ""}）</h2>
+          <label className="project-search">
+            <span className="project-sr-only">搜尋頁面</span>
+            <input
+              type="search"
+              className="input"
+              placeholder="搜尋網址或頁面標題"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="pages-filter-row">
+          <FilterChips
+            label="篩選"
+            value={filter}
+            onChange={(value) => setParam("filter", value)}
+            options={Object.entries(PAGE_FILTERS).map(([value, item]) => ({
+              value,
+              label: item.label,
+              count: pages.filter(item.test).length,
+            }))}
+          />
+        </div>
         {visible.length === 0 ? (
-          <p className="hint-text">沒有符合條件的頁面。</p>
+          <div className="issue-table-empty">
+            <p className="hint-text">沒有符合條件的頁面。</p>
+            {hasFilter && <button type="button" className="secondary-button" onClick={clearFilters}>清除篩選</button>}
+          </div>
         ) : (
           <div className="project-table-wrap">
             <table className="project-table project-pages-table">
