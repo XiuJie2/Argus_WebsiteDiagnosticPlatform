@@ -448,87 +448,6 @@ export function AdminUserDetailPage() {
       </div>
 
       <section className="admin-panel">
-        <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>帳號狀態</h3>
-        {user.deleted_at ? (
-          <p className="admin-empty">此帳號已於 {formatDateTime(user.deleted_at)} 刪除，個人資料已清除；點數交易與訂單只保留匿名紀錄。</p>
-        ) : statusBlocked ? (
-          <p className="admin-empty">{statusBlocked}</p>
-        ) : (
-          <div className="admin-role-row">
-            <p>
-              目前狀態：<strong>{user.is_active ? "啟用" : "已停用"}</strong>。
-              停用（封號）會立即登出對方並禁止登入，資料全部保留，可以再恢復；刪除則永久清除對方的個人資料與網站專案，無法復原。
-            </p>
-            <input
-              className="admin-input wide"
-              placeholder="原因（選填，寫入操作日誌）"
-              aria-label="停用或刪除原因"
-              maxLength={200}
-              value={statusReason}
-              onChange={(e) => setStatusReason(e.target.value)}
-            />
-            <button
-              type="button"
-              className={`admin-btn ${user.is_active ? "danger" : "primary"}`}
-              onClick={handleToggleSuspend}
-              disabled={statusBusy}
-            >
-              {user.is_active ? "停用帳號" : "恢復帳號"}
-            </button>
-            <form className="admin-role-actions" onSubmit={handleDeleteUser} aria-label="刪除帳號">
-              <input
-                className="admin-input"
-                placeholder="輸入「刪除帳號」確認"
-                aria-label="輸入「刪除帳號」確認"
-                value={deleteConfirm}
-                onChange={(e) => setDeleteConfirm(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="admin-btn danger"
-                disabled={statusBusy || deleteConfirm.trim() !== "刪除帳號"}
-              >
-                永久刪除帳號
-              </button>
-            </form>
-          </div>
-        )}
-        {statusFeedback && (
-          <div className={`admin-feedback tone-${statusFeedback.tone}`}>{statusFeedback.message}</div>
-        )}
-      </section>
-
-      {me?.is_superuser && !user.deleted_at && (
-        <section className="admin-panel">
-          <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>管理權限</h3>
-          {user.is_superuser ? (
-            <p className="admin-empty">這是超級管理員帳號，權限不能在後台變更。</p>
-          ) : user.id === me.id ? (
-            <p className="admin-empty">不能變更自己的管理員身分。</p>
-          ) : (
-            <div className="admin-role-row">
-              <p>
-                目前身分：<strong>{user.is_staff ? "管理員" : "一般使用者"}</strong>。
-                管理員可以進入管理後台，檢視使用者、訂單與掃描，並調整點數；操作日誌與公告仍只有超級管理員能用。
-              </p>
-              <button
-                type="button"
-                className={`admin-btn ${user.is_staff ? "danger" : "primary"}`}
-                onClick={handleToggleStaff}
-                disabled={roleBusy || (!user.is_staff && !user.is_active)}
-              >
-                {roleBusy ? "處理中…" : user.is_staff ? "取消管理員" : "設為管理員"}
-              </button>
-              {!user.is_staff && !user.is_active && <p className="admin-empty">停用的帳號不能設為管理員。</p>}
-            </div>
-          )}
-          {roleFeedback && (
-            <div className={`admin-feedback tone-${roleFeedback.tone}`}>{roleFeedback.message}</div>
-          )}
-        </section>
-      )}
-
-      <section className="admin-panel">
         <h3><span className="admin-panel-icon-chip"><AdminSettingsIcon /></span>調整點數</h3>
         <form className="admin-adjust-form" onSubmit={handleAdjust}>
           <div className="admin-adjust-row">
@@ -621,69 +540,6 @@ export function AdminUserDetailPage() {
         )}
       </section>
 
-      <section className="admin-panel">
-        <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>登入記錄（最近 50 筆）</h3>
-        {loginEvents === null ? (
-          <AdminSkeleton variant="table" rows={4} label="載入登入記錄中" />
-        ) : loginEvents.length === 0 ? (
-          <p className="admin-empty">尚無登入紀錄</p>
-        ) : (
-          <ul className="admin-login-timeline">
-            {loginEvents.map((event, index) => (
-              <li key={`${event.created_at}-${index}`} className="admin-login-item">
-                <div className="admin-login-line1">
-                  <span className={`admin-login-method method-${event.method}`}>
-                    {event.method_label}
-                  </span>
-                  <span className="admin-login-ip">{event.ip_address || "IP 未記錄"}</span>
-                  <time className="admin-login-time">
-                    {formatDateTime(event.created_at)}
-                  </time>
-                </div>
-                <p className="admin-login-ua" title={event.user_agent}>{event.user_agent || "—"}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {user.ai_usage && (
-        <section className="admin-panel">
-          <h3><span className="admin-panel-icon-chip"><AdminTokensIcon /></span>AI 使用量</h3>
-          <div className="admin-ai-summary">
-            <div>
-              <div className="admin-stat-label">總 Tokens</div>
-              <div className="admin-balance-big tight">
-                {user.ai_usage.total_tokens.toLocaleString()}
-              </div>
-            </div>
-            <div>
-              <div className="admin-stat-label">Sessions</div>
-              <div className="admin-balance-big tight">
-                {user.ai_usage.total_sessions}
-              </div>
-            </div>
-          </div>
-          {user.ai_usage.by_provider.length > 0 && (
-            <div className="admin-table-scroll admin-table-spaced">
-              <table className="admin-table compact">
-              <thead><tr><th>Provider</th><th>Model</th><th className="num">Sessions</th><th className="num">Tokens</th></tr></thead>
-              <tbody>
-                {user.ai_usage.by_provider.map((row, i) => (
-                  <tr key={`${row.provider}-${row.model}-${i}`}>
-                    <td>{row.provider}</td>
-                    <td>{row.model || "—"}</td>
-                    <td className="num">{row.sessions}</td>
-                    <td className="num"><span className="admin-coin">{row.tokens.toLocaleString()}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-
       {/* 該使用者的掃描紀錄：客服處理「掃描失敗卻被扣點」時的第一手資料。
           先前要切到掃描頁再搜一次網址才找得到。 */}
       <section className="admin-panel">
@@ -763,6 +619,151 @@ export function AdminUserDetailPage() {
           </table>
         </div>
       </section>
+      <section className="admin-panel">
+        <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>登入記錄（最近 50 筆）</h3>
+        {loginEvents === null ? (
+          <AdminSkeleton variant="table" rows={4} label="載入登入記錄中" />
+        ) : loginEvents.length === 0 ? (
+          <p className="admin-empty">尚無登入紀錄</p>
+        ) : (
+          <ul className="admin-login-timeline">
+            {loginEvents.map((event, index) => (
+              <li key={`${event.created_at}-${index}`} className="admin-login-item">
+                <div className="admin-login-line1">
+                  <span className={`admin-login-method method-${event.method}`}>
+                    {event.method_label}
+                  </span>
+                  <span className="admin-login-ip">{event.ip_address || "IP 未記錄"}</span>
+                  <time className="admin-login-time">
+                    {formatDateTime(event.created_at)}
+                  </time>
+                </div>
+                <p className="admin-login-ua" title={event.user_agent}>{event.user_agent || "—"}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {user.ai_usage && (
+        <section className="admin-panel">
+          <h3><span className="admin-panel-icon-chip"><AdminTokensIcon /></span>AI 使用量</h3>
+          <div className="admin-ai-summary">
+            <div>
+              <div className="admin-stat-label">總 Tokens</div>
+              <div className="admin-balance-big tight">
+                {user.ai_usage.total_tokens.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="admin-stat-label">Sessions</div>
+              <div className="admin-balance-big tight">
+                {user.ai_usage.total_sessions}
+              </div>
+            </div>
+          </div>
+          {user.ai_usage.by_provider.length > 0 && (
+            <div className="admin-table-scroll admin-table-spaced">
+              <table className="admin-table compact">
+              <thead><tr><th>Provider</th><th>Model</th><th className="num">Sessions</th><th className="num">Tokens</th></tr></thead>
+              <tbody>
+                {user.ai_usage.by_provider.map((row, i) => (
+                  <tr key={`${row.provider}-${row.model}-${i}`}>
+                    <td>{row.provider}</td>
+                    <td>{row.model || "—"}</td>
+                    <td className="num">{row.sessions}</td>
+                    <td className="num"><span className="admin-coin">{row.tokens.toLocaleString()}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {me?.is_superuser && !user.deleted_at && (
+        <section className="admin-panel">
+          <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>管理權限</h3>
+          {user.is_superuser ? (
+            <p className="admin-empty">這是超級管理員帳號，權限不能在後台變更。</p>
+          ) : user.id === me.id ? (
+            <p className="admin-empty">不能變更自己的管理員身分。</p>
+          ) : (
+            <div className="admin-role-row">
+              <p>
+                目前身分：<strong>{user.is_staff ? "管理員" : "一般使用者"}</strong>。
+                管理員可以進入管理後台，檢視使用者、訂單與掃描，並調整點數；操作日誌與公告仍只有超級管理員能用。
+              </p>
+              <button
+                type="button"
+                className={`admin-btn ${user.is_staff ? "danger" : "primary"}`}
+                onClick={handleToggleStaff}
+                disabled={roleBusy || (!user.is_staff && !user.is_active)}
+              >
+                {roleBusy ? "處理中…" : user.is_staff ? "取消管理員" : "設為管理員"}
+              </button>
+              {!user.is_staff && !user.is_active && <p className="admin-empty">停用的帳號不能設為管理員。</p>}
+            </div>
+          )}
+          {roleFeedback && (
+            <div className={`admin-feedback tone-${roleFeedback.tone}`}>{roleFeedback.message}</div>
+          )}
+        </section>
+      )}
+
+      {/* 危險操作放最後，並用 danger 面板區隔（與會員端設定頁的刪除帳號一致） */}
+      <section className="admin-panel admin-panel-danger">
+        <h3><span className="admin-panel-icon-chip"><AdminUsersIcon /></span>帳號狀態</h3>
+        {user.deleted_at ? (
+          <p className="admin-empty">此帳號已於 {formatDateTime(user.deleted_at)} 刪除，個人資料已清除；點數交易與訂單只保留匿名紀錄。</p>
+        ) : statusBlocked ? (
+          <p className="admin-empty">{statusBlocked}</p>
+        ) : (
+          <div className="admin-role-row">
+            <p>
+              目前狀態：<strong>{user.is_active ? "啟用" : "已停用"}</strong>。
+              停用（封號）會立即登出對方並禁止登入，資料全部保留，可以再恢復；刪除則永久清除對方的個人資料與網站專案，無法復原。
+            </p>
+            <input
+              className="admin-input wide"
+              placeholder="原因（選填，寫入操作日誌）"
+              aria-label="停用或刪除原因"
+              maxLength={200}
+              value={statusReason}
+              onChange={(e) => setStatusReason(e.target.value)}
+            />
+            <button
+              type="button"
+              className={`admin-btn ${user.is_active ? "danger" : "primary"}`}
+              onClick={handleToggleSuspend}
+              disabled={statusBusy}
+            >
+              {user.is_active ? "停用帳號" : "恢復帳號"}
+            </button>
+            <form className="admin-role-actions" onSubmit={handleDeleteUser} aria-label="刪除帳號">
+              <input
+                className="admin-input"
+                placeholder="輸入「刪除帳號」確認"
+                aria-label="輸入「刪除帳號」確認"
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="admin-btn danger"
+                disabled={statusBusy || deleteConfirm.trim() !== "刪除帳號"}
+              >
+                永久刪除帳號
+              </button>
+            </form>
+          </div>
+        )}
+        {statusFeedback && (
+          <div className={`admin-feedback tone-${statusFeedback.tone}`}>{statusFeedback.message}</div>
+        )}
+      </section>
+
       {dialogHost}
     </div>
   );
