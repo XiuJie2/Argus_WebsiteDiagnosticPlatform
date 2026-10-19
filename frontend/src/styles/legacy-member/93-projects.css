@@ -331,6 +331,20 @@
   gap: 1rem;
   min-width: 0;
 }
+/* 分數概況在上（4 張數字磚＋趨勢）、紀錄表在下只列最近幾筆：表格再長也不會把趨勢推到底 */
+.scan-overview-tiles {
+  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.scan-overview-trend {
+  max-width: 680px;
+}
+.scan-overview-trend-title {
+  @apply mb-1 text-xs font-semibold text-slate-500;
+}
+.scan-history-more {
+  @apply mt-3 flex justify-center;
+}
 
 /* ── 資安分析（2026-10-08） ── */
 .security-notice {

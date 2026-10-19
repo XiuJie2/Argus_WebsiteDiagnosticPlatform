@@ -1407,10 +1407,14 @@ function coinsChargedText(scan) {
   return `${coins} 點`;
 }
 
-/** 掃描紀錄（2026-10-08 合併原「歷史報告」分頁）：歷次掃描、分數變化、扣點、問題分析與 PDF 報告。 */
+/** 掃描紀錄（2026-10-08 合併原「歷史報告」分頁；2026-10-19 分數概況與趨勢移到表格上方）：
+ *  歷次掃描、分數變化、扣點、問題分析與 PDF 報告。 */
+const HISTORY_PREVIEW = 8;
+
 function ScanHistoryPanel({ project, scans, onRefresh }) {
   const [downloading, setDownloading] = useState(null);
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   async function downloadReport(scan) {
     setDownloading(scan.id);
@@ -1442,8 +1446,68 @@ function ScanHistoryPanel({ project, scans, onRefresh }) {
     else modelChangedIds.add(scan.id);
   });
 
+  // 預設只列最近 HISTORY_PREVIEW 筆：掃描越多表格越長，概況與趨勢不該被推到看不見的地方
+  const visibleScans = showAll ? scans : scans.slice(0, HISTORY_PREVIEW);
+  const hiddenCount = scans.length - visibleScans.length;
+  const latest = completed[0] || null;
+
   return (
     <div className="project-scans-side">
+      <section className="panel">
+        <h2 className="project-section-title">分數概況</h2>
+        <div className="project-site-summary scan-overview-tiles">
+          <div className="project-site-tile">
+            <span className="project-site-tile-label">最新分數</span>
+            <span className={`project-site-tile-value ${latest ? `tone-${scoreTone(latest.overall_score)}` : "is-muted"}`}>
+              {latest ? latest.overall_score : "—"}
+              {latest && <small> {scoreGrade(latest.overall_score)}</small>}
+            </span>
+            <span className="project-site-tile-hint">
+              {latest ? formatDateTime(latest.completed_at) : "還沒有完成的掃描"}
+            </span>
+          </div>
+          <div className="project-site-tile">
+            <span className="project-site-tile-label">與上一次相比</span>
+            <span className="project-site-tile-value is-text">
+              {latest && deltaById.has(latest.id) ? (
+                <DeltaText delta={deltaById.get(latest.id)} />
+              ) : latest && modelChangedIds.has(latest.id) ? "規則已更新" : "—"}
+            </span>
+            <span className="project-site-tile-hint">
+              {latest && modelChangedIds.has(latest.id)
+                ? "評分規則與前一次不同，分數不宜直接比較"
+                : "只比較評分規則相同的兩次完成掃描"}
+            </span>
+          </div>
+          <div className="project-site-tile">
+            <span className="project-site-tile-label">完成掃描</span>
+            <span className="project-site-tile-value">
+              {completed.length}<small> / {scans.length} 次</small>
+            </span>
+            <span className="project-site-tile-hint">失敗或取消的掃描全額退回點數</span>
+          </div>
+          <div className="project-site-tile">
+            <span className="project-site-tile-label">進行中</span>
+            <span className={`project-site-tile-value${running === 0 ? " is-muted" : ""}`}>
+              {running}<small> 次</small>
+            </span>
+            <span className="project-site-tile-hint">
+              {running > 0 ? "進行中的掃描會自動更新" : "沒有進行中的掃描"}
+            </span>
+          </div>
+        </div>
+        {completed.length > 1 && (
+          <div className="scan-overview-trend">
+            <h3 className="scan-overview-trend-title">分數趨勢（{completed.length} 次完成）</h3>
+            <LineChart
+              width={640}
+              height={150}
+              data={completed.slice().reverse().map((scan) => ({ label: formatDate(scan.completed_at).slice(5), value: scan.overall_score }))}
+              ariaLabel={`${project.name} 歷次分數`}
+            />
+          </div>
+        )}
+      </section>
       <section className="panel">
         <div className="scan-list-head">
           <div>
@@ -1474,7 +1538,7 @@ function ScanHistoryPanel({ project, scans, onRefresh }) {
                 </tr>
               </thead>
               <tbody>
-                {scans.map((scan) => {
+                {visibleScans.map((scan) => {
                   const done = scan.status === "completed";
                   return (
                     <tr key={scan.id}>
@@ -1518,16 +1582,14 @@ function ScanHistoryPanel({ project, scans, onRefresh }) {
             </table>
           </div>
         )}
+        {hiddenCount > 0 && (
+          <div className="scan-history-more">
+            <button type="button" className="secondary-button" onClick={() => setShowAll(true)}>
+              顯示更早的 {hiddenCount} 次掃描
+            </button>
+          </div>
+        )}
       </section>
-      {completed.length > 1 && (
-        <section className="panel">
-          <h2 className="project-section-title">分數趨勢</h2>
-          <LineChart
-            data={completed.slice().reverse().map((scan) => ({ label: formatDate(scan.completed_at).slice(5), value: scan.overall_score }))}
-            ariaLabel={`${project.name} 歷次分數`}
-          />
-        </section>
-      )}
     </div>
   );
 }
