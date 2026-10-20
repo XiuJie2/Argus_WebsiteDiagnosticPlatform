@@ -1058,10 +1058,24 @@
 @media (min-width: 1100px) {
   .project-overview-grid {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+    /* 前兩列都是 1fr：容器高度不定時 fr 列會一起取最高者，第一列（優先改善建議）
+       與第二列（問題概況）等高 */
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
     grid-template-areas:
       "head   scan   prio"
       "cats   probs  trend"
       "counts aeo    arch";
+  }
+  /* 優先改善建議被拉到與問題概況等高後，五個項目平均撐開填滿，不堆在上面留空 */
+  .ov-prio {
+    display: flex;
+    flex-direction: column;
+  }
+  .ov-prio .project-priority-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
   }
 }
 .project-kpi {
