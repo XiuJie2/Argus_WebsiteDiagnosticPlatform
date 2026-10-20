@@ -221,8 +221,8 @@ function ProjectOverviewPage() {
       ) : (
         <>
           <CoverageNotice coverage={latest.coverage} />
-          {/* 第一列：四張頭條數字卡（綜合評分｜行動版效能｜安全標頭等第｜最近一次掃描）。
-              效能與安全標頭原本在頁尾「效能與網站架構」，上移補滿頭條列，頁尾只留架構資訊 */}
+          {/* 第一列：四張頭條數字卡（綜合評分｜行動版效能｜高風險問題｜最近一次掃描）。
+              效能原本在頁尾「效能與網站架構」，上移補滿頭條列，頁尾只留架構資訊 */}
           <div className="project-kpis is-four">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
@@ -239,7 +239,7 @@ function ProjectOverviewPage() {
               </p>
             </section>
             <PerformanceKpi scan={latest} />
-            <ObservatoryKpi project={project} scan={latest} />
+            <UrgentIssuesKpi counts={data.severity_counts} issuesPath={issuesPath} />
             <section className="project-kpi">
               <p className="project-kpi-label">最近一次掃描</p>
               <p className="project-kpi-date">
@@ -257,8 +257,8 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜優先改善建議。
-              三個面板都是五列左右的內容，同列等高；第二列寬欄在前、第三列三等分，欄線上下錯開 */}
+          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜網站評分趨勢。
+              同列等高；第二列寬欄在前、第三列三等分，欄線上下錯開 */}
           <div className="project-grid-3 is-wide-first">
             <section className="panel">
               <div className="project-section-head">
@@ -289,34 +289,6 @@ function ProjectOverviewPage() {
             </section>
             <section className="panel">
               <div className="project-section-head">
-                <h2 className="project-section-title">優先改善建議</h2>
-                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
-              </div>
-              {latest.top_actions.length ? (
-                <ol className="project-priority-list">
-                  {latest.top_actions.map((action, index) => (
-                    <li key={`${action.category}-${action.title}`}>
-                      <span className="project-priority-num">{index + 1}</span>
-                      <Link
-                        className="project-priority-title"
-                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
-                      >
-                        {action.title}
-                      </Link>
-                      <SeverityChip severity={action.severity} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="hint-text">這次沒有需要優先處理的項目。</p>
-              )}
-            </section>
-          </div>
-
-          {/* 第三列：評分趨勢｜各維度問題數量｜AEO */}
-          <div className="project-grid-3">
-            <section className="panel">
-              <div className="project-section-head">
                 <h2 className="project-section-title">網站評分趨勢</h2>
                 <select
                   className="input project-range-select"
@@ -338,6 +310,34 @@ function ProjectOverviewPage() {
                 <p className="hint-text">
                   期間評分規則更新過 {modelChanges} 次，更新前後的分數不宜直接比較。
                 </p>
+              )}
+            </section>
+          </div>
+
+          {/* 第三列：優先改善建議｜各維度問題數量｜AEO */}
+          <div className="project-grid-3">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">優先改善建議</h2>
+                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
+              </div>
+              {latest.top_actions.length ? (
+                <ol className="project-priority-list">
+                  {latest.top_actions.map((action, index) => (
+                    <li key={`${action.category}-${action.title}`}>
+                      <span className="project-priority-num">{index + 1}</span>
+                      <Link
+                        className="project-priority-title"
+                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
+                      >
+                        {action.title}
+                      </Link>
+                      <SeverityChip severity={action.severity} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="hint-text">這次沒有需要優先處理的項目。</p>
               )}
             </section>
             <section className="panel">
@@ -458,22 +458,24 @@ function PerformanceKpi({ scan }) {
   );
 }
 
-/** 頭條卡：安全標頭參考等第（Mozilla Observatory 規則離線計算，非官方、不計入分數）。 */
-function ObservatoryKpi({ project, scan }) {
-  const grade = scan.site_summary?.observatory_grade;
+/** 頭條卡：高風險問題（嚴重＋高）。頭條只講「現在有幾個必須先處理」，完整分布在問題概況環圖。 */
+function UrgentIssuesKpi({ counts, issuesPath }) {
+  const critical = counts.critical || 0;
+  const high = counts.high || 0;
+  const urgent = critical + high;
   return (
     <section className="project-kpi">
-      <p className="project-kpi-label">安全標頭參考等第</p>
-      <p className={`project-kpi-value ${grade ? "" : "is-small"}`}>{grade || "—"}</p>
+      <p className="project-kpi-label">高風險問題</p>
+      <p className={`project-kpi-value ${urgent ? "tone-bad" : "tone-good"}`}>{urgent}<small>個待處理</small></p>
       <p className="project-kpi-hint">
-        {grade ? "非官方、不計入分數" : scan.site_summary ? "這次沒有檢查資安" : "較早的掃描沒有這項資料"}
+        {urgent ? `嚴重 ${critical}、高 ${high}，建議先修這些` : "沒有嚴重或高風險的問題"}
       </p>
-      <Link className="project-text-link" to={projectPath(project.id, "security")}>查看資安分析 →</Link>
+      <Link className="project-text-link" to={`${issuesPath}?severity=${critical ? "critical" : "high"}`}>查看高風險問題 →</Link>
     </section>
   );
 }
 
-/** 頁尾：網站架構（CDN／反向代理、使用的技術）。效能與安全標頭 2026-10-20 上移到頭條列。 */
+/** 頁尾：網站架構（CDN／反向代理、使用的技術）。效能 2026-10-20 上移到頭條列。 */
 function SiteSummaryPanel({ scan }) {
   const summary = scan.site_summary;
   const more = summary.technologies_total - summary.technologies.length;
@@ -1866,7 +1868,7 @@ export {
   SeverityChip,
   SiteSummaryPanel,
   PerformanceKpi,
-  ObservatoryKpi,
+  UrgentIssuesKpi,
   useProjectScans,
   ProjectIssuesPage,
   ProjectOverviewPage,
