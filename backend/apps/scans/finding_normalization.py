@@ -64,11 +64,22 @@ def _renormalize_pii(scan_job: ScanJob) -> int:
 
 
 def _renormalize_agent(scan_job: ScanJob) -> int:
+    from apps.agent.tools import SCANNER_IP_NOTE, scanner_ip_disclosure
+
     hostname = urlparse(scan_job.normalized_url or "").hostname or ""
     changed = 0
     for finding in scan_job.findings.filter(rule_id__startswith="agent-observed-security"):
         updates = []
         evidence_json = finding.evidence_json if isinstance(finding.evidence_json, dict) else {}
+        # 證據中的 IP 全是掃描器出口（設定 ARGUS_SCANNER_EGRESS_IPS 之後才判得出來）：降為資訊提示
+        if finding.severity != Finding.Severity.INFO and scanner_ip_disclosure(
+            finding.title, finding.description or "", finding.evidence or ""
+        ):
+            finding.severity = Finding.Severity.INFO
+            if SCANNER_IP_NOTE.strip() not in (finding.description or ""):
+                finding.description = (finding.description or "").rstrip() + SCANNER_IP_NOTE
+                updates.append("description")
+            updates.append("severity")
         # 以主動工具驗證過的回報（2026-10-10 起）本來就允許高風險，不降級
         if finding.severity in (
             Finding.Severity.HIGH, Finding.Severity.CRITICAL
