@@ -768,8 +768,6 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: minmax(0, 1fr);
-  /* 面板各自依內容決定高度，不被同列最高者撐平，讓總覽上下自然錯開 */
-  align-items: start;
 }
 @media (min-width: 1100px) {
   .project-grid-3 {
@@ -1035,9 +1033,18 @@
 .project-kpis {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
+/* 總覽頭條列固定四張（綜合評分｜效能｜安全標頭｜最近掃描），與下方三欄面板同寬度節奏 */
+@media (min-width: 1100px) {
+  .project-kpis.is-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .project-kpi {
   @apply grid content-start gap-2;
 }
+.project-kpi-value.tone-good { @apply text-blue-700; }
+.project-kpi-value.tone-medium { @apply text-amber-700; }
+.project-kpi-value.tone-bad { @apply text-rose-700; }
 .project-kpi-label {
   @apply text-sm font-semibold text-slate-700;
 }

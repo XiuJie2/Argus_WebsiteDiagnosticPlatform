@@ -221,8 +221,9 @@ function ProjectOverviewPage() {
       ) : (
         <>
           <CoverageNotice coverage={latest.coverage} />
-          {/* 第一列：兩張頭條數字卡（綜合評分、最近一次掃描） */}
-          <div className="project-kpis">
+          {/* 第一列：四張頭條數字卡（綜合評分｜行動版效能｜安全標頭等第｜最近一次掃描）。
+              效能與安全標頭原本在頁尾「效能與網站架構」，上移補滿頭條列，頁尾只留架構資訊 */}
+          <div className="project-kpis is-four">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
               <div className="project-kpi-score">
@@ -237,6 +238,8 @@ function ProjectOverviewPage() {
                 {previous ? `上次 ${formatDate(previous.completed_at)}：${previous.overall_score ?? "—"} 分` : "第一次完成的掃描結果"}
               </p>
             </section>
+            <PerformanceKpi scan={latest} />
+            <ObservatoryKpi project={project} scan={latest} />
             <section className="project-kpi">
               <p className="project-kpi-label">最近一次掃描</p>
               <p className="project-kpi-date">
@@ -254,8 +257,8 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜評分趨勢。
-              三欄寬度與內容高度不同，刻意讓面板上下錯開，不是齊平的大方塊 */}
+          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜優先改善建議。
+              三個面板都是五列左右的內容，同列等高；第二列寬欄在前、第三列三等分，欄線上下錯開 */}
           <div className="project-grid-3 is-wide-first">
             <section className="panel">
               <div className="project-section-head">
@@ -286,60 +289,6 @@ function ProjectOverviewPage() {
             </section>
             <section className="panel">
               <div className="project-section-head">
-                <h2 className="project-section-title">網站評分趨勢</h2>
-                <select
-                  className="input project-range-select"
-                  value={trendRange}
-                  onChange={(event) => setTrendRange(Number(event.target.value))}
-                  aria-label="顯示的掃描次數"
-                >
-                  <option value={5}>近 5 次掃描</option>
-                  <option value={10}>近 10 次掃描</option>
-                  <option value={TREND_ALL}>全部</option>
-                </select>
-              </div>
-              <LineChart
-                data={trendPoints.map((point) => ({ label: formatDate(point.completed_at).slice(5), value: point.overall_score }))}
-                ariaLabel={`${project.name} 分數趨勢`}
-              />
-              {data.trend.length < 2 && <p className="hint-text">完成兩次以上掃描後即可看出趨勢。</p>}
-              {modelChanges > 0 && (
-                <p className="hint-text">
-                  期間評分規則更新過 {modelChanges} 次，更新前後的分數不宜直接比較。
-                </p>
-              )}
-            </section>
-          </div>
-
-          {/* 第三列：AEO｜各維度問題數量｜優先改善建議 */}
-          <div className="project-grid-3">
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">AEO 問答檢測</h2>
-              </div>
-              <AeoTiles aeo={latest.aeo} />
-              {latest.aeo && (
-                <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
-              )}
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">各維度問題的數量</h2>
-              </div>
-              <CountBars
-                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
-                  key: c,
-                  label: CATEGORY_META[c].label,
-                  desc: CATEGORY_META[c].desc,
-                  value: latest.category_counts[c] || 0,
-                  tone: scoreTone(latest.category_scores?.[c]),
-                }))}
-                emptyText="這次掃描沒有發現問題。"
-                linkFor={(item) => `${issuesPath}?category=${item.key}`}
-              />
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
                 <h2 className="project-section-title">優先改善建議</h2>
                 <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
               </div>
@@ -364,7 +313,61 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          {latest.site_summary && <SiteSummaryPanel project={project} scan={latest} />}
+          {/* 第三列：評分趨勢｜各維度問題數量｜AEO */}
+          <div className="project-grid-3">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">網站評分趨勢</h2>
+                <select
+                  className="input project-range-select"
+                  value={trendRange}
+                  onChange={(event) => setTrendRange(Number(event.target.value))}
+                  aria-label="顯示的掃描次數"
+                >
+                  <option value={5}>近 5 次掃描</option>
+                  <option value={10}>近 10 次掃描</option>
+                  <option value={TREND_ALL}>全部</option>
+                </select>
+              </div>
+              <LineChart
+                data={trendPoints.map((point) => ({ label: formatDate(point.completed_at).slice(5), value: point.overall_score }))}
+                ariaLabel={`${project.name} 分數趨勢`}
+              />
+              {data.trend.length < 2 && <p className="hint-text">完成兩次以上掃描後即可看出趨勢。</p>}
+              {modelChanges > 0 && (
+                <p className="hint-text">
+                  期間評分規則更新過 {modelChanges} 次，更新前後的分數不宜直接比較。
+                </p>
+              )}
+            </section>
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">各維度問題的數量</h2>
+              </div>
+              <CountBars
+                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
+                  key: c,
+                  label: CATEGORY_META[c].label,
+                  desc: CATEGORY_META[c].desc,
+                  value: latest.category_counts[c] || 0,
+                  tone: scoreTone(latest.category_scores?.[c]),
+                }))}
+                emptyText="這次掃描沒有發現問題。"
+                linkFor={(item) => `${issuesPath}?category=${item.key}`}
+              />
+            </section>
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">AEO 問答檢測</h2>
+              </div>
+              <AeoTiles aeo={latest.aeo} />
+              {latest.aeo && (
+                <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
+              )}
+            </section>
+          </div>
+
+          {latest.site_summary && <SiteSummaryPanel scan={latest} />}
         </>
       )}
 
@@ -432,42 +435,55 @@ function performanceNote(scan) {
 }
 
 /** 總覽的效能與網站架構摘要（2026-10-08）：原本只在單次掃描的效能／網站架構分頁看得到。 */
-function SiteSummaryPanel({ project, scan }) {
+/** 頭條卡：行動版效能（Lighthouse）。資料 `scan.site_summary.performance`，舊掃描沒有 site_summary 時寫原因。 */
+function PerformanceKpi({ scan }) {
+  const perf = scan.site_summary?.performance;
+  const hasPerf = perf && perf.score !== null && perf.score !== undefined;
+  const tone = hasPerf ? (perf.score >= 90 ? "good" : perf.score >= 50 ? "medium" : "bad") : "none";
+  return (
+    <section className="project-kpi">
+      <p className="project-kpi-label">行動版效能（Lighthouse）</p>
+      {hasPerf ? (
+        <p className={`project-kpi-value tone-${tone}`}>{perf.score}<small>分</small></p>
+      ) : (
+        <p className="project-kpi-value is-small">—</p>
+      )}
+      <p className="project-kpi-hint">
+        {hasPerf
+          ? perf.field_overall_label ? `真實使用者體驗：${perf.field_overall_label}` : "沒有足夠的真實使用者資料"
+          : scan.site_summary ? performanceNote(scan) : "較早的掃描沒有這項資料"}
+      </p>
+      <Link className="project-text-link" to={`/scans/${scan.id}/performance`}>查看效能 →</Link>
+    </section>
+  );
+}
+
+/** 頭條卡：安全標頭參考等第（Mozilla Observatory 規則離線計算，非官方、不計入分數）。 */
+function ObservatoryKpi({ project, scan }) {
+  const grade = scan.site_summary?.observatory_grade;
+  return (
+    <section className="project-kpi">
+      <p className="project-kpi-label">安全標頭參考等第</p>
+      <p className={`project-kpi-value ${grade ? "" : "is-small"}`}>{grade || "—"}</p>
+      <p className="project-kpi-hint">
+        {grade ? "非官方、不計入分數" : scan.site_summary ? "這次沒有檢查資安" : "較早的掃描沒有這項資料"}
+      </p>
+      <Link className="project-text-link" to={projectPath(project.id, "security")}>查看資安分析 →</Link>
+    </section>
+  );
+}
+
+/** 頁尾：網站架構（CDN／反向代理、使用的技術）。效能與安全標頭 2026-10-20 上移到頭條列。 */
+function SiteSummaryPanel({ scan }) {
   const summary = scan.site_summary;
-  const perf = summary.performance;
-  const hasPerf = perf.score !== null && perf.score !== undefined;
   const more = summary.technologies_total - summary.technologies.length;
   return (
     <section className="panel">
       <div className="project-section-head">
-        <h2 className="project-section-title">效能與網站架構</h2>
+        <h2 className="project-section-title">網站架構</h2>
         <span className="project-section-hint">最新一次完成的掃描</span>
       </div>
       <div className="project-site-summary">
-        <Link className="project-site-tile" to={`/scans/${scan.id}/performance`}>
-          <span className="project-site-tile-label">行動版效能（Lighthouse）</span>
-          {hasPerf ? (
-            <strong className={`project-site-tile-value tone-${perf.score >= 90 ? "good" : perf.score >= 50 ? "medium" : "bad"}`}>
-              {perf.score}<small> 分</small>
-            </strong>
-          ) : (
-            <strong className="project-site-tile-value is-muted">—</strong>
-          )}
-          <span className="project-site-tile-hint">
-            {hasPerf
-              ? perf.field_overall_label ? `真實使用者體驗：${perf.field_overall_label}` : "沒有足夠的真實使用者資料"
-              : performanceNote(scan)}
-          </span>
-        </Link>
-        <Link className="project-site-tile" to={projectPath(project.id, "security")}>
-          <span className="project-site-tile-label">安全標頭參考等第</span>
-          <strong className={`project-site-tile-value ${summary.observatory_grade ? "" : "is-muted"}`}>
-            {summary.observatory_grade || "—"}
-          </strong>
-          <span className="project-site-tile-hint">
-            {summary.observatory_grade ? "非官方、不計入分數" : "這次沒有檢查資安或較早的掃描"}
-          </span>
-        </Link>
         <Link className="project-site-tile" to={`/scans/${scan.id}/architecture`}>
           <span className="project-site-tile-label">CDN／反向代理</span>
           {summary.profile_available ? (
@@ -1849,6 +1865,8 @@ export {
   ScanTimeCard,
   SeverityChip,
   SiteSummaryPanel,
+  PerformanceKpi,
+  ObservatoryKpi,
   useProjectScans,
   ProjectIssuesPage,
   ProjectOverviewPage,
