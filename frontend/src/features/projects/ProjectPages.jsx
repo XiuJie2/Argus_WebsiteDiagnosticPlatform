@@ -254,8 +254,16 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          {/* 第二列：問題概況（總數＝環圖中心，不再另立數字卡）＋優先改善建議 */}
-          <div className="project-grid-2">
+          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜評分趨勢。
+              三欄寬度與內容高度不同，刻意讓面板上下錯開，不是齊平的大方塊 */}
+          <div className="project-grid-3 is-wide-first">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">各維度評分與趨勢</h2>
+                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
+              </div>
+              <CategoryScoreList latest={latest} trend={data.trend} />
+            </section>
             <section className="panel project-problems">
               <div className="project-section-head">
                 <h2 className="project-section-title">問題概況</h2>
@@ -275,41 +283,6 @@ function ProjectOverviewPage() {
                   </>
                 ) : "再掃描一次後會標示新增、持續與未出現的問題"}
               </p>
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">優先改善建議</h2>
-                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
-              </div>
-              {latest.top_actions.length ? (
-                <ol className="project-priority-list">
-                  {latest.top_actions.map((action, index) => (
-                    <li key={`${action.category}-${action.title}`}>
-                      <span className="project-priority-num">{index + 1}</span>
-                      <Link
-                        className="project-priority-title"
-                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
-                      >
-                        {action.title}
-                      </Link>
-                      <SeverityChip severity={action.severity} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="hint-text">這次沒有需要優先處理的項目。</p>
-              )}
-            </section>
-          </div>
-
-          {/* 第三列：各維度分數與整體評分趨勢 */}
-          <div className="project-grid-2">
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">各維度評分與趨勢</h2>
-                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
-              </div>
-              <CategoryScoreList latest={latest} trend={data.trend} />
             </section>
             <section className="panel">
               <div className="project-section-head">
@@ -338,8 +311,17 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          {/* 第四列：各維度問題數量與 AEO 問答檢測 */}
-          <div className="project-grid-2">
+          {/* 第三列：AEO｜各維度問題數量｜優先改善建議 */}
+          <div className="project-grid-3">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">AEO 問答檢測</h2>
+              </div>
+              <AeoTiles aeo={latest.aeo} />
+              {latest.aeo && (
+                <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
+              )}
+            </section>
             <section className="panel">
               <div className="project-section-head">
                 <h2 className="project-section-title">各維度問題的數量</h2>
@@ -358,11 +340,26 @@ function ProjectOverviewPage() {
             </section>
             <section className="panel">
               <div className="project-section-head">
-                <h2 className="project-section-title">AEO 問答檢測</h2>
+                <h2 className="project-section-title">優先改善建議</h2>
+                <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
               </div>
-              <AeoTiles aeo={latest.aeo} />
-              {latest.aeo && (
-                <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
+              {latest.top_actions.length ? (
+                <ol className="project-priority-list">
+                  {latest.top_actions.map((action, index) => (
+                    <li key={`${action.category}-${action.title}`}>
+                      <span className="project-priority-num">{index + 1}</span>
+                      <Link
+                        className="project-priority-title"
+                        to={`${issuesPath}?q=${encodeURIComponent(action.title)}`}
+                      >
+                        {action.title}
+                      </Link>
+                      <SeverityChip severity={action.severity} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="hint-text">這次沒有需要優先處理的項目。</p>
               )}
             </section>
           </div>
