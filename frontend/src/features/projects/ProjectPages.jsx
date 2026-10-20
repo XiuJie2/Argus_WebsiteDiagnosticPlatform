@@ -221,6 +221,7 @@ function ProjectOverviewPage() {
       ) : (
         <>
           <CoverageNotice coverage={latest.coverage} />
+          {/* 第一列：兩張頭條數字卡（綜合評分、最近一次掃描） */}
           <div className="project-kpis">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
@@ -234,27 +235,6 @@ function ProjectOverviewPage() {
               </div>
               <p className="project-kpi-hint">
                 {previous ? `上次 ${formatDate(previous.completed_at)}：${previous.overall_score ?? "—"} 分` : "第一次完成的掃描結果"}
-              </p>
-            </section>
-            <section className="project-kpi">
-              <p className="project-kpi-label">發現問題總數</p>
-              <p className="project-kpi-value">{latest.issues_count}<small>個問題</small></p>
-              <p className="project-kpi-sub">
-                <Link to={issuesPath}>查看問題分析 →</Link>
-                <span className="project-kpi-sub-note">依嚴重度分布見下方圖表</span>
-              </p>
-              <p className="project-kpi-hint">
-                {data.changes ? (
-                  <>
-                    較上次掃描：
-                    <Link to={`${issuesPath}?change=new`}>新增 {data.changes.new}</Link>、
-                    <Link to={`${issuesPath}?change=persisting`}>持續 {data.changes.persisting}</Link>、
-                    <Link to={`${issuesPath}#missing`}>
-                      未出現 {data.changes.missing}
-                      {data.changes.resolved ? `（已修好 ${data.changes.resolved}）` : ""}
-                    </Link>
-                  </>
-                ) : "再掃描一次後會標示新增、持續與未出現的問題"}
               </p>
             </section>
             <section className="project-kpi">
@@ -274,20 +254,27 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          <div className="project-grid-3 is-wide-first">
-            <section className="panel">
+          {/* 第二列：問題概況（總數＝環圖中心，不再另立數字卡）＋優先改善建議 */}
+          <div className="project-grid-2">
+            <section className="panel project-problems">
               <div className="project-section-head">
-                <h2 className="project-section-title">各維度評分與趨勢</h2>
-                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
-              </div>
-              <CategoryScoreList latest={latest} trend={data.trend} />
-            </section>
-            <section className="panel">
-              <div className="project-section-head">
-                <h2 className="project-section-title">問題嚴重程度分布</h2>
-                <span className="project-section-hint">共 {latest.issues_count} 個問題</span>
+                <h2 className="project-section-title">問題概況</h2>
+                <Link className="project-text-link" to={issuesPath}>查看問題分析 →</Link>
               </div>
               <SeverityDonut counts={data.severity_counts} issuesPath={issuesPath} />
+              <p className="project-problems-changes">
+                {data.changes ? (
+                  <>
+                    較上次掃描：
+                    <Link to={`${issuesPath}?change=new`}>新增 {data.changes.new}</Link>、
+                    <Link to={`${issuesPath}?change=persisting`}>持續 {data.changes.persisting}</Link>、
+                    <Link to={`${issuesPath}#missing`}>
+                      未出現 {data.changes.missing}
+                      {data.changes.resolved ? `（已修好 ${data.changes.resolved}）` : ""}
+                    </Link>
+                  </>
+                ) : "再掃描一次後會標示新增、持續與未出現的問題"}
+              </p>
             </section>
             <section className="panel">
               <div className="project-section-head">
@@ -315,22 +302,14 @@ function ProjectOverviewPage() {
             </section>
           </div>
 
-          <div className="project-grid-3">
+          {/* 第三列：各維度分數與整體評分趨勢 */}
+          <div className="project-grid-2">
             <section className="panel">
               <div className="project-section-head">
-                <h2 className="project-section-title">各維度問題的數量</h2>
+                <h2 className="project-section-title">各維度評分與趨勢</h2>
+                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
               </div>
-              <CountBars
-                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
-                  key: c,
-                  label: CATEGORY_META[c].label,
-                  desc: CATEGORY_META[c].desc,
-                  value: latest.category_counts[c] || 0,
-                  tone: scoreTone(latest.category_scores?.[c]),
-                }))}
-                emptyText="這次掃描沒有發現問題。"
-                linkFor={(item) => `${issuesPath}?category=${item.key}`}
-              />
+              <CategoryScoreList latest={latest} trend={data.trend} />
             </section>
             <section className="panel">
               <div className="project-section-head">
@@ -356,6 +335,26 @@ function ProjectOverviewPage() {
                   期間評分規則更新過 {modelChanges} 次，更新前後的分數不宜直接比較。
                 </p>
               )}
+            </section>
+          </div>
+
+          {/* 第四列：各維度問題數量與 AEO 問答檢測 */}
+          <div className="project-grid-2">
+            <section className="panel">
+              <div className="project-section-head">
+                <h2 className="project-section-title">各維度問題的數量</h2>
+              </div>
+              <CountBars
+                items={CATEGORY_ORDER.filter((c) => latest.categories.includes(c)).map((c) => ({
+                  key: c,
+                  label: CATEGORY_META[c].label,
+                  desc: CATEGORY_META[c].desc,
+                  value: latest.category_counts[c] || 0,
+                  tone: scoreTone(latest.category_scores?.[c]),
+                }))}
+                emptyText="這次掃描沒有發現問題。"
+                linkFor={(item) => `${issuesPath}?category=${item.key}`}
+              />
             </section>
             <section className="panel">
               <div className="project-section-head">

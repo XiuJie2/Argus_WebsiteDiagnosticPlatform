@@ -1066,9 +1066,6 @@
 .project-kpi-sub a {
   @apply font-semibold text-blue-700 hover:underline;
 }
-.project-kpi-sub-note {
-  @apply text-xs text-slate-500;
-}
 .project-sev-count {
   @apply inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-sm font-semibold transition;
   cursor: pointer;
@@ -1125,11 +1122,18 @@
   @apply text-xs text-slate-500;
 }
 
-/* ── 總覽：第二、三排 ── */
-@media (min-width: 1100px) {
-  .project-grid-3.is-wide-first {
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
-  }
+/* ── 總覽：問題概況面板（嚴重度環圖的總數＝唯一問題總數來源） ── */
+.project-problems {
+  @apply flex flex-col gap-4;
+}
+.project-problems .dash-donut {
+  @apply flex-1;
+}
+.project-problems-changes {
+  @apply m-0 border-t border-slate-100 pt-3 text-xs text-slate-600;
+}
+.project-problems-changes a {
+  @apply font-semibold text-blue-700 hover:underline;
 }
 .project-range-select {
   @apply w-auto py-1 text-xs;
