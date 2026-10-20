@@ -1058,11 +1058,8 @@
 @media (min-width: 1100px) {
   .project-overview-grid {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
-    /* 第三列只有評分趨勢撐高度，其餘由跨列的面板分配 */
-    grid-template-rows: auto auto auto auto;
     grid-template-areas:
       "head   scan   prio"
-      "cats   probs  prio"
       "cats   probs  trend"
       "counts aeo    arch";
   }

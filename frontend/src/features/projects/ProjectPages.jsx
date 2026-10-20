@@ -223,8 +223,8 @@ function ProjectOverviewPage() {
           <CoverageNotice coverage={latest.coverage} />
           {/* 總覽版面（2026-10-20）：一張 3 欄 grid，用 grid-template-areas 固定位置——
               第一欄（寬）：綜合評分＋行動版效能｜各維度評分與趨勢；第二欄：最近一次掃描｜問題概況；
-              第三欄：優先改善建議（跨兩列）｜網站評分趨勢（壓在下方）；最後一列：各維度問題數量｜AEO｜網站架構。
-              欄線上下對齊（最近一次掃描對齊問題概況），同列面板等高；窄螢幕退回單欄 */}
+              第三欄：優先改善建議（與第一列等高，不留空）｜網站評分趨勢（與問題概況同列、圖拉高填滿）；
+              最後一列：各維度問題數量｜AEO｜網站架構。欄線上下對齊，同列面板等高；窄螢幕退回單欄 */}
           <div className="project-overview-grid">
             <div className="ov-head">
             <section className="project-kpi is-score">
@@ -325,6 +325,7 @@ function ProjectOverviewPage() {
               </div>
               <LineChart
                 data={trendPoints.map((point) => ({ label: formatDate(point.completed_at).slice(5), value: point.overall_score }))}
+                height={200}
                 ariaLabel={`${project.name} 分數趨勢`}
               />
               {data.trend.length < 2 && <p className="hint-text">完成兩次以上掃描後即可看出趨勢。</p>}
