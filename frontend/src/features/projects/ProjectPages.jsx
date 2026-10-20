@@ -1,6 +1,6 @@
 // 網站專案的分頁：總覽、掃描、問題分析、頁面、AEO 問答、歷史報告、專案設定（外框見 ProjectWorkspace.jsx）。
 // 後端：/api/projects/<id>/（overview／issues）與 /api/scans/?project=<id>。
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { api } from "../../api";
@@ -144,6 +144,18 @@ function CoverageNotice({ coverage }) {
 function ProjectOverviewPage() {
   const { project } = useOutletContext();
   const [data, setData] = useState(null);
+  // 右上角「優先改善建議」要與「問題概況」等高，但兩者不在同一 grid 列，純 CSS 無法互相參照；
+  // 量問題概況面板的高度寫進 CSS 變數，寬螢幕時右欄據此定高，剩餘空間給下方的評分趨勢
+  const problemsRef = useRef(null);
+  const [problemsHeight, setProblemsHeight] = useState(0);
+  useLayoutEffect(() => {
+    const node = problemsRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    // 量 border box（含內距），右欄面板以 border-box 定高才會與問題概況外框等高
+    const observer = new ResizeObserver(() => setProblemsHeight(Math.round(node.getBoundingClientRect().height)));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [data]);
   const [error, setError] = useState("");
   const [trendRange, setTrendRange] = useState(5);
 
@@ -221,9 +233,12 @@ function ProjectOverviewPage() {
       ) : (
         <>
           <CoverageNotice coverage={latest.coverage} />
-          {/* 第一列：四張頭條數字卡（綜合評分｜行動版效能｜安全標頭等第｜最近一次掃描）。
-              效能與安全標頭原本在頁尾「效能與網站架構」，上移補滿頭條列，頁尾只留架構資訊 */}
-          <div className="project-kpis is-four">
+          {/* 總覽版面（2026-10-20）：一張 3 欄 grid，用 grid-template-areas 固定位置——
+              第一欄（寬）：綜合評分＋行動版效能｜各維度評分與趨勢；第二欄：最近一次掃描｜問題概況；
+              第三欄 `.ov-right`：優先改善建議（高度＝問題概況，量測後以 CSS 變數定高）｜網站評分趨勢（吃剩餘高度、壓在下方）；
+              最後一列：各維度問題數量｜AEO｜網站架構。第一列三張卡維持內容高度；窄螢幕退回單欄 */}
+          <div className="project-overview-grid" style={problemsHeight ? { "--ov-prio-h": `${problemsHeight}px` } : undefined}>
+            <div className="ov-head">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
               <div className="project-kpi-score">
@@ -239,8 +254,8 @@ function ProjectOverviewPage() {
               </p>
             </section>
             <PerformanceKpi scan={latest} />
-            <ObservatoryKpi project={project} scan={latest} />
-            <section className="project-kpi">
+            </div>
+            <section className="project-kpi ov-scan">
               <p className="project-kpi-label">最近一次掃描</p>
               <p className="project-kpi-date">
                 <span className="project-kpi-date-icon" aria-hidden="true"><CalendarIcon /></span>
@@ -255,19 +270,14 @@ function ProjectOverviewPage() {
               </dl>
               <Link className="project-text-link" to={`/scans/${latest.id}`}>查看這次結果 →</Link>
             </section>
-          </div>
-
-          {/* 第二列：各維度評分（寬）｜問題概況（總數＝環圖中心，整併原數字卡）｜優先改善建議。
-              三個面板都是五列左右的內容，同列等高；第二列寬欄在前、第三列三等分，欄線上下錯開 */}
-          <div className="project-grid-3 is-wide-first">
-            <section className="panel">
+            <section className="panel ov-cats">
               <div className="project-section-head">
                 <h2 className="project-section-title">各維度評分與趨勢</h2>
                 <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
               </div>
               <CategoryScoreList latest={latest} trend={data.trend} />
             </section>
-            <section className="panel project-problems">
+            <section className="panel project-problems ov-probs" ref={problemsRef}>
               <div className="project-section-head">
                 <h2 className="project-section-title">問題概況</h2>
                 <Link className="project-text-link" to={issuesPath}>查看問題分析 →</Link>
@@ -287,7 +297,8 @@ function ProjectOverviewPage() {
                 ) : "再掃描一次後會標示新增、持續與未出現的問題"}
               </p>
             </section>
-            <section className="panel">
+            <div className="ov-right">
+            <section className="panel ov-prio">
               <div className="project-section-head">
                 <h2 className="project-section-title">優先改善建議</h2>
                 <Link className="project-text-link" to={issuesPath}>查看全部 →</Link>
@@ -311,11 +322,7 @@ function ProjectOverviewPage() {
                 <p className="hint-text">這次沒有需要優先處理的項目。</p>
               )}
             </section>
-          </div>
-
-          {/* 第三列：評分趨勢｜各維度問題數量｜AEO */}
-          <div className="project-grid-3">
-            <section className="panel">
+            <section className="panel ov-trend">
               <div className="project-section-head">
                 <h2 className="project-section-title">網站評分趨勢</h2>
                 <select
@@ -340,7 +347,8 @@ function ProjectOverviewPage() {
                 </p>
               )}
             </section>
-            <section className="panel">
+            </div>
+            <section className="panel ov-counts">
               <div className="project-section-head">
                 <h2 className="project-section-title">各維度問題的數量</h2>
               </div>
@@ -356,7 +364,7 @@ function ProjectOverviewPage() {
                 linkFor={(item) => `${issuesPath}?category=${item.key}`}
               />
             </section>
-            <section className="panel">
+            <section className="panel ov-aeo">
               <div className="project-section-head">
                 <h2 className="project-section-title">AEO 問答檢測</h2>
               </div>
@@ -365,9 +373,8 @@ function ProjectOverviewPage() {
                 <Link className="secondary-button project-panel-cta" to={projectPath(project.id, "aeo")}>查看詳細結果 →</Link>
               )}
             </section>
+            {latest.site_summary && <SiteSummaryPanel scan={latest} className="ov-arch" />}
           </div>
-
-          {latest.site_summary && <SiteSummaryPanel scan={latest} />}
         </>
       )}
 
@@ -458,27 +465,12 @@ function PerformanceKpi({ scan }) {
   );
 }
 
-/** 頭條卡：安全標頭參考等第（Mozilla Observatory 規則離線計算，非官方、不計入分數）。 */
-function ObservatoryKpi({ project, scan }) {
-  const grade = scan.site_summary?.observatory_grade;
-  return (
-    <section className="project-kpi">
-      <p className="project-kpi-label">安全標頭參考等第</p>
-      <p className={`project-kpi-value ${grade ? "" : "is-small"}`}>{grade || "—"}</p>
-      <p className="project-kpi-hint">
-        {grade ? "非官方、不計入分數" : scan.site_summary ? "這次沒有檢查資安" : "較早的掃描沒有這項資料"}
-      </p>
-      <Link className="project-text-link" to={projectPath(project.id, "security")}>查看資安分析 →</Link>
-    </section>
-  );
-}
-
-/** 頁尾：網站架構（CDN／反向代理、使用的技術）。效能與安全標頭 2026-10-20 上移到頭條列。 */
-function SiteSummaryPanel({ scan }) {
+/** 頁尾：網站架構（CDN／反向代理、使用的技術）。效能 2026-10-20 上移到頭條列。 */
+function SiteSummaryPanel({ scan, className = "" }) {
   const summary = scan.site_summary;
   const more = summary.technologies_total - summary.technologies.length;
   return (
-    <section className="panel">
+    <section className={`panel ${className}`}>
       <div className="project-section-head">
         <h2 className="project-section-title">網站架構</h2>
         <span className="project-section-hint">最新一次完成的掃描</span>
@@ -1866,7 +1858,6 @@ export {
   SeverityChip,
   SiteSummaryPanel,
   PerformanceKpi,
-  ObservatoryKpi,
   useProjectScans,
   ProjectIssuesPage,
   ProjectOverviewPage,

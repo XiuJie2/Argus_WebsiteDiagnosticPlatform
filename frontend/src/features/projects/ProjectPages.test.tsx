@@ -10,7 +10,6 @@ import {
   ProjectScansPage,
   SiteSummaryPanel,
   PerformanceKpi,
-  ObservatoryKpi,
 } from "./ProjectPages";
 
 vi.mock("../../api", () => ({ api: { get: vi.fn() }, setAccessToken: vi.fn() }));
@@ -328,7 +327,6 @@ describe("SiteSummaryPanel 效能與網站架構", () => {
     render(
       <MemoryRouter>
         <PerformanceKpi scan={value} />
-        <ObservatoryKpi project={PROJECT} scan={value} />
         <SiteSummaryPanel scan={value} />
       </MemoryRouter>,
     );
@@ -337,8 +335,6 @@ describe("SiteSummaryPanel 效能與網站架構", () => {
     renderPanel(scan({}));
     expect(screen.getByText("真實使用者體驗：需改善")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /查看效能/ })).toHaveAttribute("href", "/scans/3/performance");
-    expect(screen.getByText("C")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /查看資安分析/ })).toHaveAttribute("href", "/projects/7/security");
     expect(screen.getByText("WordPress、jQuery")).toBeInTheDocument();
     expect(screen.getByText("另有 3 項，查看架構與信任")).toBeInTheDocument();
   });
@@ -354,11 +350,11 @@ describe("SiteSummaryPanel 效能與網站架構", () => {
     render(
       <MemoryRouter>
         <PerformanceKpi scan={{ id: 3, categories: ["ux"], site_summary: null }} />
-        <ObservatoryKpi project={PROJECT} scan={{ id: 3, categories: ["ux"], site_summary: null }} />
       </MemoryRouter>,
     );
-    expect(screen.getAllByText("較早的掃描沒有這項資料")).toHaveLength(2);
+    expect(screen.getByText("較早的掃描沒有這項資料")).toBeInTheDocument();
   });
+
 
   it("較早的掃描沒有網站概況時寫明沒有資料，不寫成未偵測到", () => {
     renderPanel(scan({ profile_available: false, edge: "", technologies: [], technologies_total: 0 }));
