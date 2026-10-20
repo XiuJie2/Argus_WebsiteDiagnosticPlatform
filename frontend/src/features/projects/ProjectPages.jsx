@@ -1,6 +1,6 @@
 // 網站專案的分頁：總覽、掃描、問題分析、頁面、AEO 問答、歷史報告、專案設定（外框見 ProjectWorkspace.jsx）。
 // 後端：/api/projects/<id>/（overview／issues）與 /api/scans/?project=<id>。
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { api } from "../../api";
@@ -144,6 +144,18 @@ function CoverageNotice({ coverage }) {
 function ProjectOverviewPage() {
   const { project } = useOutletContext();
   const [data, setData] = useState(null);
+  // 右上角「優先改善建議」要與「問題概況」等高，但兩者不在同一 grid 列，純 CSS 無法互相參照；
+  // 量問題概況面板的高度寫進 CSS 變數，寬螢幕時右欄據此定高，剩餘空間給下方的評分趨勢
+  const problemsRef = useRef(null);
+  const [problemsHeight, setProblemsHeight] = useState(0);
+  useLayoutEffect(() => {
+    const node = problemsRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    // 量 border box（含內距），右欄面板以 border-box 定高才會與問題概況外框等高
+    const observer = new ResizeObserver(() => setProblemsHeight(Math.round(node.getBoundingClientRect().height)));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [data]);
   const [error, setError] = useState("");
   const [trendRange, setTrendRange] = useState(5);
 
@@ -223,9 +235,9 @@ function ProjectOverviewPage() {
           <CoverageNotice coverage={latest.coverage} />
           {/* 總覽版面（2026-10-20）：一張 3 欄 grid，用 grid-template-areas 固定位置——
               第一欄（寬）：綜合評分＋行動版效能｜各維度評分與趨勢；第二欄：最近一次掃描｜問題概況；
-              第三欄：優先改善建議（與第一列等高，不留空）｜網站評分趨勢（與問題概況同列、圖拉高填滿）；
-              最後一列：各維度問題數量｜AEO｜網站架構。欄線上下對齊，同列面板等高；窄螢幕退回單欄 */}
-          <div className="project-overview-grid">
+              第三欄 `.ov-right`：優先改善建議（高度＝問題概況，量測後以 CSS 變數定高）｜網站評分趨勢（吃剩餘高度、壓在下方）；
+              最後一列：各維度問題數量｜AEO｜網站架構。第一列三張卡維持內容高度；窄螢幕退回單欄 */}
+          <div className="project-overview-grid" style={problemsHeight ? { "--ov-prio-h": `${problemsHeight}px` } : undefined}>
             <div className="ov-head">
             <section className="project-kpi is-score">
               <p className="project-kpi-label">網站綜合評分</p>
@@ -258,6 +270,34 @@ function ProjectOverviewPage() {
               </dl>
               <Link className="project-text-link" to={`/scans/${latest.id}`}>查看這次結果 →</Link>
             </section>
+            <section className="panel ov-cats">
+              <div className="project-section-head">
+                <h2 className="project-section-title">各維度評分與趨勢</h2>
+                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
+              </div>
+              <CategoryScoreList latest={latest} trend={data.trend} />
+            </section>
+            <section className="panel project-problems ov-probs" ref={problemsRef}>
+              <div className="project-section-head">
+                <h2 className="project-section-title">問題概況</h2>
+                <Link className="project-text-link" to={issuesPath}>查看問題分析 →</Link>
+              </div>
+              <SeverityDonut counts={data.severity_counts} issuesPath={issuesPath} />
+              <p className="project-problems-changes">
+                {data.changes ? (
+                  <>
+                    較上次掃描：
+                    <Link to={`${issuesPath}?change=new`}>新增 {data.changes.new}</Link>、
+                    <Link to={`${issuesPath}?change=persisting`}>持續 {data.changes.persisting}</Link>、
+                    <Link to={`${issuesPath}#missing`}>
+                      未出現 {data.changes.missing}
+                      {data.changes.resolved ? `（已修好 ${data.changes.resolved}）` : ""}
+                    </Link>
+                  </>
+                ) : "再掃描一次後會標示新增、持續與未出現的問題"}
+              </p>
+            </section>
+            <div className="ov-right">
             <section className="panel ov-prio">
               <div className="project-section-head">
                 <h2 className="project-section-title">優先改善建議</h2>
@@ -282,33 +322,6 @@ function ProjectOverviewPage() {
                 <p className="hint-text">這次沒有需要優先處理的項目。</p>
               )}
             </section>
-            <section className="panel ov-cats">
-              <div className="project-section-head">
-                <h2 className="project-section-title">各維度評分與趨勢</h2>
-                <span className="project-section-hint">最近 {data.trend.length} 次完成的掃描</span>
-              </div>
-              <CategoryScoreList latest={latest} trend={data.trend} />
-            </section>
-            <section className="panel project-problems ov-probs">
-              <div className="project-section-head">
-                <h2 className="project-section-title">問題概況</h2>
-                <Link className="project-text-link" to={issuesPath}>查看問題分析 →</Link>
-              </div>
-              <SeverityDonut counts={data.severity_counts} issuesPath={issuesPath} />
-              <p className="project-problems-changes">
-                {data.changes ? (
-                  <>
-                    較上次掃描：
-                    <Link to={`${issuesPath}?change=new`}>新增 {data.changes.new}</Link>、
-                    <Link to={`${issuesPath}?change=persisting`}>持續 {data.changes.persisting}</Link>、
-                    <Link to={`${issuesPath}#missing`}>
-                      未出現 {data.changes.missing}
-                      {data.changes.resolved ? `（已修好 ${data.changes.resolved}）` : ""}
-                    </Link>
-                  </>
-                ) : "再掃描一次後會標示新增、持續與未出現的問題"}
-              </p>
-            </section>
             <section className="panel ov-trend">
               <div className="project-section-head">
                 <h2 className="project-section-title">網站評分趨勢</h2>
@@ -325,7 +338,6 @@ function ProjectOverviewPage() {
               </div>
               <LineChart
                 data={trendPoints.map((point) => ({ label: formatDate(point.completed_at).slice(5), value: point.overall_score }))}
-                height={200}
                 ariaLabel={`${project.name} 分數趨勢`}
               />
               {data.trend.length < 2 && <p className="hint-text">完成兩次以上掃描後即可看出趨勢。</p>}
@@ -335,6 +347,7 @@ function ProjectOverviewPage() {
                 </p>
               )}
             </section>
+            </div>
             <section className="panel ov-counts">
               <div className="project-section-head">
                 <h2 className="project-section-title">各維度問題的數量</h2>

@@ -1039,7 +1039,7 @@
   gap: 1rem;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "head" "scan" "prio" "cats" "probs" "trend" "counts" "aeo" "arch";
+    "head" "scan" "right" "cats" "probs" "counts" "aeo" "arch";
 }
 .ov-head {
   grid-area: head;
@@ -1048,34 +1048,37 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 .ov-scan { grid-area: scan; }
-.ov-prio { grid-area: prio; }
+.ov-right {
+  grid-area: right;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
 .ov-cats { grid-area: cats; }
 .ov-probs { grid-area: probs; }
-.ov-trend { grid-area: trend; }
 .ov-counts { grid-area: counts; }
 .ov-aeo { grid-area: aeo; }
 .ov-arch { grid-area: arch; }
 @media (min-width: 1100px) {
   .project-overview-grid {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
-    /* 前兩列都是 1fr：容器高度不定時 fr 列會一起取最高者，第一列（優先改善建議）
-       與第二列（問題概況）等高 */
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
     grid-template-areas:
-      "head   scan   prio"
-      "cats   probs  trend"
+      "head   scan   right"
+      "cats   probs  right"
       "counts aeo    arch";
   }
-  /* 優先改善建議被拉到與問題概況等高後，五個項目平均撐開填滿，不堆在上面留空 */
-  .ov-prio {
-    display: flex;
-    flex-direction: column;
+  /* 右欄跨前兩列：優先改善建議定高＝問題概況（--ov-prio-h 由頁面量測寫入），
+     評分趨勢吃剩下的高度（＝第一列高度），圖面壓在下方 */
+  .ov-right .ov-prio {
+    flex: 0 0 var(--ov-prio-h, auto);
+    min-height: 0;
+    overflow: hidden;
   }
-  .ov-prio .project-priority-list {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-evenly;
+  .ov-right .ov-trend {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
   }
 }
 .project-kpi {
