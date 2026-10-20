@@ -1071,9 +1071,19 @@
   /* 右欄跨前兩列：優先改善建議定高＝問題概況（--ov-prio-h 由頁面量測寫入），
      評分趨勢吃剩下的高度（＝第一列高度），圖面壓在下方 */
   .ov-right .ov-prio {
-    flex: 0 0 var(--ov-prio-h, auto);
+    /* 比問題概況矮 30px，讓下方的評分趨勢往上長 30px（使用者指定） */
+    flex: 0 0 calc(var(--ov-prio-h, auto) - 30px);
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  /* 五個建議項目平均撐開填滿面板，不堆在上面留白 */
+  .ov-right .ov-prio .project-priority-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
   }
   .ov-right .ov-trend {
     flex: 1 1 0;
