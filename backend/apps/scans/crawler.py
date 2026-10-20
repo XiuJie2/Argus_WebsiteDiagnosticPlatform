@@ -599,6 +599,7 @@ async def collect_mobile_layout(page) -> dict:
 # WCAG 2.2 的 2.5.5（AAA）建議 44×44 CSS px、2.5.8（AA）最低 24×24 且有間距例外；
 # 這裡取 40px 當門檻，避免把邊界值一律當缺陷洗版。
 _MIN_TAP_TARGET_PX = 40
+_WCAG_AA_TAP_TARGET_PX = 24  # WCAG 2.2 AA（2.5.8）：短邊達 24 且長邊夠長的橫條不算過小
 _MAX_UX_OFFENDERS = 8
 
 
@@ -613,7 +614,7 @@ async def collect_ux_signals(page) -> dict:
         return await asyncio.wait_for(
             page.evaluate(
                 r"""
-                ({ minTap, maxOffenders }) => {
+                ({ minTap, minAa, maxOffenders }) => {
                     const result = { small_tap_targets: [], unlabeled_fields: [] };
                     if (!document.body) return result;
                     // 文件座標（含捲動位移），對得上行動版整頁截圖，可直接框出元素
@@ -667,7 +668,12 @@ async def collect_ux_signals(page) -> dict:
                         const rect = tapRect(el);
                         if (!isVisible(el, el.getBoundingClientRect())) continue;
                         if (inlineInSentence(el)) continue;
-                        if (rect.width >= minTap && rect.height >= minTap) continue;
+                        // 寬高都達 40 才算夠大；但短邊 ≥ 24（WCAG 2.5.8）且長邊 ≥ 40 的橫條
+                        //（345×39 的標題連結）手指點得到，不列（2026-10-19 實掃差 1px 被列）
+                        const shortSide = Math.min(rect.width, rect.height);
+                        const longSide = Math.max(rect.width, rect.height);
+                        if (shortSide >= minTap) continue;
+                        if (shortSide >= minAa && longSide >= minTap) continue;
                         const rawLabel =
                             el.innerText || el.value || el.getAttribute("aria-label") || "";
                         const label = rawLabel.trim().slice(0, 40);
@@ -716,7 +722,8 @@ async def collect_ux_signals(page) -> dict:
                     return result;
                 }
                 """,
-                {"minTap": _MIN_TAP_TARGET_PX, "maxOffenders": _MAX_UX_OFFENDERS},
+                {"minTap": _MIN_TAP_TARGET_PX, "minAa": _WCAG_AA_TAP_TARGET_PX,
+                 "maxOffenders": _MAX_UX_OFFENDERS},
             ),
             timeout=10,
         )
