@@ -10,7 +10,6 @@ import {
   ProjectScansPage,
   SiteSummaryPanel,
   PerformanceKpi,
-  UrgentIssuesKpi,
 } from "./ProjectPages";
 
 vi.mock("../../api", () => ({ api: { get: vi.fn() }, setAccessToken: vi.fn() }));
@@ -356,14 +355,6 @@ describe("SiteSummaryPanel 效能與網站架構", () => {
     expect(screen.getByText("較早的掃描沒有這項資料")).toBeInTheDocument();
   });
 
-  it("高風險頭條卡：嚴重＋高加總，連到依嚴重度篩選的問題分析；沒有時寫明", () => {
-    render(<MemoryRouter><UrgentIssuesKpi counts={{ critical: 1, high: 2, medium: 5 }} issuesPath="/projects/7/issues" /></MemoryRouter>);
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("嚴重 1、高 2，建議先修這些")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /查看高風險問題/ })).toHaveAttribute("href", "/projects/7/issues?severity=critical");
-    render(<MemoryRouter><UrgentIssuesKpi counts={{ low: 4 }} issuesPath="/projects/7/issues" /></MemoryRouter>);
-    expect(screen.getByText("沒有嚴重或高風險的問題")).toBeInTheDocument();
-  });
 
   it("較早的掃描沒有網站概況時寫明沒有資料，不寫成未偵測到", () => {
     renderPanel(scan({ profile_available: false, edge: "", technologies: [], technologies_total: 0 }));

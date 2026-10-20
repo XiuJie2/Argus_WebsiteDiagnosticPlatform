@@ -1033,10 +1033,38 @@
 .project-kpis {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
-/* 總覽頭條列固定四張（綜合評分｜效能｜安全標頭｜最近掃描），與下方三欄面板同寬度節奏 */
+/* ── 總覽版面：一張 grid 用 areas 固定每個面板的位置（2026-10-20） ── */
+.project-overview-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "head" "scan" "prio" "cats" "probs" "trend" "counts" "aeo" "arch";
+}
+.ov-head {
+  grid-area: head;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.ov-scan { grid-area: scan; }
+.ov-prio { grid-area: prio; }
+.ov-cats { grid-area: cats; }
+.ov-probs { grid-area: probs; }
+.ov-trend { grid-area: trend; }
+.ov-counts { grid-area: counts; }
+.ov-aeo { grid-area: aeo; }
+.ov-arch { grid-area: arch; }
 @media (min-width: 1100px) {
-  .project-kpis.is-four {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .project-overview-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+    /* 第三列只有評分趨勢撐高度，其餘由跨列的面板分配 */
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+      "head   scan   prio"
+      "cats   probs  prio"
+      "cats   probs  trend"
+      "counts aeo    arch";
   }
 }
 .project-kpi {
