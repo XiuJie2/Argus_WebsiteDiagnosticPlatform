@@ -9,6 +9,7 @@ import { useArgusStore } from "../../store";
 import brandLogo from "../../assets/brand-logo.webp";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
 import argusEye from "../../assets/argus-eye.webp";
+import argusWordmark from "../../assets/argus-wordmark.png";
 import { HomeSections } from "../../components/public/home/HomeSections.jsx";
 import { apiErrorMessage, useInstallPrompt } from "../../shared/AppShared.jsx";
 import TechMarquee from "../../components/public/TechMarquee.jsx";
@@ -195,11 +196,13 @@ function ProjectPage() {
               <source media="(prefers-reduced-motion: reduce)" srcSet={argusEyeStill} />
               <img src={argusEye} alt="" width="256" height="202" />
             </picture>
-            <span className="public-hero-wordmark" aria-label="ARGUS">
-              {"ARGUS".split("").map((ch, i) => (
-                <span key={`${ch}-${i}`} style={{ animationDelay: `${i * 0.08}s` }}>{ch}</span>
-              ))}
-            </span>
+            <img
+              className="public-hero-wordmark"
+              src={argusWordmark}
+              alt="ARGUS"
+              width="720"
+              height="108"
+            />
           </div>
           <span className="public-hero-eyebrow">掃描 · 洞察 · 證據</span>
           <h1 className="public-hero-title">
