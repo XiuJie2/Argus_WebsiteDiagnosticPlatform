@@ -234,9 +234,16 @@ class ReportDetailFixesTests(TestCase):
             self._finding("geo-json-ld", "缺少結構化資料", page=Page.objects.get(
                 scan_job=self.scan_job, url=f"https://example.com{path}"),
                 evidence="json_ld_blocks=0", category="geo", severity="low")
+        # axe：同一顆輪播按鈕，但某一頁多列了一個元素——第一個元素相同就是同一處
+        second = "\n.owl-dot:nth-child(2)｜<button>2</button>"
+        for path, extra in (("/", ""), ("/a", ""), ("/b", second)):
+            self._finding("axe-aria-required-parent", "無障礙：ARIA 父元素", category="ux",
+                          page=Page.objects.get(scan_job=self.scan_job, url=f"https://example.com{path}"),
+                          evidence=".active.owl-dot｜<button role=\"tab\">1</button>" + extra)
         scopes = {f["title"]: f["scope"] for f in build_report_payload(self.scan_job)["findings"]}
         self.assertEqual(scopes["觸控目標過小"], "全站共用元件（3 個頁面出現同一處）")
         self.assertEqual(scopes["缺少結構化資料"], "影響 3 個頁面")
+        self.assertEqual(scopes["無障礙：ARIA 父元素"], "全站共用元件（3 個頁面出現同一處）")
 
     def test_previous_scan_date_uses_full_date(self):
         from datetime import timedelta

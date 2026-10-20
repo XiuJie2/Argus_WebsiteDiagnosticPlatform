@@ -1122,23 +1122,36 @@ def _compress_cve_lists(text: str) -> str:
 
 # 證據指向具體頁面元素的規則：多頁證據完全相同才是「同一個元件」。其他規則的證據多半是
 # 計數（json_ld_blocks=0），每頁相同只代表每頁都有同一種問題，要逐頁修。
-_ELEMENT_RULE_PREFIXES = ("axe-", "ux-fake-button")
+# UX_JAVASCRIPT_：同一支壞掉的腳本在每頁拋同一句錯誤，也是「同一處」
+_ELEMENT_RULE_PREFIXES = ("axe-", "ux-fake-button", "UX_JAVASCRIPT_")
 _ELEMENT_EVIDENCE_PREFIXES = ("過小的觸控目標：", "缺標籤的欄位：")
 
 
 def _shared_component(item: dict) -> str:
-    """多頁的元件證據完全相同時回傳該證據，否則回空字串。"""
+    """多頁的元件證據相同時回傳該證據，否則回空字串。
+
+    元件型規則（axe、觸控目標、JS 錯誤…）只比**第一個元素／第一行**：同一個輪播或導覽列在
+    各頁被 axe 列出的元素數可能差一兩個（有的頁多一張輪播圖），逐字比對整段證據會配不起來，
+    47 頁的同一顆 `.owl-dot` 就被印成 47 處（2026-10-19 實掃報告 4.12）。
+    非元件型規則仍要整段相同。"""
     locations = item.get("locations") or []
     if len(locations) < 2:
         return ""
-    evidence = {(text or "").strip() for _url, text in locations}
+    rule = item["finding"].rule_id or ""
+    texts = [(text or "").strip() for _url, text in locations]
+    element_rule = rule.startswith(_ELEMENT_RULE_PREFIXES) or any(
+        text.startswith(_ELEMENT_EVIDENCE_PREFIXES) for text in texts[:1]
+    )
+    if element_rule:
+        first_lines = {text.splitlines()[0] if text else "" for text in texts}
+        if len(first_lines) == 1 and texts[0]:
+            return texts[0]
+        return ""
+    evidence = set(texts)
     if len(evidence) != 1:
         return ""
     only = evidence.pop()
-    rule = item["finding"].rule_id or ""
-    if rule.startswith(_ELEMENT_RULE_PREFIXES) or only.startswith(_ELEMENT_EVIDENCE_PREFIXES):
-        return only
-    return ""
+    return only if only.startswith(_ELEMENT_EVIDENCE_PREFIXES) else ""
 
 
 def _report_summary(scan_job: ScanJob, previous, grouped: list[dict]) -> dict:
