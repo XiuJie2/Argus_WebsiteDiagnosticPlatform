@@ -239,12 +239,9 @@ function ProjectOverviewPage() {
             <section className="project-kpi">
               <p className="project-kpi-label">發現問題總數</p>
               <p className="project-kpi-value">{latest.issues_count}<small>個問題</small></p>
-              <p className="project-sev-row">
-                {["high", "medium", "low", "info"].map((sev) => (
-                  <Link key={sev} to={`${issuesPath}?severity=${sev}`} className={`project-sev-count sev-${sev}`}>
-                    {SEVERITY_LABEL[sev]} <b>{data.severity_counts[sev] || 0}</b>
-                  </Link>
-                ))}
+              <p className="project-kpi-sub">
+                <Link to={issuesPath}>查看問題分析 →</Link>
+                <span className="project-kpi-sub-note">依嚴重度分布見下方圖表</span>
               </p>
               <p className="project-kpi-hint">
                 {data.changes ? (
@@ -290,7 +287,7 @@ function ProjectOverviewPage() {
                 <h2 className="project-section-title">問題嚴重程度分布</h2>
                 <span className="project-section-hint">共 {latest.issues_count} 個問題</span>
               </div>
-              <SeverityDonut counts={data.severity_counts} />
+              <SeverityDonut counts={data.severity_counts} issuesPath={issuesPath} />
             </section>
             <section className="panel">
               <div className="project-section-head">
