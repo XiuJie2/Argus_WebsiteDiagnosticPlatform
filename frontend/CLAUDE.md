@@ -158,7 +158,7 @@ D:\nodejs\npm.cmd install 套件名
 | `/scans/:scanId/rebuild/:rebuildId` | `ProjectScanShell section="pages"` ＞ `OptimizationResultPage`（`features/optimize/`） | 頁面優化成果頁（2026-10-06 重新設計）：原始頁面 → 發現的問題 → Argus 的修改 → 優化後頁面 → 可量測的改善；前後對照（並排／原始／優化後 × 桌面／手機，iframe `sandbox=""`＋`srcDoc`）、修改清單依視覺／SEO／無障礙／效能分組（每筆附原因與影響）、改善指標、發現的問題、未處理項目；動作只有分享（主要）、下載優化版 HTML、重新優化；AI 說明與追問收合在最下方；失敗時顯示錯誤原因與 agent 的說明、思考過程（不能追問），「頁面」分頁的失敗列有「查看過程」。進行中顯示進度（1.5 秒 polling） |
 | `/optimized/:token` | `SharedOptimizationPage`（`features/optimize/`，在 PublicLayout 外，精簡頁首） | 唯讀分享頁（類 Notion／Figma）：同一份成果報告，不顯示會員導覽、側邊欄或任何管理動作；`login` 模式未登入顯示登入提示（`/login?next=`）；關閉或無效顯示「這個分享連結無法使用」 |
 | `/share/rebuilds/:token` | `ShareRedirect` | 舊分享網址，轉到 `/optimized/:token` |
-| `/reviews` | `ReviewsPage`（未登入：`PublicLayout`；登入後：會員區，會員導覽列、無公開頁尾，網址相同；會員入口在側邊欄底部「使用者評論」） | 日／夜主題同步的科技評論頁（樣式為改版前版本：`50`／`51`／`52-reviews*`）；沿用公開 top bar／footer，提供星等篩選、匿名／遮罩 Email 選項、本人評論管理與評論／官方回覆的逐則按讚、檢舉流程 |
+| `/reviews` | `ReviewsPage`（未登入：`PublicLayout`；登入後：會員區，會員導覽列、無公開頁尾，網址相同；會員入口在側邊欄底部「使用者評論」） | 日／夜主題同步的科技評論頁（樣式為改版前版本：`50`／`51`／`52-reviews*`）；沿用公開 top bar／footer，提供星等篩選、匿名／遮罩 Email 選項、本人評論管理與評論／官方回覆的逐則按讚、檢舉流程。**預先渲染與 hydration（2026-10-20）**：此頁在 `PRERENDERED_ROUTES` 內，但內容多為 API 驅動，原本預渲染只有 H1、`raw_html_text` 僅約 270（自掃 geo-render-dependent）；hero 補兩段無條件渲染的靜態說明讓爬蟲／AI 讀得到頁面主旨。主題 class 不可在首次 render 直接吃 store 的 `theme`（`store.js` 的 `storedTheme` 在模組載入時讀 localStorage，Node 預渲染 fallback 成 dark，使用者是淺色時 hydrate 不一致會跑板並記成 JS 錯誤）：用 `mounted`（掛載後才 true）閘住，掛載前一律用與伺服器相同的 `dark` |
 | `/reviews-next` | → redirect `/reviews` | 比較階段舊網址的相容轉址，不再維護第二套頁面 |
 | `/admin` | → redirect `/admin/overview` | staff 進入點 |
 | `/admin/overview` | `AdminOverviewPage` | 概覽：今日脈搏、14 天趨勢、總量統計與成本明細 |
