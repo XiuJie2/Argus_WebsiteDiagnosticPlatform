@@ -768,10 +768,15 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: minmax(0, 1fr);
+  /* 面板各自依內容決定高度，不被同列最高者撐平，讓總覽上下自然錯開 */
+  align-items: start;
 }
 @media (min-width: 1100px) {
   .project-grid-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .project-grid-3.is-wide-first {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 .project-section-hint {
