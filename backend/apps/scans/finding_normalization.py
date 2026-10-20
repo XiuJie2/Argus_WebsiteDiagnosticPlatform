@@ -25,6 +25,8 @@ from apps.scans.scanners import (
     PageAnalysisInput,
     analyze_data_exposure,
     calculate_scores,
+    is_agent_observation,
+    summarize_agent_security,
 )
 from apps.scans.security import owasp_mapper
 from apps.scans.security.cookie_scanner import mask_cookie_line
@@ -164,6 +166,8 @@ def stored_scoring_inputs(scan_job: ScanJob) -> tuple[list[dict], set[str] | Non
     """由資料庫保存的發現還原計分輸入：(findings, tested_categories, base_scores)。
 
     重新計分（_rescore）與分數說明（score-breakdown API）共用，兩邊的輸入一致。
+    AI Agent 觀察（agent-observed-security-*）不進基準分（ADR-0006 決策 C，與 stage_scoring 一致）；
+    2026-10-19 實掃它們被算回去，分數說明與報告附錄誤判「計分後被重新判定」而整段不列。
     """
     findings = [
         {
@@ -174,6 +178,7 @@ def stored_scoring_inputs(scan_job: ScanJob) -> tuple[list[dict], set[str] | Non
             "priority_score": f.priority_score,
         }
         for f in scan_job.findings.order_by("-priority_score", "id")
+        if not is_agent_observation({"rule_id": f.rule_id})
     ]
     tested = set((scan_job.category_scores or {}).keys()) or None
     aeo_report = scan_job.aeo_report or {}
@@ -193,11 +198,17 @@ def _rescore(scan_job: ScanJob) -> None:
     scan_job.overall_score = overall
     scan_job.category_scores = category_scores
     scan_job.top_actions = top_actions
+    # Agent 觀察不在 findings（基準分）裡，另以摘要獨立呈現——與 stage_scoring 相同
+    scan_job.agent_findings_summary = summarize_agent_security([
+        {"rule_id": rule_id, "severity": severity}
+        for rule_id, severity in scan_job.findings.values_list("rule_id", "severity")
+    ])
     # 只用目前公式重算分數、只重跑部分規則：計分版本更新，規則集版本維持原樣（versions.py）
     scan_job.scoring_version = SCORING_VERSION
     scan_job.save(
         update_fields=[
-            "overall_score", "category_scores", "top_actions", "scoring_version", "updated_at"
+            "overall_score", "category_scores", "top_actions", "agent_findings_summary",
+            "scoring_version", "updated_at",
         ]
     )
 

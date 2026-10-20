@@ -105,11 +105,11 @@ class RenormalizeFindingsTests(TestCase):
         self.assertNotIn(rules["上傳的檔案可被直接讀取"], swagger_rules)
         self.assertEqual(self.scan.findings.count(), 3, "只改代號，不刪發現")
         self.scan.refresh_from_db()
-        self.assertEqual(self.scan.top_actions[0]["severity"], "critical")
-        self.assertEqual(
-            [a["severity"] for a in self.scan.top_actions].count("critical"), 1
-        )
-        self.assertIn("low", [a["severity"] for a in self.scan.top_actions])
+        # ADR-0006 決策 C：Agent 觀察不進基準分與優先處理，改以 agent_findings_summary 獨立呈現
+        self.assertEqual(self.scan.top_actions, [])
+        self.assertEqual(self.scan.agent_findings_summary["count"], 3)
+        self.assertEqual(self.scan.agent_findings_summary["max_severity"], "critical")
+        self.assertEqual(self.scan.agent_findings_summary["severity_counts"]["critical"], 1)
         # 再跑一次沒有東西可改
         migration.rekey(django_apps, None)
         self.assertEqual(dict(self.scan.findings.values_list("title", "rule_id")), rules)
