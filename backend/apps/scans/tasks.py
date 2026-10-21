@@ -2076,8 +2076,12 @@ def stage_agent(ctx: ScanRunContext) -> None:
     # 以最壞情況總步數當分母，再由 runner 每步回報累計步數，進度條才會動、看得出活著（2026-10-18）。
     # 深度資安是 recon＋orchestrator＋多專家的最壞估計；UX 只有單一 session，分母用 UX 估計，
     # 否則沒勾深度資安的掃描會顯示像在跑數百步的資安 agent（2026-10-18）。
+    # 深度資安與 UX 可同時跑（勾了 AI Agent＝兩者都做）；分母各自累加，
+    # 進度條分母才涵蓋實際會跑的 session 數（2026-10-21）
     agent_total = max(
-        max_total_steps_estimate() if plan.run_agent else ux_steps_estimate(), 1
+        (max_total_steps_estimate() if plan.run_agent else 0)
+        + (ux_steps_estimate() if plan.run_agent_ux else 0),
+        1,
     )
     agent_steps_seen = {"n": 0}
 
@@ -2119,6 +2123,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
                 may_submit_forms=may_submit_forms,
                 known_findings=known_findings,
                 progress_cb=_report_agent_step,
+                run_ux=plan.run_agent_ux,
             )
         )
         ctx.agent_result = agent_result
