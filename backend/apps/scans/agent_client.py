@@ -1,7 +1,12 @@
-"""呼叫獨立的 argus-agent 服務（HTTP），取代原本 in-process 的 Hermes-Agent 引擎。
+"""呼叫獨立的 AI pentest/UX 服務（HTTP），取代原本 in-process 的 Hermes-Agent 引擎。
 
-引擎（recon→指揮官→專家＋UX，LLM＋Playwright）已抽離成獨立服務 argus-agent；Argus 這端
-只負責：組請求 → POST /scan → 把回傳的發現落地成 Finding → 交給計分／報告／跨層去重。
+Argus 這端**只講一條 HTTP 契約**（`POST {ARGUS_AGENT_SERVICE_URL}/scan`），不綁定任何特定引擎：
+- argus-agent（自家服務）直接實作此契約。
+- 要接 Strix（usestrix/strix，只有 CLI＋Docker）等外部引擎時，另外跑一個薄的 wrapper 服務
+  包住該引擎、對外實作同一條契約即可；Argus 完全不必改。
+
+契約（請求／回應欄位、finding 正規化規則）見 `docs/agent-service-contract.md`。本模組對回應做
+backend-agnostic 正規化（severity／OWASP／CWE／CVSS），讓不同引擎回傳的字串格式都能正確落地。
 
 Graceful degrade：未設定 ARGUS_AGENT_SERVICE_URL 時直接回 None（agent 階段略過、不 crash、
 不計費——settle 只有在 agent 真的跑了才收 agent 費）。服務連不到／逾時也只記錯誤、不中斷掃描。
@@ -9,6 +14,7 @@ Graceful degrade：未設定 ARGUS_AGENT_SERVICE_URL 時直接回 None（agent �
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 import requests
@@ -17,6 +23,31 @@ from django.conf import settings
 from apps.scans.models import Finding, ScanJob
 
 logger = logging.getLogger(__name__)
+
+# 契約版本：wrapper 可讀此值做相容性判斷（請求帶 contract_version）
+CONTRACT_VERSION = "1.0"
+
+# 五個合法嚴重度（apps.scans.models.Finding.Severity）
+_VALID_SEVERITY = {"critical", "high", "medium", "low", "info"}
+# 不同引擎常見的同義詞 → 正規值
+_SEVERITY_SYNONYMS = {
+    "informational": "info",
+    "information": "info",
+    "note": "info",
+    "none": "info",
+    "trivial": "low",
+    "minor": "low",
+    "moderate": "medium",
+    "warning": "medium",
+    "warn": "medium",
+    "important": "high",
+    "error": "high",
+    "severe": "high",
+    "crit": "critical",
+    "blocker": "critical",
+}
+_OWASP_RE = re.compile(r"A0?(\d{1,2})")  # 接受 A1／A01／A01:2021／A01:2021-xxx
+_CWE_RE = re.compile(r"(\d{1,6})")
 
 
 @dataclass
@@ -39,6 +70,52 @@ def _mode(run_deep: bool, run_ux: bool) -> str:
     return "deep" if run_deep else "ux"
 
 
+def _normalize_severity(raw) -> str:
+    """把任意引擎的嚴重度字串正規成五個合法值之一；無法判斷時退回 low。"""
+    s = str(raw or "").strip().lower()
+    if s in _VALID_SEVERITY:
+        return s
+    if s in _SEVERITY_SYNONYMS:
+        return _SEVERITY_SYNONYMS[s]
+    return "low"
+
+
+def _normalize_owasp(raw) -> str:
+    """接受 A1／A01／A01:2021／`A01:2021-Broken Access Control` 等 → `A01`..`A10`；否則空字串。
+
+    （Argus 的 Finding.owasp_category 存兩位數代號 A01~A10。）
+    """
+    m = _OWASP_RE.search(str(raw or "").upper())
+    if not m:
+        return ""
+    n = int(m.group(1))
+    if 1 <= n <= 10:
+        return f"A{n:02d}"
+    return ""
+
+
+def _normalize_cwe(raw) -> str:
+    """接受 `CWE-862`／`862`／`CWE 862` → `CWE-862`；否則空字串。"""
+    m = _CWE_RE.search(str(raw or ""))
+    return f"CWE-{int(m.group(1))}" if m else ""
+
+
+def _priority_from_item(item: dict) -> float | None:
+    """明確給了 priority_score 就用它；否則若有 CVSS（0–10）換算成 0–100 的優先序。"""
+    if item.get("priority_score") is not None:
+        try:
+            return float(item["priority_score"])
+        except (TypeError, ValueError):
+            return None
+    cvss = item.get("cvss") if item.get("cvss") is not None else item.get("cvss_score")
+    if cvss is not None:
+        try:
+            return max(0.0, min(10.0, float(cvss))) * 10.0
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def run_agent_via_service(
     scan_job: ScanJob,
     *,
@@ -48,7 +125,7 @@ def run_agent_via_service(
     known_findings: list[dict] | None = None,
     may_submit_forms: bool = False,
 ) -> AgentServiceResult | None:
-    """呼叫 argus-agent 服務並把發現落地。未設定服務位址回 None（略過）。"""
+    """呼叫 agent 服務並把發現落地。未設定服務位址回 None（略過）。"""
     base = (getattr(settings, "ARGUS_AGENT_SERVICE_URL", "") or "").rstrip("/")
     if not base:
         return None
@@ -56,6 +133,7 @@ def run_agent_via_service(
     from apps.scans.models import decrypt_test_auth
 
     payload = {
+        "contract_version": CONTRACT_VERSION,
         "url": scan_job.normalized_url or scan_job.original_url,
         "mode": _mode(run_deep, run_ux),
         "authorized": bool(run_deep),
@@ -75,7 +153,10 @@ def run_agent_via_service(
     resp.raise_for_status()
     data = resp.json()
 
-    findings = data.get("findings") or []
+    # 契約欄位是 findings；容忍 wrapper 以 vulnerabilities 命名（Strix 慣用語）
+    findings = data.get("findings")
+    if findings is None:
+        findings = data.get("vulnerabilities") or []
     ux_dicts: list[dict] = []
     sec_dicts: list[dict] = []
     for item in findings:
@@ -91,7 +172,7 @@ def run_agent_via_service(
         status=data.get("status", "completed"),
         steps=int(data.get("steps", 0) or 0),
         total_tokens=int(data.get("total_tokens", 0) or 0),
-        final_summary=(data.get("summary") or "")[:1000],
+        final_summary=(data.get("summary") or data.get("final_summary") or "")[:1000],
         error=(data.get("error") or ""),
         issues=ux_dicts,
         security_findings=sec_dicts,
@@ -102,13 +183,14 @@ def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
     """把服務回傳的一筆發現落地成 Finding，並回傳對應 dict（供計分）。
 
     沿用 make_finding 產生標準欄位，再覆寫服務已算好的 rule_id／OWASP／CWE／優先序，
-    讓計分、跨層去重與報告與 in-process 時代一致。
+    並把各引擎的 severity／OWASP／CWE／CVSS 正規化，讓計分、跨層去重與報告保持一致。
     """
     from apps.scans.scanners import make_finding
 
-    category = item.get("category") or ""
+    category = (item.get("category") or "").strip().lower()
+    # 資安引擎（如 Strix）常不標 category；預設當 security（UX 必須明確標 ux）
     if category not in {"ux", "security"}:
-        return None
+        category = "security"
     url = item.get("url") or ""
     page = None
     if url:
@@ -118,7 +200,7 @@ def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
         )
     built = make_finding(
         category=category,
-        severity=item.get("severity", "low"),
+        severity=_normalize_severity(item.get("severity")),
         title=(item.get("title") or "")[:255],
         description=item.get("description", ""),
         remediation=item.get("remediation", ""),
@@ -127,14 +209,17 @@ def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
         impact_area=item.get("impact_area", ""),
         confidence=float(item.get("confidence", 1.0) or 1.0),
         evidence_json=item.get("evidence_json") or None,
-        evidence_source="agent_service",
+        evidence_source=item.get("evidence_source") or "agent_service",
     )
-    if item.get("priority_score") is not None:
-        built["priority_score"] = item["priority_score"]
+    priority = _priority_from_item(item)
+    if priority is not None:
+        built["priority_score"] = priority
     if item.get("ai_handoff_prompt"):
         built["ai_handoff_prompt"] = item["ai_handoff_prompt"]
-    built["owasp_category"] = item.get("owasp_category", "") or ""
-    built["cwe_id"] = item.get("cwe_id", "") or ""
+    built["owasp_category"] = _normalize_owasp(
+        item.get("owasp_category") or item.get("owasp")
+    )
+    built["cwe_id"] = _normalize_cwe(item.get("cwe_id") or item.get("cwe"))
 
     try:
         Finding.objects.create(scan_job=scan_job, page=page, **built)
