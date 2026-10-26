@@ -12,7 +12,7 @@ Claude Code 進 `backend/` 工作時，本檔在專案層 `CLAUDE.md` 之後自�
 | `/api/projects/` | `scans` | 網站專案：list（`?archived=true` 列已封存）／create（同網站 409、已封存自動恢復）／retrieve／PATCH（名稱、起始網址、預設掃描設定）／DELETE（＝封存）＋`<id>/restore/`、`<id>/overview/`、`<id>/issues/?scan=`、`<id>/security/?scan=`（資安分析頁，2026-10-08）、`<id>/pages/?scan=`、`<id>/seo/?scan=`（＋`seo/pages/<頁面 id>/`、`seo/keywords/`）、`<id>/gsc/`（＋`connect/`、`properties/`、`performance/`、`inspect/`；見 `apps/scans/CLAUDE.md`「SEO 分析與 Search Console」） |
 | `/api/gsc/callback/` | `scans` | Google Search Console OAuth 導回（`AllowAny`；身分由簽章 state＋HttpOnly nonce cookie 證明），完成後轉回 `/projects/<id>/seo?gsc=…` |
 | `/api/domains/` | `scans` | 網域所有權驗證 CRUD ＋ `<id>/verify/`（`search_console`／dns_txt／meta_tag／html_file）＋ `gsc/`、`gsc/connect/`、`gsc/sync/`（帳號層級 Search Console 一鍵連接與同步，2026-10-04）（前端 2026-10-02 前誤呼叫 `/api/scans/domains/`，該路徑會被當成掃描 id） |
-| `/api/scans/` | `scans` | `scans/`（CRUD + `status/`/`cancel/`/`report/`/`topology/`/`screenshot`/`finding-stats`/`ai-insight/`（重新產生 AI 解讀）/`fix-output/trigger`/`fix-output/status`/`fix-output/artifacts`）、`domains/`（網域所有權驗證 CRUD + `<id>/verify/`）、`estimate/`、`pages/`、`findings/`、`dashboard/`、`history/`（兩者為舊 Dashboard／歷史頁用，保留相容）、`audit/`、`findings-by-category/` |
+| `/api/scans/` | `scans` | `scans/`（CRUD + `status/`/`cancel/`/`report/`/`topology/`/`screenshot`/`finding-stats`/`fix-output/trigger`/`fix-output/status`/`fix-output/artifacts`）、`domains/`（網域所有權驗證 CRUD + `<id>/verify/`）、`estimate/`、`pages/`、`findings/`、`dashboard/`、`history/`（兩者為舊 Dashboard／歷史頁用，保留相容）、`audit/`、`findings-by-category/` |
 | `/api/billing/` | `billing` | `wallet/`、`plans/`、`purchase/`、`orders/`、`subscription/`（+ `plans/`、`subscribe/`、`cancel/`）、`ecpay/callback/`（綠界 ReturnURL：購點＋訂閱首期）、`ecpay/period-callback/`（訂閱第 2 期起每月扣款） |
 | `/api/reviews/` | `reviews` | 公開列表/統計、本人 CRUD、helpful、report（完成掃描才可發表） |
 | `/api/content/` | `content` | `features/`、`team/`、`releases/`、`milestones/`（公開 CMS）、`partner-inquiries/`（公開洽談表單，Turnstile 保護）、`scanner-info/`（公開，掃描來源說明頁 `/scanner` 用：User-Agent、出口 IP、速率） |
@@ -34,7 +34,7 @@ Claude Code 進 `backend/` 工作時，本檔在專案層 `CLAUDE.md` 之後自�
 |---|---|---|
 | `accounts` | User model（`handle` 用戶名、`deleted_at`）、Google 授權註冊、Email／用戶名登入、自行刪除帳號（`deletion.py`）、記憶體 access + HttpOnly refresh、密碼重設、LoginEvent 登入事件 | `views.py` `models.py` |
 | `scans` | **核心**：ScanJob 狀態機、Playwright 爬蟲、四維 scanner、PDF 報告（.docx 排版＋LibreOffice 轉檔）、SEO 分析與 Search Console、合作式 cancel | `tasks.py` `crawler.py` `scanners.py` |
-| `agent` | Hermes-Agent 滲透測試：recon→orchestrator(subagent 派工，每次最多 `ARGUS_AGENT_MAX_SPECIALIST_DISPATCH`＝6 位)→specialist、25 個工具、MiniMax-M3 鏈（預設 `ARGUS_AGENT_ENABLED=false`）——完整架構見 `docs/hermes-agent-architecture.md` | `runner.py` `loop.py` `tools.py` `providers.py` `findings.py` |
+| `agent` | **執行引擎已抽離（2026-10-26）**：Hermes-Agent 的 recon→指揮官→專家＋UX（LLM＋Playwright）移到獨立服務 **argus-agent**，Argus 改由 `apps/scans/agent_client.py` HTTP 呼叫（`stage_agent`，未設 `ARGUS_AGENT_SERVICE_URL` 時 graceful skip、不計費）。**本套件只留資料層**：`findings.py`（發現落地／去重／正典身分／嚴重度封頂，計分與報告仍用）、`providers.py`（LLM provider chain，`fixgen` 共用）。詳見 `apps/agent/CLAUDE.md`，引擎架構歷史見 `docs/hermes-agent-architecture.md` | `findings.py` `providers.py` |
 | `billing` | 點數錢包＋綠界金流（購點一次付清、訂閱信用卡定期定額；`ARGUS_PAYMENT_MODE` disabled／ecpay_test／ecpay）；**`services.py` 是 wallet 唯一寫入入口**，禁止繞過直接改 model | `services.py` `signals.py` |
 | `reviews` | 已驗證平台評論（一人一則 + 本人編修/刪除 + 官方單一回覆 + 評論／回覆各自按讚與檢舉） | `models.py` `views.py` |
 | `admin_api` | React `/admin/*` 用的 REST API + AdminAuditLog | `views.py` `permissions.py` |
@@ -72,8 +72,8 @@ Claude Code 進 `backend/` 工作時，本檔在專案層 `CLAUDE.md` 之後自�
          不計入 Argus 分數；migration 0030，見 apps/scans/CLAUDE.md「PageSpeed Insights」）、
          fingerprint（JSON，網站特徵：CMS、框架、登入頁、API、上傳、邊緣服務；只用爬取已有的訊號、
          只記錄不影響掃描；migration 0031，見 apps/scans/CLAUDE.md「網站特徵」）、
-         ai_insight（JSON，AI 掃描解讀：整體診斷、優先處理、高風險問題複核；不影響分數；
-         migration 0033，見 apps/scans/CLAUDE.md 的 ai_insight.py）
+         ai_insight（JSON；**AI 解讀功能已於 2026-10-26 移除**，欄位依 Migration 鐵律保留不刪、
+         不再寫入，只留舊資料相容；migration 0033）
 ```
 
 **SiteProject**（`apps/scans/models.py`，2026-10-02）

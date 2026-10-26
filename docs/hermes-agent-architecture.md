@@ -1,7 +1,17 @@
 # Hermes-Agent 滲透測試架構（2026-09-26 定稿）
 
-> 對應模組：`backend/apps/agent/`。本文件是 agent 系統的單一事實來源：
-> 角色目錄、工具清單、流程、調校參數、迭代教訓。改 agent 前先讀。
+> ## ⚠️ 執行引擎已抽離（2026-10-26）
+>
+> 本文件描述的 recon→指揮官→專家＋UX 執行引擎（`runner.py`／`loop.py`／`tools.py`、
+> LLM＋Playwright 驅動）**已從 Argus 移出**，成為獨立服務 **argus-agent**（HTTP API）。
+> Argus 這端只保留資料層（`apps/agent/findings.py`、`providers.py`），並改由
+> `apps/scans/agent_client.py` 以 HTTP 呼叫（`stage_agent`，未設 `ARGUS_AGENT_SERVICE_URL`
+> 時 graceful skip、不計費）。**以下角色目錄／工具清單／流程／調校參數為引擎設計的歷史說明**，
+> 程式已不在本 repo；要改引擎請到 argus-agent 專案。閘門（deep／ux／both）邏輯仍在
+> `apps/scans/scan_plan.py`，見 `apps/scans/CLAUDE.md`。
+
+> 對應模組（歷史）：`backend/apps/agent/`。本文件曾是 agent 系統的單一事實來源：
+> 角色目錄、工具清單、流程、調校參數、迭代教訓。
 > 戰果與迭代全記錄見 `log/2026-09-25_juice-shop-attack-surface.md`。
 
 ## 1. 執行流程（deep_mode）
