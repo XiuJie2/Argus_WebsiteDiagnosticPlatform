@@ -608,7 +608,7 @@ class PipelineWritesCoverageTests(TransactionTestCase):
 
 class AgentCoverageTests(TestCase):
     def _ctx(self, error: str):
-        from apps.agent.loop import AgentRunResult
+        from apps.scans.agent_client import AgentServiceResult as AgentRunResult
 
         user = User.objects.create_user(username="cov-agent", password="safe-test-password")
         scan = _scan(user, categories=["ux"], max_pages=10)

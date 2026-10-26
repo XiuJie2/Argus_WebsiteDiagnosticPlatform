@@ -171,8 +171,8 @@ class ScanTaskPlanIntegrationTests(TransactionTestCase):
             "site": mock.patch("apps.scans.tasks.analyze_site_signals", return_value=[]),
             "owasp": mock.patch("apps.scans.tasks.owasp_mapper.backfill"),
             "agent": mock.patch(
-                "apps.agent.runner.run_agent_for_scan",
-                new=mock.AsyncMock(return_value=None),
+                "apps.scans.agent_client.run_agent_via_service",
+                new=mock.Mock(return_value=None),
             ),
             "kali": mock.patch(
                 "apps.scans.tasks.validate_findings_with_kali",

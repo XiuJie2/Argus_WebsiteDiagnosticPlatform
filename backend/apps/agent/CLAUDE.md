@@ -2,9 +2,24 @@
 
 Claude Code 進 `backend/apps/agent/` 工作時，本檔在專案層 `CLAUDE.md` 之後自動載入；**ZCode／Codex 不會自動載入本檔**，動手前必須先讀（見根 `AGENTS.md` 模組規則必讀閘門）。
 
+> ## ⚠️ 引擎已抽離（2026-10-26）
+>
+> Hermes-Agent 的**執行引擎**（`runner.py`／`loop.py`／`tools.py`、recon→指揮官→專家＋UX 的
+> LLM＋Playwright 驅動）已**從 Argus 移出**，成為獨立服務 **argus-agent**（HTTP API）。
+> Argus 改由 `apps/scans/agent_client.py` 以 HTTP 呼叫（`stage_agent`）；未設定
+> `ARGUS_AGENT_SERVICE_URL` 時 agent 階段 graceful skip（不執行、不計費）。
+>
+> **本套件現在只留資料層**：
+> - `findings.py`：發現落地／去重／正典身分／嚴重度封頂／`scanner_ip_disclosure`（計分、報告、
+>   跨層去重仍用；務必保留，migration 0035→finding_normalization→本檔有依賴鏈）。
+> - `providers.py`：LLM provider chain（`build_default_chain` 等），由 `apps/scans/fixgen` 共用。
+>
+> 以下「職責／關鍵檔案」描述的 runner/loop/tools 內容為**歷史說明**，程式已不在本 repo；
+> 要改引擎請到 argus-agent 專案。AI 解讀（ai_insight）亦一併移除。
+
 **完整架構文件（角色目錄／工具清單／調校參數／迭代教訓）見
 [`../../../docs/hermes-agent-architecture.md`](../../../docs/hermes-agent-architecture.md)
-——改本模組前必讀。**
+——此為引擎的歷史架構文件，引擎已移到 argus-agent 專案。**
 
 ## 職責
 

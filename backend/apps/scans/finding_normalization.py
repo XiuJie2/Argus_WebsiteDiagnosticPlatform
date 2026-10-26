@@ -64,7 +64,7 @@ def _renormalize_pii(scan_job: ScanJob) -> int:
 
 
 def _renormalize_agent(scan_job: ScanJob) -> int:
-    from apps.agent.tools import SCANNER_IP_NOTE, scanner_ip_disclosure
+    from apps.agent.findings import SCANNER_IP_NOTE, scanner_ip_disclosure
 
     hostname = urlparse(scan_job.normalized_url or "").hostname or ""
     changed = 0

@@ -460,6 +460,11 @@ ARGUS_AGENT_MAX_TOKENS = int(os.getenv("ARGUS_AGENT_MAX_TOKENS", "60000"))
 ARGUS_AGENT_UX_MAX_TOKENS = int(os.getenv("ARGUS_AGENT_UX_MAX_TOKENS", "120000"))
 ARGUS_AGENT_STEP_TIMEOUT = int(os.getenv("ARGUS_AGENT_STEP_TIMEOUT", "30"))
 ARGUS_AGENT_ENABLED = env_bool("ARGUS_AGENT_ENABLED", default=False)
+# AI Agent 引擎（recon→指揮官→專家＋UX）已抽離成獨立 argus-agent 服務（2026-10-26）；
+# Argus 改以 HTTP 呼叫。未設定 URL 時 agent 階段 graceful skip（不執行、不計費）。
+ARGUS_AGENT_SERVICE_URL = os.getenv("ARGUS_AGENT_SERVICE_URL", "").strip()
+ARGUS_AGENT_SERVICE_KEY = os.getenv("ARGUS_AGENT_SERVICE_KEY", "").strip()
+ARGUS_AGENT_SERVICE_TIMEOUT = int(os.getenv("ARGUS_AGENT_SERVICE_TIMEOUT", "1800"))
 
 # 修正產出（Fix Output）產生引擎——bounded 單次結構化產生，非 agent 迴圈。
 # 預設關閉，與 ARGUS_AGENT_ENABLED 同模式：啟用才會花 token。

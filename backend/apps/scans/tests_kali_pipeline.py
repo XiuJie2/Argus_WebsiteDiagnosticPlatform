@@ -17,7 +17,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 
-from apps.agent.loop import AgentRunResult
+from apps.scans.agent_client import AgentServiceResult as AgentRunResult
 from apps.scans.cancellation import ScanCancelled
 from apps.scans.models import ScanJob
 from apps.scans.nuclei_scanner import NucleiRun
@@ -109,8 +109,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
             return []
 
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(side_effect=_track_agent),
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(side_effect=_track_agent),
         ), mock.patch(
             "apps.scans.tasks.validate_findings_with_kali", side_effect=_track_kali
         ):
@@ -150,8 +150,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
             return (50, {"security": 0}, [])
 
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(return_value=agent_result),
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(return_value=agent_result),
         ), mock.patch(
             "apps.scans.tasks.validate_findings_with_kali", return_value=[]
         ), mock.patch(
@@ -177,8 +177,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
             return (100, {}, [])
 
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(
                 return_value=AgentRunResult(
                     session_id=0, status="completed", steps=1, total_tokens=10
                 )
@@ -235,8 +235,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
         ), mock.patch(
             "apps.scans.tasks.analyze_page", return_value=[]
         ), mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(
                 return_value=AgentRunResult(
                     session_id=0, status="completed", steps=1, total_tokens=10
                 )
@@ -258,7 +258,7 @@ class KaliPipelineOrderingTests(TransactionTestCase):
     @override_settings(ARGUS_AGENT_ENABLED=False)
     def test_fallback_runs_when_agent_disabled(self):
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan"
+            "apps.scans.agent_client.run_agent_via_service"
         ) as agent_mock, mock.patch(
             "apps.scans.tasks.validate_findings_with_kali", return_value=[]
         ) as kali_mock:
@@ -272,8 +272,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
     # ------------------------------------------------------------------
     def test_fallback_runs_when_agent_fails(self):
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(side_effect=RuntimeError("agent crash")),
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(side_effect=RuntimeError("agent crash")),
         ), mock.patch(
             "apps.scans.tasks.validate_findings_with_kali", return_value=[]
         ) as kali_mock:
@@ -288,8 +288,8 @@ class KaliPipelineOrderingTests(TransactionTestCase):
     # ------------------------------------------------------------------
     def test_scan_cancelled_during_fallback_reaches_refund(self):
         with mock.patch(
-            "apps.agent.runner.run_agent_for_scan",
-            new=mock.AsyncMock(return_value=None),
+            "apps.scans.agent_client.run_agent_via_service",
+            new=mock.Mock(return_value=None),
         ), mock.patch(
             "apps.scans.tasks.validate_findings_with_kali",
             side_effect=ScanCancelled(),
