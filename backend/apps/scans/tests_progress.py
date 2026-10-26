@@ -274,3 +274,27 @@ class StepProgressTests(TestCase):
         )
         scan.refresh_from_db()
         self.assertEqual((scan.progress["step_done"], scan.progress["step_total"]), (0, 0))
+
+
+class AgentStepDetailTests(TestCase):
+    """step_detail：agent 階段把「目前在跑哪個子代理」的中文名寫進進度，前端顯示（2026-10-18）。"""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="agent_detail_user", password="safe-test-password"
+        )
+
+    def test_detail_written_only_when_provided(self):
+        scan = _make_scan(self.user)
+        _write_progress(
+            scan.id, phase="agent_testing", done=1, total=5, phase_started_at="t",
+            step="agent", detail="指揮調度",
+        )
+        scan.refresh_from_db()
+        self.assertEqual(scan.progress["step_detail"], "指揮調度")
+        # 不給 detail 的步驟不應留下 step_detail 鍵
+        _write_progress(
+            scan.id, phase="crawling", done=1, total=5, phase_started_at="t", step="crawl",
+        )
+        scan.refresh_from_db()
+        self.assertNotIn("step_detail", scan.progress)

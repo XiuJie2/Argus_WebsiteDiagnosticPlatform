@@ -34,7 +34,7 @@ def build_scan_execution_plan(scan_job: ScanJob) -> ScanExecutionPlan:
 
     # AI Agent 擬真使用者 UX 測試：只要是全網站掃描且勾選 UX 維度就跑，不需要
     # 主動授權（純 UX 測試不做破壞性操作）。是否可實際送出表單另由網域驗證決定，
-    # 見 runner.run_agent_for_scan 的 may_submit_forms。單頁掃描不跑（一頁不足以
+    # 見 agent_client.run_agent_via_service 的 may_submit_forms。單頁掃描不跑（一頁不足以
     # 測流程，且要省 LLM token）。
     run_agent_ux = scope == "site" and "ux" in scan_job.effective_categories
 
