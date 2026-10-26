@@ -37,5 +37,14 @@
 
 - 競賽 Word 內容 md 同步（使用者決定參賽敘述後）。
 - 部署 argus-agent 服務並設 `ARGUS_AGENT_SERVICE_URL`，恢復深度/UX agent。
-- 前端殘留的 `.ai-insight-*`／AiThinkingLoader 樣式（`05-brand.css`、`legacy-member/92-layout.css`）
-  為孤兒 CSS，待前端整理時一併清除（不影響功能）。
+- ~~前端殘留的 `.ai-insight-*`／Thought Spark 樣式孤兒 CSS~~ → **已於同日清除**（見下）。
+
+## 追加：清除 AI 解讀孤兒 CSS
+
+AI 解讀元件移除後，樣式沒跟著刪。確認 `frontend/src` 的 JS/JSX/TS 已無任何引用後清除：
+
+- `frontend/src/styles/legacy-member/92-layout.css`：刪除整段 AI 解讀樣式（`.ai-insight-*`、
+  `.ai-verdict*`、`.ai-triage-note`、`.ai-watch*`、`.ai-spark-stage`、`.ag-spark`、
+  `@keyframes ai-watch-pip`，共 120 行）。PageLoader 的「01 · Signal Bars」樣式（`.ag-signal` 等，
+  其後）完整保留，`--ag-pack-*` 變數在 `.ag-signal` 內另有定義，不受影響。
+- `frontend/src/styles/05-brand.css`：載入動畫註解刪掉「08 · Thought Spark＝AI 分析」那行，只留 Signal Bars。
