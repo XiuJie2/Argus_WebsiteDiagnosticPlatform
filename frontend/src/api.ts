@@ -441,3 +441,37 @@ api.interceptors.response.use(
   },
 );
 
+
+// ---- Admin AI Agent 服務設定（/api/admin/agent-service/，僅超級管理員）----
+
+export interface AgentServiceConfig {
+  enabled: boolean;
+  base_url: string;
+  timeout_seconds: number;
+  verify_tls: boolean;
+  has_api_key: boolean;
+  updated_at: string | null;
+  updated_by_username: string | null;
+}
+
+export interface AgentServiceConfigInput {
+  enabled?: boolean;
+  base_url?: string;
+  timeout_seconds?: number;
+  verify_tls?: boolean;
+  /** 留空＝保留原金鑰；配合 clear_api_key=true 才清除。永不回傳。 */
+  api_key?: string;
+  clear_api_key?: boolean;
+}
+
+export async function fetchAgentServiceConfig(): Promise<AgentServiceConfig> {
+  const response = await api.get("/admin/agent-service/");
+  return response.data;
+}
+
+export async function updateAgentServiceConfig(
+  patch: AgentServiceConfigInput,
+): Promise<AgentServiceConfig> {
+  const response = await api.put("/admin/agent-service/", patch);
+  return response.data;
+}

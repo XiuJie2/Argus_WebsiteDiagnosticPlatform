@@ -21,6 +21,7 @@ class AdminAuditLog(models.Model):
         USER_DELETE = "user_delete", "刪除帳號"
         DOMAIN_OVERRIDE = "domain_override", "網域驗證人工審核"
         SCAN_CONTROL = "scan_control", "掃描任務控制"
+        AGENT_CONFIG = "agent_config", "AI Agent 服務設定"
         OTHER = "other", "其他"
 
     admin_actor = models.ForeignKey(

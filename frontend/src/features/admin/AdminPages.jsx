@@ -79,6 +79,7 @@ const ADMIN_NAV_GROUPS = [
     items: [
       { to: "/admin/plans", label: "方案與定價", Icon: AdminPlansIcon },
       { to: "/admin/settings", label: "系統資訊", Icon: AdminSettingsIcon },
+      { to: "/admin/agent-service", label: "AI Agent 服務", Icon: AdminSettingsIcon, superuserOnly: true },
       { to: "/admin/audit-log", label: "操作日誌", Icon: AdminAuditLogIcon, superuserOnly: true },
     ],
   },

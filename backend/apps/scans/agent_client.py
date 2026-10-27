@@ -116,6 +116,41 @@ def _priority_from_item(item: dict) -> float | None:
     return None
 
 
+def _resolve_service() -> tuple[str, str, int, bool] | None:
+    """解析 agent 服務連線設定，回 (base_url, api_key, timeout, verify_tls)；停用／未設回 None。
+
+    優先讀後台執行期設定（`apps.agent.models.AgentServiceConfig`）：
+    - 後台已填 `base_url` → 以後台為準；`enabled=False` 時回 None（明確關閉，不退回 .env）。
+    - 後台未填 `base_url` → 退回 `.env`（`ARGUS_AGENT_SERVICE_*`），向後相容。
+    """
+    try:
+        from apps.agent.models import AgentServiceConfig
+
+        cfg = AgentServiceConfig.load()
+    except Exception:  # noqa: BLE001 — 設定表不存在／DB 問題時退回 .env
+        cfg = None
+
+    if cfg is not None and cfg.base_url:
+        if not cfg.enabled:
+            return None
+        return (
+            cfg.base_url.rstrip("/"),
+            cfg.get_api_key(),
+            int(cfg.timeout_seconds or 1800),
+            bool(cfg.verify_tls),
+        )
+
+    base = (getattr(settings, "ARGUS_AGENT_SERVICE_URL", "") or "").rstrip("/")
+    if not base:
+        return None
+    return (
+        base,
+        getattr(settings, "ARGUS_AGENT_SERVICE_KEY", "") or "",
+        int(getattr(settings, "ARGUS_AGENT_SERVICE_TIMEOUT", 1800) or 1800),
+        True,
+    )
+
+
 def run_agent_via_service(
     scan_job: ScanJob,
     *,
@@ -126,9 +161,10 @@ def run_agent_via_service(
     may_submit_forms: bool = False,
 ) -> AgentServiceResult | None:
     """呼叫 agent 服務並把發現落地。未設定服務位址回 None（略過）。"""
-    base = (getattr(settings, "ARGUS_AGENT_SERVICE_URL", "") or "").rstrip("/")
-    if not base:
+    resolved = _resolve_service()
+    if resolved is None:
         return None
+    base, api_key, timeout, verify_tls = resolved
 
     from apps.scans.models import decrypt_test_auth
 
@@ -144,12 +180,12 @@ def run_agent_via_service(
         "test_auth_password": decrypt_test_auth(scan_job.test_auth_password_encrypted) or None,
     }
     headers = {}
-    key = getattr(settings, "ARGUS_AGENT_SERVICE_KEY", "")
-    if key:
-        headers["Authorization"] = f"Bearer {key}"
-    timeout = getattr(settings, "ARGUS_AGENT_SERVICE_TIMEOUT", 1800)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-    resp = requests.post(f"{base}/scan", json=payload, headers=headers, timeout=timeout)
+    resp = requests.post(
+        f"{base}/scan", json=payload, headers=headers, timeout=timeout, verify=verify_tls
+    )
     resp.raise_for_status()
     data = resp.json()
 

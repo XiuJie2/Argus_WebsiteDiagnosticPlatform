@@ -400,3 +400,27 @@ class DomainOverrideSerializer(serializers.Serializer):
 
     approve = serializers.BooleanField()
     note = serializers.CharField(max_length=255, allow_blank=True, required=False)
+
+
+class AgentServiceConfigSerializer(serializers.Serializer):
+    """AI Agent（Strix／argus-agent）服務設定。
+
+    讀：回連線設定與 `has_api_key`（**永不回傳金鑰明文**）。
+    寫：`api_key` 只進不出——留空＝保留原金鑰，傳空字串並帶 `clear_api_key=true` 才清除。
+    """
+
+    enabled = serializers.BooleanField(required=False)
+    base_url = serializers.URLField(max_length=512, required=False, allow_blank=True)
+    timeout_seconds = serializers.IntegerField(required=False, min_value=1, max_value=7200)
+    verify_tls = serializers.BooleanField(required=False)
+    # 寫入用（write_only）：
+    api_key = serializers.CharField(
+        required=False, allow_blank=True, write_only=True, trim_whitespace=False,
+    )
+    clear_api_key = serializers.BooleanField(required=False, write_only=True, default=False)
+    # 讀出用（read_only）：
+    has_api_key = serializers.BooleanField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    updated_by_username = serializers.CharField(
+        source="updated_by.username", read_only=True, allow_null=True, default=None,
+    )

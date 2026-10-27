@@ -40,6 +40,7 @@ from apps.admin_api.schema import (
 from apps.admin_api.serializers import (
     AdjustCoinSerializer,
     AdminAuditLogSerializer,
+    AgentServiceConfigSerializer,
     AdminCoinTransactionSerializer,
     AdminDeleteUserSerializer,
     AdminLoginEventSerializer,
@@ -1614,3 +1615,73 @@ def announcement_detail(request, pk: int):
         return Response(AnnouncementSerializer(obj).data)
     obj.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _agent_service_payload(cfg) -> dict:
+    """AgentServiceConfig → 後台回應（永不含金鑰明文）。"""
+    return {
+        "enabled": cfg.enabled,
+        "base_url": cfg.base_url,
+        "timeout_seconds": cfg.timeout_seconds,
+        "verify_tls": cfg.verify_tls,
+        "has_api_key": cfg.has_api_key,
+        "updated_at": cfg.updated_at,
+        "updated_by_username": cfg.updated_by.username if cfg.updated_by_id else None,
+    }
+
+
+@extend_schema(methods=["GET"], responses=AgentServiceConfigSerializer)
+@extend_schema(
+    methods=["PUT"],
+    request=AgentServiceConfigSerializer,
+    responses=AgentServiceConfigSerializer,
+)
+@api_view(["GET", "PUT"])
+@permission_classes([IsSuperuser])
+def agent_service_config(request):
+    """AI Agent（Strix／argus-agent）服務連線設定——後台超管讀寫。
+
+    GET 回連線設定與 has_api_key（不含金鑰）。PUT 更新；api_key 留空＝保留，
+    clear_api_key=true 才清除。每次寫入記一筆 agent_config audit（不含金鑰）。
+    """
+    from apps.agent.models import AgentServiceConfig
+
+    cfg = AgentServiceConfig.load()
+    if request.method == "GET":
+        return Response(_agent_service_payload(cfg))
+
+    serializer = AgentServiceConfigSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    before = {"enabled": cfg.enabled, "base_url": cfg.base_url,
+              "timeout_seconds": cfg.timeout_seconds, "verify_tls": cfg.verify_tls,
+              "has_api_key": cfg.has_api_key}
+
+    if "enabled" in data:
+        cfg.enabled = data["enabled"]
+    if "base_url" in data:
+        cfg.base_url = data["base_url"]
+    if "timeout_seconds" in data:
+        cfg.timeout_seconds = data["timeout_seconds"]
+    if "verify_tls" in data:
+        cfg.verify_tls = data["verify_tls"]
+    # 金鑰：clear 優先；否則有給非空字串才覆寫，留空＝保留原金鑰。
+    if data.get("clear_api_key"):
+        cfg.set_api_key("")
+    elif data.get("api_key"):
+        cfg.set_api_key(data["api_key"])
+    cfg.updated_by = request.user
+    cfg.save()
+
+    after = {"enabled": cfg.enabled, "base_url": cfg.base_url,
+             "timeout_seconds": cfg.timeout_seconds, "verify_tls": cfg.verify_tls,
+             "has_api_key": cfg.has_api_key}
+    # audit 不留金鑰明文，只記是否有金鑰與其他欄位變更。
+    log_admin_action(
+        admin_actor=request.user,
+        action=AdminAuditLog.Action.AGENT_CONFIG,
+        target_repr="AI Agent 服務設定",
+        payload={"before": before, "after": after},
+    )
+    return Response(_agent_service_payload(cfg))

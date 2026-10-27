@@ -61,6 +61,7 @@ const loadAdminReviews = () => import("./features/admin/AdminReviewsPage");
 const loadAdminDomains = () => import("./features/admin/AdminDomainsPage");
 const loadAdminAuditLog = () => import("./features/admin/AdminAuditLogPage");
 const loadAdminAnnouncements = () => import("./features/admin/AdminAnnouncementsPage");
+const loadAdminAgentService = () => import("./features/admin/AdminAgentServicePage");
 const loadAdminPlans = () => import("./features/admin/AdminPlansPage");
 
 const RequireAuth = lazyNamed(loadAuthPages, "RequireAuth");
@@ -127,6 +128,7 @@ const AdminPlansPage = lazyNamed(loadAdminPlans, "AdminPlansPage");
 const AdminSettingsPage = lazyNamed(loadAdminPages, "AdminSettingsPage");
 const AdminAuditLogPage = lazyNamed(loadAdminAuditLog, "AdminAuditLogPage");
 const AdminAnnouncementsPage = lazyNamed(loadAdminAnnouncements, "AdminAnnouncementsPage");
+const AdminAgentServicePage = lazyNamed(loadAdminAgentService, "AdminAgentServicePage");
 // 建置時預先渲染的公開頁（scripts/prerender.mjs 依此表產出 HTML；main.jsx hydrate 前先載入對應元件）
 // 列出這頁會渲染到的所有 lazy 元件（不在 isPublic 的頁面還有 TopNav）；新增公開頁時加進來，
 // 也要加進 shared/documentTitle.ts 的標題與摘要表
@@ -389,6 +391,7 @@ function AppShell({ googleOAuthEnabled }) {
             <Route path="/admin/partner-inquiries" element={<AdminPartnerInquiriesPage />} />
             <Route path="/admin/plans" element={<AdminPlansPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/agent-service" element={<AdminAgentServicePage />} />
             <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
             <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
           </Route>
