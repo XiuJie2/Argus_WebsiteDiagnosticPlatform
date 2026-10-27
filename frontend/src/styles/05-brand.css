@@ -86,9 +86,8 @@
   box-shadow: 0 0 0 3px var(--ag-primary-soft-2);
 }
 
-/* 載入動畫：Argus Minimal Loading Pack 原樣使用（2026-10-10 使用者指定不改）。
-   01 · Signal Bars＝頁面切換／頁面載入（shared/PageLoader.jsx）；
-   08 · Thought Spark＝AI 分析（AiInsightPanel，在會員區內，樣式見 legacy-member/92-layout.css）。
+/* 載入動畫：Argus Minimal Loading Pack「01 · Signal Bars」原樣使用（2026-10-10 使用者指定不改），
+   頁面切換／頁面載入用（shared/PageLoader.jsx）。
    數值、顏色、時間與原檔相同，只把 class 加上 ag- 前綴避免與其他頁面撞名。 */
 .ag-page-loader { display: grid; place-items: center; min-height: 135px; }
 .ag-page-loader.is-route { min-height: 50vh; }

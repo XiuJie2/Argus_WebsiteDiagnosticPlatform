@@ -324,3 +324,20 @@ def _resolve_page(scan_job: ScanJob, url: str, cache: dict[str, Page | None]) ->
     page = scan_job.pages.filter(final_url=url).first() or scan_job.pages.filter(url=url).first()
     cache[url] = page
     return page
+
+
+# ---- 掃描器自身出口 IP 判讀（2026-10-26 由 tools.py 移入，tools.py 隨引擎移出 Argus）----
+# finding_normalization 需要這兩個符號；引擎（runner/loop/tools/providers）已移到獨立
+# argus-agent 服務，發現資料層留在 Argus。
+_IP_DISCLOSURE_RE = re.compile(r"\bip\b|位址|address", re.IGNORECASE)
+SCANNER_IP_NOTE = (
+    "\n證據中的 IP 全部是 Argus 掃描器自己的出口位址（WAF 或錯誤頁回顯訪客來源 IP），"
+    "不構成伺服器內部 IP 外洩；本項依此降為資訊提示，攔截頁是否該回顯來源 IP 仍可自行評估。"
+)
+
+
+def scanner_ip_disclosure(title: str, description: str, evidence: str) -> bool:
+    """觀察在講 IP 外洩、而證據裡的 IP 全是掃描器自己的出口位址。"""
+    from apps.scans.security.ip_context import only_scanner_ips
+
+    return bool(_IP_DISCLOSURE_RE.search(f"{title} {description}")) and only_scanner_ips(evidence)

@@ -2389,23 +2389,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/scans/{id}/ai-insight/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description 重新產生 AI 掃描解讀：只有沒有結果、失敗或卡住時才派工（已完成的不重產）。 */
-        post: operations["scans_ai_insight_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/scans/{id}/cancel/": {
         parameters: {
             query?: never;
@@ -7714,27 +7697,6 @@ export interface operations {
         };
     };
     scans_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScanJob"];
-                };
-            };
-        };
-    };
-    scans_ai_insight_create: {
         parameters: {
             query?: never;
             header?: never;

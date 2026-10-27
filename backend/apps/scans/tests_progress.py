@@ -298,15 +298,3 @@ class AgentStepDetailTests(TestCase):
         )
         scan.refresh_from_db()
         self.assertNotIn("step_detail", scan.progress)
-
-    def test_role_label_maps_roles_and_specialists(self):
-        from apps.scans.tasks import _agent_role_label
-
-        self.assertEqual(_agent_role_label("recon"), "偵察目標")
-        self.assertEqual(_agent_role_label("orchestrator"), "指揮調度")
-        self.assertEqual(_agent_role_label("ux"), "擬真使用者體驗測試")
-        self.assertEqual(_agent_role_label("specialist:injection"), "注入攻擊專家")
-        self.assertEqual(_agent_role_label("specialist:auth_idor"), "認證與越權（IDOR）專家")
-        # 未知角色給通用字樣、未知專家沿用角色代號，不致空白
-        self.assertEqual(_agent_role_label("unknown"), "資安測試")
-        self.assertEqual(_agent_role_label("specialist:future_role"), "future_role 專家")

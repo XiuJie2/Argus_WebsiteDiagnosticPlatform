@@ -2,7 +2,6 @@
 深度資安附加費、免費贈點累積上限、訂閱重新配點、深度資安專家派工上限。
 """
 
-from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -257,16 +256,3 @@ class SubscriptionPlanCoinsTests(TestCase):
         self.assertEqual(coins.get("sub-pro"), 1800)
         self.assertEqual(coins.get("sub-team"), 4000)
 
-
-class SpecialistDispatchLimitTests(TestCase):
-    """深度資安指揮官的專家派工上限（runner 需要真瀏覽器，鎖 source 與設定）。"""
-
-    def test_runner_enforces_dispatch_limit(self):
-        from django.conf import settings
-
-        from apps.agent import runner as runner_module
-
-        self.assertEqual(settings.ARGUS_AGENT_MAX_SPECIALIST_DISPATCH, 6)
-        source = Path(runner_module.__file__).read_text(encoding="utf-8")
-        self.assertIn("dispatch_limit_reached", source)
-        self.assertIn("[:dispatch_limit]", source, "orchestrator 失效時的全派安全網也要受上限約束")

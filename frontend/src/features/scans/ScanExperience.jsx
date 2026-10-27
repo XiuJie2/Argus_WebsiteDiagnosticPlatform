@@ -22,7 +22,6 @@ import { api, fetchVerifiedDomains } from "../../api";
 import { formatDateTime } from "../../shared/formatters";
 import argusEyeStill from "../../assets/argus-eye-still.webp";
 import argusEye from "../../assets/argus-eye.webp";
-import { AiInsightPanel, AiTriageNote } from "../../components/scans/AiInsightPanel";
 import { CopyButton } from "../../components/scans/CopyButton";
 import { PerformancePanel } from "../../components/scans/PerformancePanel";
 import { ScoreBreakdownPanel } from "../../components/scans/ScoreBreakdownPanel";
@@ -1410,8 +1409,6 @@ function FindingsWorkspace({ scan }) {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
-  // AI 解讀（AiInsightPanel 產生中會自己輪詢，更新後同步到這裡給問題詳情的 AI 複核用）
-  const [aiInsight, setAiInsight] = useState(null);
   const { confirmDialog, notifyDialog, dialogHost } = useConfirmDialogs();
 
   async function handleCancel() {
@@ -1707,16 +1704,6 @@ function FindingsWorkspace({ scan }) {
         </div>
       )}
 
-      <AiInsightPanel
-        scan={scan}
-        findings={findings}
-        onInsightChange={setAiInsight}
-        onSelectRule={(ruleId) => {
-          const matched = findings.find((f) => f.rule_id === ruleId);
-          if (matched) selectFinding(matched);
-        }}
-      />
-
       {/* 檢視器：左邊問題清單、右邊選中問題的說明與頁面截圖 */}
       <div className="scan-inspector">
         <div className="panel scan-inspector-list">
@@ -1773,7 +1760,6 @@ function FindingsWorkspace({ scan }) {
                 <span className={`category-pill cat-${selectedFinding.category}`}>{CATEGORY_LABELS[selectedFinding.category] || selectedFinding.category}</span>
               </p>
               <h3 className="finding-detail-title">{selectedFinding.title}</h3>
-              <AiTriageNote insight={aiInsight} finding={selectedFinding} />
               <p>{selectedFinding.description}</p>
               <p className="finding-detail-label">怎麼修</p>
               <p>{selectedFinding.remediation}</p>
