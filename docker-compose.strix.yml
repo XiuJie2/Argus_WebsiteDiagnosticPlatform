@@ -1,0 +1,54 @@
+# Strix agent 服務 override（把 Strix 當 Argus 的 AI pentest/UX 引擎，和 Argus 拆開）。
+#
+# 這一套實作 docs/agent-service-contract.md 的 HTTP 契約（argus-agent／Strix 共用）：
+# Argus 的 apps/scans/agent_client.py 只要把 ARGUS_AGENT_SERVICE_URL 指向本服務即可，
+# Argus 程式完全不改。
+#
+# 啟動（Phase 0，stub 模式，零 LLM／零真實攻擊流量，驗證接線）：
+#   docker compose -f docker-compose.yml -f docker-compose.strix.yml --profile strix up -d --build
+#
+# 仍受 Argus 既有閘門保護：deep 模式還需 scan_mode=active＋active_testing_authorized＋
+# deep_agent_requested（見 apps/agent/CLAUDE.md），本服務再對 authorized 旗標二次收斂。
+#
+# Phase 1（換真 Strix 引擎）：
+#   - 本服務 Dockerfile 解除 strix-agent 安裝、設 STRIX_STUB=false
+#   - 提供 STRIX_LLM／LLM_API_KEY（只給本服務，Argus 拿不到）
+#   - 解除下方 docker.sock 掛載（Strix 需要 Docker spawn 沙箱）
+
+services:
+  worker:
+    environment:
+      # 指向本服務；未設時 Argus 的 agent 階段 graceful skip（不執行、不計費）。
+      ARGUS_AGENT_SERVICE_URL: "http://strix-agent-service:8099"
+      ARGUS_AGENT_SERVICE_KEY: "${ARGUS_AGENT_SERVICE_KEY:-}"
+      # 服務逾時須 > 本服務的 STRIX_RUN_TIMEOUT。
+      ARGUS_AGENT_SERVICE_TIMEOUT: "${ARGUS_AGENT_SERVICE_TIMEOUT:-1800}"
+
+  strix-agent-service:
+    profiles: ["strix"]
+    build:
+      context: ./services/strix-agent-service
+      dockerfile: Dockerfile
+    environment:
+      # Phase 0 預設 stub；驗證接線後改 false 換真引擎。
+      STRIX_STUB: "${STRIX_STUB:-true}"
+      STRIX_SERVICE_API_KEY: "${ARGUS_AGENT_SERVICE_KEY:-}"
+      STRIX_SCAN_MODE: "${STRIX_SCAN_MODE:-quick}"
+      STRIX_MAX_BUDGET_USD: "${STRIX_MAX_BUDGET_USD:-10}"
+      STRIX_RUN_TIMEOUT: "${STRIX_RUN_TIMEOUT:-1500}"
+      STRIX_ALLOW_PRIVATE_TARGETS: "${STRIX_ALLOW_PRIVATE_TARGETS:-false}"
+      # Phase 1 真實引擎需要（只給本服務）：
+      # STRIX_LLM: "${STRIX_LLM:-}"
+      # LLM_API_KEY: "${LLM_API_KEY:-}"
+    # Phase 1：Strix 需要 host docker socket spawn 沙箱（近 root 權限）。
+    # 刻意只掛在本服務，不掛 Argus worker——這正是「把危險能力關在拆開的服務邊界內」。
+    # volumes:
+    #   - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/healthz').status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3

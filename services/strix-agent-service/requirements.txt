@@ -1,0 +1,8 @@
+# Strix agent 服務執行期依賴。
+# Phase 0（stub）只需前三個；real mode 另需 strix-agent 與 Docker（見 Dockerfile）。
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.30,<0.40
+pydantic>=2.9,<3
+
+# 真實引擎（Phase 1）：解除註解或在 Dockerfile 安裝。
+# strix-agent>=1.7,<2
