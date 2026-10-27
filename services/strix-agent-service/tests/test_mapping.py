@@ -35,9 +35,12 @@ def test_vuln_mapping_core_fields():
         "evidence": "payload ' OR 1=1 -- succeeded",
         "poc_description": "Automated PoC confirmed.",
     }
+    report["remediation_steps"] = "1. Use parameterized queries.\n2. Add tests."
     f = strix_vuln_to_finding(report)
     assert f.category == "security"
     assert f.severity == "critical"
+    # Strix 用 remediation_steps 命名；必須映射到 Finding.remediation（否則 argus「怎麼修」空白）
+    assert "parameterized queries" in f.remediation
     assert f.cwe_id == "CWE-89"
     assert f.cvss == 9.1
     assert f.url == "/login"

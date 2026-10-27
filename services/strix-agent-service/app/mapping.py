@@ -88,7 +88,9 @@ def strix_vuln_to_finding(
         severity=str(report.get("severity") or "low").strip().lower(),
         title=str(report.get("title") or "Untitled")[:255],
         description=str(report.get("description") or ""),
-        remediation=str(report.get("remediation") or ""),
+        # Strix 的修補建議欄位名是 remediation_steps（非 remediation）——不對齊會讓
+        # argus 的「怎麼修」整欄空白（2026-10-27 實測發現）。保留舊名當 fallback。
+        remediation=str(report.get("remediation_steps") or report.get("remediation") or ""),
         evidence=evidence,
         evidence_json=evidence_json,
         url=url,
