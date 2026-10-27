@@ -1,0 +1,17 @@
+# /etc/systemd/system/strix-agent-service.service
+# 讓 wrapper 服務在主機常駐，直接驅動主機已安裝/設定好的 strix（/root/.strix）。
+[Unit]
+Description=Strix Agent Service (argus AI pentest engine wrapper)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=root
+WorkingDirectory=/home/jie/Project/argus/Argus_WebsiteDiagnosticPlatform/services/strix-agent-service
+EnvironmentFile=/etc/strix-agent-service.env
+ExecStart=/root/.strix-service-venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8099
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
