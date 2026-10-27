@@ -994,11 +994,16 @@ def _headline(
     """第 1 章「網站總覽」的導讀句。只陳述資料本身，不加沒有根據的評價。"""
     score = scan_job.overall_score
     parts = []
+    # 只有「真的被排除在基準分外」的 AI 觀察（agent-observed-* 舊式，計入 agent_findings_summary）
+    # 存在時，才標註「不含 AI 深度測試」。外部 Strix 服務回傳的發現 rule_id 為 strix:*，
+    # 不是 agent 觀察、已如常計入基準分（例：IDOR／授權缺失直接把 security 分數拉低），
+    # 這時再宣稱「不含 AI 深度測試」會與實際計分矛盾（2026-10-27）。
+    agent_count = (scan_job.agent_findings_summary or {}).get("count") or 0
     if isinstance(score, int):
-        parts.append(
-            f"分數落在「{_score_band_label(score)}」區間"
-            "（確定性檢查基準分，不含 AI 深度測試）"
-        )
+        band = f"分數落在「{_score_band_label(score)}」區間"
+        if agent_count:
+            band += "（確定性檢查基準分，不含另呈現的 AI 深度測試觀察）"
+        parts.append(band)
     if previous is not None and isinstance(score, int) and not versions.comparable(
         scan_job, previous
     ):
@@ -1018,7 +1023,6 @@ def _headline(
         parts.append(f"已解決 {len(resolved)} 項")
     if unconfirmed:
         parts.append(f"另有 {unconfirmed} 項本次未出現，但檢查不完整、無法確認已修好")
-    agent_count = (scan_job.agent_findings_summary or {}).get("count") or 0
     if agent_count:
         parts.append(
             f"另有 AI 深度測試發現 {agent_count} 項（獨立呈現、不計入基準分，詳見資安章節）"
