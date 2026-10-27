@@ -29,9 +29,14 @@ class Settings:
     # Strix headless 設定（真實模式用）。
     strix_bin: str = os.getenv("STRIX_BIN", "strix").strip()
     strix_scan_mode: str = os.getenv("STRIX_SCAN_MODE", "quick").strip()  # quick|standard|deep
-    # 成本硬上限（USD）。Argus 不傳預算，由本服務統一 clamp，避免 LLM 成本失控。
+    # ⚠ 成本上限（USD）：**只對 Strix 內建 pricing 表認得的 model 有效**。
+    # 實測 MiniMax API → Strix 回報 cost=0、providers=[]，--max-budget 完全不生效
+    # （一次 quick 掃描 10 分鐘燒了 1,276 萬 tokens 都沒被攔）。接 MiniMax／任何
+    # Strix 不認得的 provider 時，真正的硬煞車是下面的 max_turns，不是這個。
     max_budget_usd: float = float(os.getenv("STRIX_MAX_BUDGET_USD", "10"))
-    max_turns: int = int(os.getenv("STRIX_MAX_TURNS", "200"))
+    # 回合數硬上限＝對所有 provider 都有效的成本煞車（agent 每回合會重送成長中的 context，
+    # input token 是成本主因）。預設壓低到 25；要更深再逐步放大並盯 run.json 的 total_tokens。
+    max_turns: int = int(os.getenv("STRIX_MAX_TURNS", "25"))
     # 單次 strix 執行的 wall-clock 上限（秒）；需 < Argus 的 ARGUS_AGENT_SERVICE_TIMEOUT。
     run_timeout_s: int = int(os.getenv("STRIX_RUN_TIMEOUT", "1500"))
     # strix_runs 產出的根目錄（容器內）。

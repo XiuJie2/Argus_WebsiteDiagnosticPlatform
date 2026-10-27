@@ -56,7 +56,10 @@ def _build_instruction(req: ScanRequest) -> str:
     return " ".join(parts)
 
 
-def _strix_command(req: ScanRequest, run_name: str) -> list[str]:
+def _strix_command(req: ScanRequest) -> list[str]:
+    # strix 1.7 沒有「設定 run name」的旗標——`-r`/`--resume` 是續跑既有 run。
+    # 新掃描一律由 strix 自動命名，輸出到執行時 CWD 下的 ./strix_runs/<auto>。
+    # 本服務替每次掃描開一個乾淨 CWD，再從裡面挑出唯一那個 run dir。
     scan_mode = _MODE_TO_STRIX.get(req.mode, settings.strix_scan_mode)
     cmd = [
         settings.strix_bin,
@@ -65,7 +68,6 @@ def _strix_command(req: ScanRequest, run_name: str) -> list[str]:
         "--scan-mode", scan_mode,
         "--max-budget", str(settings.max_budget_usd),
         "--max-turns", str(settings.max_turns),
-        "-r", run_name,
     ]
     instruction = _build_instruction(req)
     if instruction:
@@ -80,11 +82,26 @@ def _load_json(path: Path, default):
         return default
 
 
+def _latest_run_dir(runs_root: Path) -> Path | None:
+    """挑出 strix 自動命名的那個 run dir（取 run.json mtime 最新者）。"""
+    if not runs_root.is_dir():
+        return None
+    candidates = [d for d in runs_root.iterdir() if (d / "run.json").is_file()]
+    if not candidates:
+        # 還沒寫 run.json 時退而取任何子目錄，讓解析仍能嘗試 vulnerabilities.json
+        candidates = [d for d in runs_root.iterdir() if d.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda d: (d / "run.json").stat().st_mtime
+               if (d / "run.json").is_file() else d.stat().st_mtime)
+
+
 def run_strix(req: ScanRequest) -> ScanResponse:
     """同步跑一次 Strix headless，解析產出並回契約回應。"""
-    run_name = f"argus-{uuid.uuid4().hex[:12]}"
-    run_dir = Path(settings.runs_dir) / run_name
-    cmd = _strix_command(req, run_name)
+    # 每次掃描一個乾淨 CWD；strix 會在其下建立 ./strix_runs/<auto-name>/。
+    scan_cwd = Path(settings.runs_dir) / f"argus-{uuid.uuid4().hex[:12]}"
+    scan_cwd.mkdir(parents=True, exist_ok=True)
+    cmd = _strix_command(req)
 
     secrets = [s for s in (req.test_auth_email, req.test_auth_password) if s]
 
@@ -95,6 +112,7 @@ def run_strix(req: ScanRequest) -> ScanResponse:
             text=True,
             timeout=settings.run_timeout_s,
             check=False,
+            cwd=str(scan_cwd),
         )
         exit_code = proc.returncode
         timed_out = False
@@ -103,8 +121,9 @@ def run_strix(req: ScanRequest) -> ScanResponse:
         timed_out = True
 
     # 退出碼：0 clean / 2 found vulnerabilities / 1 fatal。逾時＝partial。
-    vulns = _load_json(run_dir / "vulnerabilities.json", default=[])
-    run_record = _load_json(run_dir / "run.json", default={})
+    run_dir = _latest_run_dir(scan_cwd / "strix_runs")
+    vulns = _load_json(run_dir / "vulnerabilities.json", default=[]) if run_dir else []
+    run_record = _load_json(run_dir / "run.json", default={}) if run_dir else {}
 
     findings = []
     for item in vulns if isinstance(vulns, list) else []:
