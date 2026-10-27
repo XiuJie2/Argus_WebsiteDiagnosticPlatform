@@ -46,6 +46,11 @@ services:
     #   - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - default
+    # 只綁 host 的 loopback：argus worker 走 docker 網路（strix-agent-service:8099）即可，
+    # 不需要這個對外埠；此埠只給同機的 nginx 反代用（strix.clouda.dpdns.org → Cloudflare）。
+    # 不公開到外網時整段 ports 可刪掉。
+    ports:
+      - "127.0.0.1:8099:8099"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/healthz').status==200 else 1)\""]
