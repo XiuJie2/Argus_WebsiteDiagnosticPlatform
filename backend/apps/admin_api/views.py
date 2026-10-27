@@ -1621,6 +1621,7 @@ def _agent_service_payload(cfg) -> dict:
     """AgentServiceConfig → 後台回應（永不含金鑰明文）。"""
     return {
         "enabled": cfg.enabled,
+        "protocol": cfg.protocol,
         "base_url": cfg.base_url,
         "timeout_seconds": cfg.timeout_seconds,
         "verify_tls": cfg.verify_tls,
@@ -1654,12 +1655,14 @@ def agent_service_config(request):
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
 
-    before = {"enabled": cfg.enabled, "base_url": cfg.base_url,
+    before = {"enabled": cfg.enabled, "protocol": cfg.protocol, "base_url": cfg.base_url,
               "timeout_seconds": cfg.timeout_seconds, "verify_tls": cfg.verify_tls,
               "has_api_key": cfg.has_api_key}
 
     if "enabled" in data:
         cfg.enabled = data["enabled"]
+    if "protocol" in data:
+        cfg.protocol = data["protocol"]
     if "base_url" in data:
         cfg.base_url = data["base_url"]
     if "timeout_seconds" in data:
@@ -1674,7 +1677,7 @@ def agent_service_config(request):
     cfg.updated_by = request.user
     cfg.save()
 
-    after = {"enabled": cfg.enabled, "base_url": cfg.base_url,
+    after = {"enabled": cfg.enabled, "protocol": cfg.protocol, "base_url": cfg.base_url,
              "timeout_seconds": cfg.timeout_seconds, "verify_tls": cfg.verify_tls,
              "has_api_key": cfg.has_api_key}
     # audit 不留金鑰明文，只記是否有金鑰與其他欄位變更。

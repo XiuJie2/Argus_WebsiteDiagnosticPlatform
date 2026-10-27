@@ -11,7 +11,19 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .contract import CONTRACT_VERSION, ScanRequest, ScanResponse
+from .contract import (
+    CONTRACT_VERSION,
+    CONTRACT_VERSION_ASYNC,
+    Finding,
+    MessageRequest,
+    ScanRequest,
+    ScanResponse,
+    ScanResultResponse,
+    ScanStartResponse,
+    ScanStatusResponse,
+    TraceEventModel,
+    TraceResponse,
+)
 from .target_guard import TargetRejected, assert_scannable
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -31,7 +43,13 @@ def _check_auth(authorization: str | None) -> None:
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"ok": True, "contract_version": CONTRACT_VERSION, "stub": settings.stub}
+    return {
+        "ok": True,
+        "contract_version": CONTRACT_VERSION,
+        "contract_version_async": CONTRACT_VERSION_ASYNC,
+        "protocols": ["sync", "async"],
+        "stub": settings.stub,
+    }
 
 
 @app.get("/readyz")
@@ -83,3 +101,108 @@ def scan(req: ScanRequest, authorization: str | None = Header(default=None)) -> 
 async def _unhandled(_request, exc: Exception) -> JSONResponse:  # pragma: no cover
     logger.exception("unhandled error")
     return JSONResponse(status_code=500, content={"status": "error", "error": type(exc).__name__})
+
+
+# ---- 非同步 API v2（app.strix.ai 式）----
+
+def _validate_and_guard(req: ScanRequest) -> str | None:
+    """契約版本 + 目標驗證。通過回 None，否則回安全錯誤碼字串。"""
+    major = req.contract_version.split(".")[0]
+    if major not in {"1", "2"}:
+        return "unsupported_contract_version"
+    try:
+        assert_scannable(req.url, allow_private=settings.allow_private_targets)
+    except TargetRejected as exc:
+        return str(exc)
+    return None
+
+
+@app.post("/v1/scans", response_model=ScanStartResponse, status_code=202)
+def start_scan(req: ScanRequest, authorization: str | None = Header(default=None)) -> ScanStartResponse:
+    """下單：立即返回 scan_id，掃描在背景執行。"""
+    _check_auth(authorization)
+    err = _validate_and_guard(req)
+    if err:
+        # 下單期就能判定的拒絕：直接 400，呼叫端不必再輪詢。
+        raise HTTPException(status_code=400, detail=err)
+    from .jobs import start_run
+    from .runstore import store
+
+    run = store.create(req.model_dump())
+    start_run(run)
+    return ScanStartResponse(scan_id=run.scan_id, status=run.status)
+
+
+def _get_run_or_404(scan_id: str):
+    from .runstore import store
+
+    run = store.get(scan_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="scan_not_found")
+    return run
+
+
+@app.get("/v1/scans/{scan_id}", response_model=ScanStatusResponse)
+def scan_status(scan_id: str, authorization: str | None = Header(default=None)) -> ScanStatusResponse:
+    _check_auth(authorization)
+    run = _get_run_or_404(scan_id)
+    return ScanStatusResponse(
+        scan_id=run.scan_id, status=run.status, phase=run.phase, steps=run.steps,
+        cost_usd=run.cost_usd, total_tokens=run.total_tokens, error=run.error,
+        engine="strix-stub" if settings.stub else "strix",
+    )
+
+
+@app.get("/v1/scans/{scan_id}/trace", response_model=TraceResponse)
+def scan_trace(scan_id: str, after: int = 0,
+               authorization: str | None = Header(default=None)) -> TraceResponse:
+    """自 after 序號之後的即時事件（agent 在做什麼）。"""
+    _check_auth(authorization)
+    run = _get_run_or_404(scan_id)
+    events = run.events_after(after)
+    return TraceResponse(
+        scan_id=run.scan_id,
+        status=run.status,
+        events=[TraceEventModel(seq=e.seq, ts=e.ts, kind=e.kind, message=e.message, agent=e.agent)
+                for e in events],
+        next=events[-1].seq if events else after,
+    )
+
+
+@app.get("/v1/scans/{scan_id}/result", response_model=ScanResultResponse)
+def scan_result(scan_id: str, authorization: str | None = Header(default=None)) -> ScanResultResponse:
+    """終端後取完整結果；未終端回 409（呼叫端應繼續輪詢）。"""
+    _check_auth(authorization)
+    run = _get_run_or_404(scan_id)
+    if not run.is_terminal:
+        raise HTTPException(status_code=409, detail="scan_not_finished")
+    status_map = {"succeeded": "completed", "partial": "partial",
+                  "failed": "error", "cancelled": "error"}
+    return ScanResultResponse(
+        scan_id=run.scan_id,
+        status=status_map.get(run.status, "completed"),
+        steps=run.steps, total_tokens=run.total_tokens, summary=run.summary, error=run.error,
+        findings=[Finding(**f) for f in run.findings], cost_usd=run.cost_usd,
+        engine="strix-stub" if settings.stub else "strix",
+    )
+
+
+@app.post("/v1/scans/{scan_id}/cancel", status_code=202)
+def scan_cancel(scan_id: str, authorization: str | None = Header(default=None)) -> dict:
+    """請求取消；背景執行緒在下個檢查點停下。"""
+    _check_auth(authorization)
+    run = _get_run_or_404(scan_id)
+    run.cancel_event.set()
+    run.add_event("info", "收到取消請求")
+    return {"scan_id": run.scan_id, "status": run.status, "cancel_requested": True}
+
+
+@app.post("/v1/scans/{scan_id}/message", status_code=202)
+def scan_message(scan_id: str, body: MessageRequest,
+                 authorization: str | None = Header(default=None)) -> dict:
+    """掃描進行中對 agent 補充指令（記錄下來供引擎取用；stub 僅存不處理）。"""
+    _check_auth(authorization)
+    run = _get_run_or_404(scan_id)
+    run.messages.append(body.message)
+    run.add_event("info", "收到使用者留言")
+    return {"scan_id": run.scan_id, "accepted": True}

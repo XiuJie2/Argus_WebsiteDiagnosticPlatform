@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type AgentServiceConfig,
   type AgentServiceConfigInput,
+  type AgentServiceProtocol,
   fetchAgentServiceConfig,
   updateAgentServiceConfig,
 } from "../../api";
@@ -19,6 +20,7 @@ import { errorDetail, fieldErrors } from "./adminHelpers";
 
 type FormState = {
   enabled: boolean;
+  protocol: AgentServiceProtocol;
   base_url: string;
   timeout_seconds: number;
   verify_tls: boolean;
@@ -29,6 +31,7 @@ type FormState = {
 function toForm(cfg: AgentServiceConfig): FormState {
   return {
     enabled: cfg.enabled,
+    protocol: cfg.protocol,
     base_url: cfg.base_url,
     timeout_seconds: cfg.timeout_seconds,
     verify_tls: cfg.verify_tls,
@@ -79,6 +82,7 @@ export function AdminAgentServicePage() {
     try {
       const payload: AgentServiceConfigInput = {
         enabled: form.enabled,
+        protocol: form.protocol,
         base_url: form.base_url.trim(),
         timeout_seconds: form.timeout_seconds,
         verify_tls: form.verify_tls,
@@ -122,6 +126,25 @@ export function AdminAgentServicePage() {
             />
             <span>啟用後，掃描會呼叫此服務；關閉且已填位址時略過 agent 階段（不計費）。</span>
           </label>
+        </AdminField>
+
+        <AdminField
+          id="agent-protocol"
+          label="協定"
+          hint="sync＝一次同步請求（簡單）；async＝下單/輪詢/即時進度，可中途取消（服務需支援 /v1/scans）。"
+          error={errors.protocol}
+        >
+          {(p) => (
+            <select
+              {...p}
+              className="admin-input"
+              value={form.protocol}
+              onChange={(e) => patch({ protocol: e.target.value as AgentServiceProtocol })}
+            >
+              <option value="sync">同步（POST /scan）</option>
+              <option value="async">非同步（下單→輪詢→即時 trace）</option>
+            </select>
+          )}
         </AdminField>
 
         <AdminField

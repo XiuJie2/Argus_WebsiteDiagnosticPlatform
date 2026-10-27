@@ -59,11 +59,12 @@ class ResolveServiceTests(TestCase):
         cfg.timeout_seconds = 900
         cfg.verify_tls = True
         cfg.save()
-        base, key, timeout, verify = _resolve_service()
+        base, key, timeout, verify, protocol = _resolve_service()
         self.assertEqual(base, "https://strix.example.com")  # 去尾斜線
         self.assertEqual(key, "k")
         self.assertEqual(timeout, 900)
         self.assertTrue(verify)
+        self.assertEqual(protocol, "sync")
 
     def test_db_config_disabled_with_url_returns_none(self):
         cfg = AgentServiceConfig.load()
@@ -75,9 +76,10 @@ class ResolveServiceTests(TestCase):
     @override_settings(ARGUS_AGENT_SERVICE_URL="http://env-agent:8099", ARGUS_AGENT_SERVICE_KEY="envkey")
     def test_blank_db_url_falls_back_to_env(self):
         AgentServiceConfig.load()  # 建立但不填 base_url
-        base, key, timeout, verify = _resolve_service()
+        base, key, timeout, verify, protocol = _resolve_service()
         self.assertEqual(base, "http://env-agent:8099")
         self.assertEqual(key, "envkey")
+        self.assertEqual(protocol, "sync")
 
 
 class AgentServiceAdminEndpointTests(TestCase):
@@ -143,3 +145,125 @@ class AgentServiceAdminEndpointTests(TestCase):
         log = AdminAuditLog.objects.filter(action=AdminAuditLog.Action.AGENT_CONFIG).first()
         self.assertIsNotNone(log)
         self.assertNotIn("topsecret", str(log.payload))
+
+
+class AsyncClientFlowTests(TestCase):
+    """非同步協定下 agent_client 的傳輸邏輯（mock HTTP，不需真實服務）。"""
+
+    def test_async_routing_progress_and_result(self):
+        import types
+
+        from apps.scans import agent_client as ac
+
+        cfg = AgentServiceConfig.load()
+        cfg.enabled = True
+        cfg.protocol = "async"
+        cfg.base_url = "http://svc.internal"
+        cfg.save()
+
+        # 不碰 DB：假 scan_job + 攔截 _build_result 取回傳給它的 data。
+        scan_job = types.SimpleNamespace(
+            id=123, normalized_url="https://t.example.com", original_url="",
+            test_auth_email_encrypted="", test_auth_password_encrypted="",
+        )
+
+        class FakeResp:
+            def __init__(self, data):
+                self._d = data
+
+            def json(self):
+                return self._d
+
+            def raise_for_status(self):
+                return None
+
+        trace_calls = {"n": 0}
+
+        def fake_post(url, **kw):
+            assert url.startswith("http://svc.internal/v1/scans")
+            return FakeResp({"scan_id": "abc", "status": "running"})
+
+        def fake_get(url, **kw):
+            if url.endswith("/trace"):
+                trace_calls["n"] += 1
+                if trace_calls["n"] == 1:
+                    return FakeResp({"status": "running", "next": 1, "events": [
+                        {"seq": 1, "ts": 0, "kind": "agent", "message": "對應 API", "agent": "Auth"},
+                    ]})
+                return FakeResp({"status": "succeeded", "next": 1, "events": []})
+            if url.endswith("/result"):
+                return FakeResp({"status": "completed", "steps": 3, "summary": "done",
+                                 "findings": [{"category": "security", "severity": "high",
+                                               "title": "X"}]})
+            raise AssertionError(f"unexpected GET {url}")
+
+        captured = {}
+
+        def fake_build(sj, data):
+            captured["data"] = data
+            return ac.AgentServiceResult(status=data.get("status", "completed"))
+
+        seen_events = []
+
+        orig_requests = ac.requests
+        orig_build = ac._build_result
+        orig_interval = ac._ASYNC_POLL_INTERVAL
+        import apps.scans.cancellation as cancel_mod
+        orig_cancel = cancel_mod.raise_if_cancelled
+        try:
+            ac.requests = types.SimpleNamespace(post=fake_post, get=fake_get,
+                                                RequestException=Exception)
+            ac._build_result = fake_build
+            ac._ASYNC_POLL_INTERVAL = 0
+            cancel_mod.raise_if_cancelled = lambda *_a, **_k: None
+            result = ac.run_agent_via_service(
+                scan_job, run_deep=True, run_ux=False,
+                progress_cb=lambda ev: seen_events.append(ev),
+            )
+        finally:
+            ac.requests = orig_requests
+            ac._build_result = orig_build
+            ac._ASYNC_POLL_INTERVAL = orig_interval
+            cancel_mod.raise_if_cancelled = orig_cancel
+
+        self.assertIsNotNone(result)
+        # 走了非同步 → 從 /result 拿到 findings
+        self.assertEqual(len(captured["data"]["findings"]), 1)
+        self.assertEqual(captured["data"]["status"], "completed")
+        # trace 事件有餵給 progress_cb
+        self.assertTrue(any(e.get("agent") == "Auth" for e in seen_events))
+
+    def test_sync_protocol_still_posts_scan(self):
+        import types
+
+        from apps.scans import agent_client as ac
+
+        cfg = AgentServiceConfig.load()
+        cfg.enabled = True
+        cfg.protocol = "sync"
+        cfg.base_url = "http://svc.internal"
+        cfg.save()
+        scan_job = types.SimpleNamespace(
+            id=1, normalized_url="https://t.example.com", original_url="",
+            test_auth_email_encrypted="", test_auth_password_encrypted="",
+        )
+        posted = {}
+
+        class FakeResp:
+            def json(self):
+                return {"status": "completed", "findings": []}
+
+            def raise_for_status(self):
+                return None
+
+        def fake_post(url, **kw):
+            posted["url"] = url
+            return FakeResp()
+
+        orig = ac.requests
+        try:
+            ac.requests = types.SimpleNamespace(post=fake_post, get=None, RequestException=Exception)
+            ac.run_agent_via_service(scan_job, run_deep=True, run_ux=False)
+        finally:
+            ac.requests = orig
+        self.assertTrue(posted["url"].endswith("/scan"))

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -96,29 +97,48 @@ def _latest_run_dir(runs_root: Path) -> Path | None:
                if (d / "run.json").is_file() else d.stat().st_mtime)
 
 
-def run_strix(req: ScanRequest) -> ScanResponse:
-    """同步跑一次 Strix headless，解析產出並回契約回應。"""
-    # 每次掃描一個乾淨 CWD；strix 會在其下建立 ./strix_runs/<auto-name>/。
-    scan_cwd = Path(settings.runs_dir) / f"argus-{uuid.uuid4().hex[:12]}"
+def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
+              cancel_event=None) -> ScanResponse:
+    """同步跑一次 Strix headless，解析產出並回契約回應。
+
+    scan_cwd：指定執行目錄（非同步模式由 jobs 傳入，方便 tail strix.log）；None 則自建。
+    cancel_event：threading.Event，設定時盡快終止 strix 子程序（非同步取消用）。
+    """
+    if scan_cwd is None:
+        scan_cwd = Path(settings.runs_dir) / f"argus-{uuid.uuid4().hex[:12]}"
     scan_cwd.mkdir(parents=True, exist_ok=True)
     cmd = _strix_command(req)
 
     secrets = [s for s in (req.test_auth_email, req.test_auth_password) if s]
 
-    try:
-        proc = subprocess.run(  # noqa: S603 — 參數化、無 shell
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=settings.run_timeout_s,
-            check=False,
-            cwd=str(scan_cwd),
-        )
-        exit_code = proc.returncode
-        timed_out = False
-    except subprocess.TimeoutExpired:
-        exit_code = None
-        timed_out = True
+    exit_code: int | None = None
+    timed_out = False
+    cancelled = False
+    deadline = time.monotonic() + settings.run_timeout_s
+    proc = subprocess.Popen(  # noqa: S603 — 參數化、無 shell
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(scan_cwd),
+    )
+    while True:
+        try:
+            exit_code = proc.wait(timeout=1.0)
+            break
+        except subprocess.TimeoutExpired:
+            if cancel_event is not None and cancel_event.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                cancelled = True
+                break
+            if time.monotonic() > deadline:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                timed_out = True
+                break
 
     # 退出碼：0 clean / 2 found vulnerabilities / 1 fatal。逾時＝partial。
     run_dir = _latest_run_dir(scan_cwd / "strix_runs")
@@ -130,7 +150,9 @@ def run_strix(req: ScanRequest) -> ScanResponse:
         if isinstance(item, dict):
             findings.append(strix_vuln_to_finding(item, secrets=secrets))
 
-    if timed_out:
+    if cancelled:
+        status = "error"
+    elif timed_out:
         status = "partial"
     elif exit_code in (0, 2):
         status = "completed"
@@ -147,7 +169,7 @@ def run_strix(req: ScanRequest) -> ScanResponse:
 
     summary = str((run_record or {}).get("summary") or "")[:1000]
     if not summary:
-        summary = f"Strix run {run_name}: {len(findings)} findings, status={status}."
+        summary = f"Strix run: {len(findings)} findings, status={status}."
 
     return ScanResponse(
         status=status,

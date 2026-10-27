@@ -114,3 +114,34 @@ CVSS vs priority）Argus 都吃得下。
 
 Strix 需要 Docker 與 `STRIX_LLM`／`LLM_API_KEY`（或 `strix auth login`）；這些是 wrapper 服務的部署
 需求，不是 Argus 的。
+
+---
+
+## 契約 v2.0（非同步，app.strix.ai 式）— 2026-10-27
+
+v1.0 的同步 `POST /scan` 阻塞到掃描結束、沒有即時進度、也不能中途取消。v2.0 新增一組
+非同步端點（start → poll/trace → result → cancel/message），讓後台能即時看 agent 在做什麼、
+並支援取消。**v1 與 v2 並存**：服務同時實作兩者，Argus 端依後台設定的 `protocol` 決定走哪條。
+
+### 選擇協定
+後台 `AgentServiceConfig.protocol`（`/admin/agent-service` 的「協定」欄）：
+- `sync`（預設、向後相容）：走 v1 `POST /scan`。
+- `async`：走下列 v2 端點。`agent_client._run_async` 下單後輪詢 trace，把事件經
+  `progress_cb` 寫進 `ScanJob.progress.step_detail`（恢復「目前哪個 agent 在跑」顯示），
+  偵測到掃描取消時通知服務 `/cancel`。整體受 `timeout_seconds` 限制。
+
+### 端點（都帶 `Authorization: Bearer <key>`）
+| 方法 路徑 | 說明 |
+|---|---|
+| `POST /v1/scans` | 下單，body 同 v1 `/scan`；立即回 `{scan_id, status}`（202）。下單期即可判定的拒絕（契約版本、目標驗證）直接回 4xx。 |
+| `GET /v1/scans/{id}` | 狀態：`{scan_id, status, phase, steps, cost_usd, total_tokens, error}`，不含 findings。`status`＝queued/running/succeeded/partial/failed/cancelled。 |
+| `GET /v1/scans/{id}/trace?after=<seq>` | 自 `after` 序號之後的事件：`{events:[{seq, ts, kind, message, agent}], next, status}`。`kind`＝phase/agent/tool/info/error。輪詢帶上次的 `next`。 |
+| `GET /v1/scans/{id}/result` | 終端後的完整結果（findings 同 v1 shape）；未終端回 409。 |
+| `POST /v1/scans/{id}/cancel` | 請求取消；背景在檢查點停下（202）。 |
+| `POST /v1/scans/{id}/message` | 掃描中對 agent 補充指令 `{message}`（stub 僅記錄）。 |
+
+### 實作
+- 服務端：`services/strix-agent-service/app/{runstore,jobs}.py`＋`main.py` 的 `/v1/scans*`。
+  stub 會發擬真 trace；real 會 tail `strix_runs/<run>/strix.log` 的「Starting turn N, agent=X」轉 trace。
+  ⚠ run 狀態存**單 process 記憶體**——服務請單 worker 跑，或改接 Redis/sqlite 共享。
+- Argus 端：`agent_client._resolve_service()` 回傳的 protocol 決定 `_run_sync` / `_run_async`。

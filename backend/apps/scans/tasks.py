@@ -2061,6 +2061,27 @@ def stage_agent(ctx: ScanRunContext) -> None:
         # 把確定性工具這次已找到的資安問題餵給 agent，叫它別重報（ADR-0005 §5）——
         # 消掉「agent 盲跑 → 撞一堆重複 → 事後去重」的浪費
         known_findings = [f for f in ctx.all_findings if f.get("category") == "security"]
+
+        # 非同步協定下 agent 服務會回傳即時 trace；把「目前哪個 agent 在做什麼」寫進
+        # progress.step_detail，恢復引擎抽離後失去的即時進度顯示（同步協定時不會被呼叫）。
+        def _agent_progress(ev: dict) -> None:
+            agent = (ev.get("agent") or "").strip()
+            msg = (ev.get("message") or "").strip()
+            detail = f"{agent}：{msg}" if agent else msg
+            if not detail:
+                return
+            agent_steps_seen["n"] += 1
+            _write_progress(
+                scan_job_id,
+                phase="agent_testing",
+                done=min(agent_steps_seen["n"], agent_total),
+                total=agent_total,
+                phase_started_at=agent_phase_started,
+                step=agent_step_key,
+                detail=detail[:200],
+                steps=ctx.steps,
+            )
+
         # 呼叫獨立的 argus-agent 服務（未設定服務位址時回 None＝略過、不計費）
         agent_result = run_agent_via_service(
             scan_job,
@@ -2069,6 +2090,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
             recon_intel=ctx.discovered_endpoints,
             known_findings=known_findings,
             may_submit_forms=may_submit_forms,
+            progress_cb=_agent_progress,
         )
         ctx.agent_result = agent_result
         if agent_result is None:

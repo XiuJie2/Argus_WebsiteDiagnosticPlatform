@@ -39,9 +39,19 @@ class AgentServiceConfig(models.Model):
 
     SINGLETON_ID = 1
 
+    class Protocol(models.TextChoices):
+        SYNC = "sync", "同步（POST /scan，一次回結果）"
+        ASYNC = "async", "非同步（下單→輪詢→即時 trace，可中途取消）"
+
     enabled = models.BooleanField(
         default=False,
         help_text="關閉時：若已填服務位址則 agent 階段略過（不呼叫、不計費）。",
+    )
+    protocol = models.CharField(
+        max_length=8,
+        choices=Protocol.choices,
+        default=Protocol.SYNC,
+        help_text="sync＝一次同步請求；async＝app.strix.ai 式下單／輪詢／即時進度（服務需支援 /v1/scans）。",
     )
     base_url = models.URLField(
         max_length=512,

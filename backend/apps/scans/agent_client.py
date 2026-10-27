@@ -13,6 +13,7 @@ Graceful degrade：未設定 ARGUS_AGENT_SERVICE_URL 時直接回 None（agent �
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -116,12 +117,12 @@ def _priority_from_item(item: dict) -> float | None:
     return None
 
 
-def _resolve_service() -> tuple[str, str, int, bool] | None:
-    """解析 agent 服務連線設定，回 (base_url, api_key, timeout, verify_tls)；停用／未設回 None。
+def _resolve_service() -> tuple[str, str, int, bool, str] | None:
+    """解析 agent 服務連線設定，回 (base_url, api_key, timeout, verify_tls, protocol)；停用／未設回 None。
 
     優先讀後台執行期設定（`apps.agent.models.AgentServiceConfig`）：
     - 後台已填 `base_url` → 以後台為準；`enabled=False` 時回 None（明確關閉，不退回 .env）。
-    - 後台未填 `base_url` → 退回 `.env`（`ARGUS_AGENT_SERVICE_*`），向後相容。
+    - 後台未填 `base_url` → 退回 `.env`（`ARGUS_AGENT_SERVICE_*`，protocol 固定 sync），向後相容。
     """
     try:
         from apps.agent.models import AgentServiceConfig
@@ -138,6 +139,7 @@ def _resolve_service() -> tuple[str, str, int, bool] | None:
             cfg.get_api_key(),
             int(cfg.timeout_seconds or 1800),
             bool(cfg.verify_tls),
+            str(cfg.protocol or "sync"),
         )
 
     base = (getattr(settings, "ARGUS_AGENT_SERVICE_URL", "") or "").rstrip("/")
@@ -148,47 +150,86 @@ def _resolve_service() -> tuple[str, str, int, bool] | None:
         getattr(settings, "ARGUS_AGENT_SERVICE_KEY", "") or "",
         int(getattr(settings, "ARGUS_AGENT_SERVICE_TIMEOUT", 1800) or 1800),
         True,
+        "sync",
     )
 
 
-def run_agent_via_service(
-    scan_job: ScanJob,
-    *,
-    run_deep: bool,
-    run_ux: bool,
-    recon_intel: list[str] | None = None,
-    known_findings: list[dict] | None = None,
-    may_submit_forms: bool = False,
-) -> AgentServiceResult | None:
-    """呼叫 agent 服務並把發現落地。未設定服務位址回 None（略過）。"""
-    resolved = _resolve_service()
-    if resolved is None:
-        return None
-    base, api_key, timeout, verify_tls = resolved
+# agent 服務輪詢間隔（秒）。
+_ASYNC_POLL_INTERVAL = 3.0
+_ASYNC_TERMINAL = frozenset({"succeeded", "partial", "failed", "cancelled", "completed", "error"})
 
-    from apps.scans.models import decrypt_test_auth
 
-    payload = {
-        "contract_version": CONTRACT_VERSION,
-        "url": scan_job.normalized_url or scan_job.original_url,
-        "mode": _mode(run_deep, run_ux),
-        "authorized": bool(run_deep),
-        "submit_forms": bool(may_submit_forms),
-        "recon_intel": recon_intel or None,
-        "known_findings": known_findings or None,
-        "test_auth_email": decrypt_test_auth(scan_job.test_auth_email_encrypted) or None,
-        "test_auth_password": decrypt_test_auth(scan_job.test_auth_password_encrypted) or None,
-    }
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
+def _run_sync(base, headers, payload, timeout, verify) -> dict:
+    """同步契約：POST /scan，一次回結果。"""
     resp = requests.post(
-        f"{base}/scan", json=payload, headers=headers, timeout=timeout, verify=verify_tls
+        f"{base}/scan", json=payload, headers=headers, timeout=timeout, verify=verify
     )
     resp.raise_for_status()
-    data = resp.json()
+    return resp.json()
 
+
+def _run_async(base, headers, payload, timeout, verify, *, scan_job_id, progress_cb) -> dict:
+    """非同步契約：POST /v1/scans → 輪詢 status/trace → GET result。
+
+    每輪拉 trace 事件丟給 progress_cb（即時顯示 agent 在做什麼）；偵測到掃描被取消時
+    通知服務取消並停止輪詢。整體受 timeout 限制。
+    """
+    import time
+
+    from apps.scans.cancellation import ScanCancelled, raise_if_cancelled
+
+    def _cancelled() -> bool:
+        try:
+            raise_if_cancelled(scan_job_id)
+            return False
+        except ScanCancelled:
+            return True
+
+    start = requests.post(
+        f"{base}/v1/scans", json=payload, headers=headers, timeout=60, verify=verify
+    )
+    start.raise_for_status()
+    scan_id = start.json()["scan_id"]
+
+    after = 0
+    deadline = time.monotonic() + timeout
+    cancel_sent = False
+    status = "running"
+    while True:
+        try:
+            tr = requests.get(
+                f"{base}/v1/scans/{scan_id}/trace", params={"after": after},
+                headers=headers, timeout=30, verify=verify,
+            ).json()
+            for ev in tr.get("events", []):
+                if progress_cb:
+                    try:
+                        progress_cb(ev)
+                    except Exception:  # noqa: BLE001 — 進度回寫失敗不影響掃描
+                        pass
+            after = int(tr.get("next", after) or after)
+            status = tr.get("status", status)
+        except requests.RequestException:
+            status = status  # 暫時讀 trace 失敗：下一輪重試
+
+        if status in _ASYNC_TERMINAL:
+            break
+        if not cancel_sent and (_cancelled() or time.monotonic() > deadline):
+            cancel_sent = True
+            with contextlib.suppress(requests.RequestException):
+                requests.post(f"{base}/v1/scans/{scan_id}/cancel",
+                              headers=headers, timeout=15, verify=verify)
+        time.sleep(_ASYNC_POLL_INTERVAL)
+
+    res = requests.get(
+        f"{base}/v1/scans/{scan_id}/result", headers=headers, timeout=60, verify=verify
+    )
+    res.raise_for_status()
+    return res.json()
+
+
+def _build_result(scan_job: ScanJob, data: dict) -> AgentServiceResult:
+    """把服務回應（同步或非同步 result）正規化落地成 AgentServiceResult。"""
     # 契約欄位是 findings；容忍 wrapper 以 vulnerabilities 命名（Strix 慣用語）
     findings = data.get("findings")
     if findings is None:
@@ -213,6 +254,54 @@ def run_agent_via_service(
         issues=ux_dicts,
         security_findings=sec_dicts,
     )
+
+
+def run_agent_via_service(
+    scan_job: ScanJob,
+    *,
+    run_deep: bool,
+    run_ux: bool,
+    recon_intel: list[str] | None = None,
+    known_findings: list[dict] | None = None,
+    may_submit_forms: bool = False,
+    progress_cb=None,
+) -> AgentServiceResult | None:
+    """呼叫 agent 服務並把發現落地。未設定服務位址回 None（略過）。
+
+    依後台設定的 protocol 走同步（POST /scan）或非同步（下單→輪詢→即時 trace）。
+    progress_cb(event_dict) 只在非同步時被呼叫，供外層回寫即時進度。
+    """
+    resolved = _resolve_service()
+    if resolved is None:
+        return None
+    base, api_key, timeout, verify_tls, protocol = resolved
+
+    from apps.scans.models import decrypt_test_auth
+
+    payload = {
+        "contract_version": CONTRACT_VERSION,
+        "url": scan_job.normalized_url or scan_job.original_url,
+        "mode": _mode(run_deep, run_ux),
+        "authorized": bool(run_deep),
+        "submit_forms": bool(may_submit_forms),
+        "recon_intel": recon_intel or None,
+        "known_findings": known_findings or None,
+        "test_auth_email": decrypt_test_auth(scan_job.test_auth_email_encrypted) or None,
+        "test_auth_password": decrypt_test_auth(scan_job.test_auth_password_encrypted) or None,
+    }
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    if protocol == "async":
+        data = _run_async(
+            base, headers, payload, timeout, verify_tls,
+            scan_job_id=scan_job.id, progress_cb=progress_cb,
+        )
+    else:
+        data = _run_sync(base, headers, payload, timeout, verify_tls)
+
+    return _build_result(scan_job, data)
 
 
 def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:

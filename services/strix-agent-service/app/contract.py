@@ -66,3 +66,57 @@ class ScanResponse(BaseModel):
     # 服務自述的成本（USD）；僅記錄，Argus 的計費以固定附加點數為準。
     cost_usd: float = 0.0
     engine: str = "strix"
+
+
+# ---- 非同步契約 v2（app.strix.ai 式：start → poll/trace → result → cancel/message）----
+
+CONTRACT_VERSION_ASYNC = "2.0"
+
+
+class ScanStartResponse(BaseModel):
+    """POST /v1/scans 的回應（立即返回，不阻塞）。"""
+
+    scan_id: str
+    status: str = "queued"
+
+
+class ScanStatusResponse(BaseModel):
+    """GET /v1/scans/{id}：狀態與粗進度，不含 findings。"""
+
+    scan_id: str
+    status: str  # queued|running|succeeded|partial|failed|cancelled
+    phase: str = ""
+    steps: int = 0
+    cost_usd: float = 0.0
+    total_tokens: int = 0
+    error: str = ""
+    engine: str = "strix"
+
+
+class TraceEventModel(BaseModel):
+    seq: int
+    ts: float
+    kind: str
+    message: str
+    agent: str = ""
+
+
+class TraceResponse(BaseModel):
+    """GET /v1/scans/{id}/trace：自 after 之後的即時事件。"""
+
+    scan_id: str
+    status: str
+    events: list[TraceEventModel] = Field(default_factory=list)
+    next: int = 0  # 下次輪詢帶的 after
+
+
+class ScanResultResponse(ScanResponse):
+    """GET /v1/scans/{id}/result：終端後的完整結果（findings 同 v1 shape）。"""
+
+    scan_id: str = ""
+
+
+class MessageRequest(BaseModel):
+    """POST /v1/scans/{id}/message：掃描進行中對 agent 下指令／補充。"""
+
+    message: str

@@ -444,8 +444,11 @@ api.interceptors.response.use(
 
 // ---- Admin AI Agent 服務設定（/api/admin/agent-service/，僅超級管理員）----
 
+export type AgentServiceProtocol = "sync" | "async";
+
 export interface AgentServiceConfig {
   enabled: boolean;
+  protocol: AgentServiceProtocol;
   base_url: string;
   timeout_seconds: number;
   verify_tls: boolean;
@@ -456,6 +459,7 @@ export interface AgentServiceConfig {
 
 export interface AgentServiceConfigInput {
   enabled?: boolean;
+  protocol?: AgentServiceProtocol;
   base_url?: string;
   timeout_seconds?: number;
   verify_tls?: boolean;

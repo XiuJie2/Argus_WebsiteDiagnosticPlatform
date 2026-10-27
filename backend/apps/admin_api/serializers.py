@@ -410,6 +410,7 @@ class AgentServiceConfigSerializer(serializers.Serializer):
     """
 
     enabled = serializers.BooleanField(required=False)
+    protocol = serializers.ChoiceField(choices=["sync", "async"], required=False)
     base_url = serializers.URLField(max_length=512, required=False, allow_blank=True)
     timeout_seconds = serializers.IntegerField(required=False, min_value=1, max_value=7200)
     verify_tls = serializers.BooleanField(required=False)
