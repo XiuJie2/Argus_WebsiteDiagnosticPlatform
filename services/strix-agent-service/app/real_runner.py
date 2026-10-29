@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 import uuid
@@ -115,8 +116,16 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
     timed_out = False
     cancelled = False
     deadline = time.monotonic() + settings.run_timeout_s
+    # 成本優化旋鈕：明確打進子程序環境（不只靠繼承），讓這些設定可被測試、可被 .env 覆寫。
+    # 見 config.py 的說明——直擊 standard 模式「重送 context」的 token 浪費根因。
+    env = {
+        **os.environ,
+        "STRIX_REASONING_EFFORT": settings.reasoning_effort,
+        "LLM_DISABLE_STREAMING": "true" if settings.disable_streaming else "false",
+        "STRIX_PROMPT_CACHE": "true" if settings.prompt_cache else "false",
+    }
     proc = subprocess.Popen(  # noqa: S603 — 參數化、無 shell
-        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(scan_cwd),
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(scan_cwd), env=env,
     )
     while True:
         try:

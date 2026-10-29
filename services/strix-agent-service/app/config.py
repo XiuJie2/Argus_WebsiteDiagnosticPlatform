@@ -46,5 +46,19 @@ class Settings:
     # 允許打私網目標（僅限隔離 demo，如掃自架 Juice Shop）；生產一律 false。
     allow_private_targets: bool = _bool("STRIX_ALLOW_PRIVATE_TARGETS", False)
 
+    # ── 成本優化旋鈕（2026-10-29）───────────────────────────────────────────
+    # 背景：standard 模式會開 ~45 個平行子代理，Strix 沒有「限制 agent 數量」的旗標，
+    # 所以「比 quick 深」必然更多 agent、更多 token。實測 standard 一次燒 1.148 億 token，
+    # 其中 input:output ≈ 370:1 —— 絕大多數是「重送 context」：被 streaming 重試放大、
+    # 加上 MiniMax M3 是思考型模型、reasoning_effort=high 每次呼叫吐超多 reasoning token。
+    # 這三個 env 直接打在根因上（strix 子程序會繼承本服務的環境變數）：
+    #   - LLM_DISABLE_STREAMING：關掉 streaming，消掉「streamed request 重試重送全部 context」
+    #     那類浪費（實測 40 分鐘內 272 次重試）。
+    #   - STRIX_REASONING_EFFORT：high→medium，思考型模型每次呼叫的 token 大降。
+    #   - STRIX_PROMPT_CACHE：維持開啟（Strix 預設即 true），重複 context 走快取。
+    reasoning_effort: str = os.getenv("STRIX_REASONING_EFFORT", "medium").strip()
+    disable_streaming: bool = _bool("LLM_DISABLE_STREAMING", True)
+    prompt_cache: bool = _bool("STRIX_PROMPT_CACHE", True)
+
 
 settings = Settings()

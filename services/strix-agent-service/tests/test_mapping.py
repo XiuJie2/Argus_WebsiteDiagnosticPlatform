@@ -56,3 +56,35 @@ def test_vuln_mapping_defaults_and_confidence_numeric():
     assert f.rule_id == "strix"
     assert f.confidence == 0.42
     assert f.evidence_json["confirmed"] is False
+
+
+def test_real_runner_passes_cost_optimization_env(monkeypatch):
+    """real_runner 必須把成本優化旋鈕打進 strix 子程序環境。"""
+    import importlib
+    import app.config as config_mod
+    monkeypatch.setenv("STRIX_REASONING_EFFORT", "medium")
+    monkeypatch.setenv("LLM_DISABLE_STREAMING", "true")
+    importlib.reload(config_mod)
+    import app.real_runner as rr
+    importlib.reload(rr)
+
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_popen(cmd, **kw):
+        captured["env"] = kw.get("env")
+        return FakeProc()
+
+    monkeypatch.setattr(rr.subprocess, "Popen", fake_popen)
+    from app.contract import ScanRequest
+    rr.run_strix(ScanRequest(url="https://example.com", authorized=True))
+    env = captured["env"]
+    assert env["STRIX_REASONING_EFFORT"] == "medium"
+    assert env["LLM_DISABLE_STREAMING"] == "true"
+    assert env["STRIX_PROMPT_CACHE"] in ("true", "false")
+    # reload 還原
+    importlib.reload(config_mod); importlib.reload(rr)
