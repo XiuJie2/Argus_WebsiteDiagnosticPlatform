@@ -121,3 +121,20 @@ def test_build_instruction_prior_findings_verify_and_deepen():
     # 沒有 prior_findings 時不加這段
     ins2 = _build_instruction(ScanRequest(url="https://x.example", authorized=True))
     assert "earlier scans" not in ins2
+
+
+def test_detect_provider_trouble(tmp_path):
+    from app.real_runner import _detect_provider_trouble
+    rd = tmp_path / "run"
+    rd.mkdir()
+    # 無 log → 空
+    assert _detect_provider_trouble(rd) == ""
+    # persistent rate limit → 明確錯誤碼
+    (rd / "strix.log").write_text("... Scan stopped: persistent rate limit from the LLM provider\n")
+    assert _detect_provider_trouble(rd) == "llm_provider_rate_limited"
+    # 多次 provider 錯誤 → 一般錯誤碼
+    (rd / "strix.log").write_text("outcome=error\noutcome=error\noutcome=error host=api.minimax.io\n")
+    assert _detect_provider_trouble(rd) == "llm_provider_errors"
+    # 正常 log → 空（不誤判）
+    (rd / "strix.log").write_text("INFO scan progressing nicely, found stuff\n")
+    assert _detect_provider_trouble(rd) == ""

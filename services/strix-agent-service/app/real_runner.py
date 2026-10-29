@@ -132,6 +132,41 @@ def _latest_run_dir(runs_root: Path) -> Path | None:
                if (d / "run.json").is_file() else d.stat().st_mtime)
 
 
+_PROVIDER_TROUBLE_MARKERS = (
+    "persistent rate limit",
+    "rate limit",
+    "rate_limit",
+    "429",
+    "insufficient balance",
+    "insufficient_quota",
+    "quota",
+    "too many requests",
+)
+
+
+def _detect_provider_trouble(run_dir: Path | None) -> str:
+    """掃 strix.log 判斷本次是否被 LLM 供應商擋住（限流／餘額／配額）。
+
+    回安全錯誤碼（不外洩細節）；沒有徵兆回空字串。只在「0 發現」時才會被用到，
+    避免把正常掃描誤標成供應商問題。門檻：出現多次錯誤徵兆才算（單一偶發不算）。
+    """
+    if run_dir is None:
+        return ""
+    log = run_dir / "strix.log"
+    try:
+        text = log.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return ""
+    if "persistent rate limit" in text:
+        return "llm_provider_rate_limited"
+    hits = sum(text.count(m) for m in _PROVIDER_TROUBLE_MARKERS)
+    # outcome=error 針對 LLM 請求的計數（strix.llm.request_log）
+    hits += text.count("outcome=error")
+    if hits >= 3:
+        return "llm_provider_errors"
+    return ""
+
+
 def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
               cancel_event=None) -> ScanResponse:
     """同步跑一次 Strix headless，解析產出並回契約回應。
@@ -193,7 +228,14 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
         if isinstance(item, dict):
             findings.append(strix_vuln_to_finding(item, secrets=secrets))
 
+    # 偵測「跑了但被 LLM 供應商擋住」：strix 可能 exit 0、卻因持續限流/餘額不足/供應商錯誤
+    # 而 0 發現。這種「看起來完成、其實被外部掐死」要讓上層看得懂，不要只顯示「0 發現/執行失敗」。
+    provider_trouble = _detect_provider_trouble(run_dir) if not findings else ""
+
     if cancelled:
+        status = "error"
+    elif provider_trouble and not findings:
+        # 完成與否都一樣：沒有有效工作。標 error 讓 argus 顯示可讀原因。
         status = "error"
     elif timed_out:
         status = "partial"
@@ -211,15 +253,26 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
             cost = 0.0
 
     summary = str((run_record or {}).get("summary") or "")[:1000]
-    if not summary:
+    if provider_trouble and not findings:
+        summary = (
+            "AI 引擎未能完成：LLM 供應商持續回錯（限流或餘額/配額不足），本次 0 發現。"
+            "請檢查 LLM 供應商的餘額與速率限制後重試。"
+        )
+    elif not summary:
         summary = f"Strix run: {len(findings)} findings, status={status}."
+
+    error = ""
+    if provider_trouble and not findings:
+        error = provider_trouble  # 例：llm_provider_rate_limited
+    elif status == "error":
+        error = f"strix exit_code={exit_code}"
 
     return ScanResponse(
         status=status,
         steps=int((run_record or {}).get("turns") or 0),
         total_tokens=0,
         summary=summary,
-        error="" if status != "error" else f"strix exit_code={exit_code}",
+        error=error,
         findings=findings,
         cost_usd=cost,
         engine="strix",
