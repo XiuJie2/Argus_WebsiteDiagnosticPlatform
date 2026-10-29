@@ -55,6 +55,22 @@ def _build_instruction(req: ScanRequest) -> str:
             "These issues are already found by deterministic tools — do NOT re-report, "
             "focus on deeper/chained findings: " + "; ".join(t for t in titles if t)
         )
+    if req.authorized:
+        # Target-AGNOSTIC 類別級聚焦：只點「容易被有限回合漏掉的高影響漏洞類別」，
+        # **不含任何特定路徑**，所以對每個目標都適用、不會過擬合。最後一句明確要求
+        # 自行探索、不要假設路徑存在——這就是防止「對某站過度針對」的關鍵。
+        parts.append(
+            "In this time-bounded run, give extra priority to commonly-missed high-impact "
+            "classes: unrestricted file upload / path traversal / arbitrary file write; "
+            "default or weak credentials; IDOR and missing object- or function-level "
+            "authorization on state-changing endpoints; and stored XSS in user-editable "
+            "content fields. Do NOT assume any specific path or parameter exists — "
+            "discover them for this target."
+        )
+    # 操作者針對「這一次掃描」的自由聚焦（per-scan，預設空；放最後、權重最高）。
+    # 由 Argus 的 scan.agent_focus 經契約帶入——不是全域設定，掃別的站留空即可。
+    if req.instruction:
+        parts.append("Operator focus for this scan: " + req.instruction.strip())
     return " ".join(parts)
 
 

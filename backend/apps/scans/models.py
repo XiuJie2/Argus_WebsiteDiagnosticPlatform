@@ -181,6 +181,10 @@ class ScanJob(models.Model):
     # 未授權探測），不跑較慢且耗 token 的 LLM pentest agent。執行閘見 scan_plan.run_agent、
     # 計費見 billing._scan_is_deep。
     deep_agent_requested = models.BooleanField(default=False)
+    # 深度 AI Agent 的 per-scan 聚焦（選填，2026-10-29）：操作者針對「這一次掃描的這個目標」
+    # 給 agent 的自由文字提示（例如「測 /api/files/upload 路徑穿越」）。預設空＝不影響；
+    # 掃別的網站留空即可，不會過擬合。經 agent 契約的 instruction 欄位帶給引擎。
+    agent_focus = models.TextField(blank=True, default="")
     # 首次免費完整掃描（2026-10-07，docs/business-model-plan.md）：被動＋整站＋五面向的
     # 第一次掃描不扣點。失敗或取消的免費掃描不算用掉資格（billing.services.free_trial_available）。
     is_trial = models.BooleanField(default=False)

@@ -30,6 +30,9 @@ class ScanRequest(BaseModel):
     # 授權測試帳密：只用於登入注入，絕不寫入 log／回應／報告。
     test_auth_email: str | None = None
     test_auth_password: str | None = None
+    # per-scan 操作者聚焦（選填，預設空）。由 Argus 的 scan.agent_focus 帶入，
+    # 針對「這一次掃描的這個目標」；不是全域設定，掃別站留空即可（不過擬合）。
+    instruction: str = ""
 
 
 class Finding(BaseModel):

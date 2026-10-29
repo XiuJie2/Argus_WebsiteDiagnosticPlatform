@@ -98,6 +98,11 @@ class ScanJobCreateSerializer(serializers.Serializer):
     # AI Agent 深度資安測試（選填，2026-10-18）：勾選才跑、才加收 agent_deep_fee。只有全站＋主動
     # ＋已授權才有意義；其他組合即使帶 True 也不跑、不收（scan_plan／_scan_is_deep 再閘）。
     deep_agent_requested = serializers.BooleanField(default=False)
+    # 深度 AI Agent 的 per-scan 聚焦（選填）：操作者針對這次掃描的自由提示；預設空。
+    # 只在 deep agent 真的執行時才送給引擎（見 tasks.stage_agent）。
+    agent_focus = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=2000, trim_whitespace=False,
+    )
     # 網站專案（選填）：沒帶時 ScanJob.save() 依 origin 自動歸入
     project = serializers.IntegerField(required=False, allow_null=True)
 
@@ -233,6 +238,7 @@ class ScanJobCreateSerializer(serializers.Serializer):
             respect_robots=validated_data["respect_robots"],
             active_testing_authorized=validated_data["active_testing_authorized"],
             deep_agent_requested=validated_data.get("deep_agent_requested", False),
+            agent_focus=validated_data.get("agent_focus", "") or "",
             is_trial=validated_data.get("is_trial", False),
             test_auth_email_encrypted=encrypt_test_auth(
                 validated_data.get("test_auth_email", "")

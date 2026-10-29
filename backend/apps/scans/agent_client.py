@@ -264,6 +264,7 @@ def run_agent_via_service(
     recon_intel: list[str] | None = None,
     known_findings: list[dict] | None = None,
     may_submit_forms: bool = False,
+    focus_instruction: str = "",
     progress_cb=None,
 ) -> AgentServiceResult | None:
     """呼叫 agent 服務並把發現落地。未設定服務位址回 None（略過）。
@@ -288,6 +289,8 @@ def run_agent_via_service(
         "known_findings": known_findings or None,
         "test_auth_email": decrypt_test_auth(scan_job.test_auth_email_encrypted) or None,
         "test_auth_password": decrypt_test_auth(scan_job.test_auth_password_encrypted) or None,
+        # per-scan 操作者聚焦（預設空）；服務端的 instruction 欄位接收。
+        "instruction": (focus_instruction or "").strip(),
     }
     headers = {}
     if api_key:

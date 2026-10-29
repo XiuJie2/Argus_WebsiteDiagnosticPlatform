@@ -2090,6 +2090,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
             recon_intel=ctx.discovered_endpoints,
             known_findings=known_findings,
             may_submit_forms=may_submit_forms,
+            focus_instruction=getattr(scan_job, "agent_focus", "") or "",
             progress_cb=_agent_progress,
         )
         ctx.agent_result = agent_result

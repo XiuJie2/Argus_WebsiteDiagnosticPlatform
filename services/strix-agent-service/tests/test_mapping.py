@@ -88,3 +88,19 @@ def test_real_runner_passes_cost_optimization_env(monkeypatch):
     assert env["STRIX_PROMPT_CACHE"] in ("true", "false")
     # reload 還原
     importlib.reload(config_mod); importlib.reload(rr)
+
+
+def test_build_instruction_generic_focus_and_operator_passthrough():
+    """授權掃描要帶 target-agnostic 類別級聚焦（不含路徑）＋操作者 per-scan 聚焦。"""
+    from app.real_runner import _build_instruction
+    from app.contract import ScanRequest
+    ins = _build_instruction(ScanRequest(url="https://x.example", authorized=True,
+                                         instruction="poke /api/files/upload"))
+    # 類別級聚焦存在、且含防過擬合的「自行探索」語句
+    assert "file upload" in ins.lower()
+    assert "do not assume any specific path" in ins.lower()
+    # 操作者 per-scan 聚焦被帶入
+    assert "poke /api/files/upload" in ins
+    # 未授權時不加攻擊性類別聚焦
+    ins2 = _build_instruction(ScanRequest(url="https://x.example", authorized=False))
+    assert "give extra priority" not in ins2

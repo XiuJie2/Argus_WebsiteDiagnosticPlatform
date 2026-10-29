@@ -365,6 +365,9 @@ function ScanJobForm({ onCreated, project = null }) {
   const [activeAuthorized, setActiveAuthorized] = useState(initial.activeAuthorized || false);
   // AI Agent 深度資安測試：使用者可選加項，勾了才跑才加收（全站＋主動＋已授權為前置）
   const [deepAgent, setDeepAgent] = useState(initial.deepAgent || false);
+  // 深度 AI Agent 的 per-scan 聚焦（選填）：針對「這一次掃描的這個目標」給 agent 的提示，
+  // 例如「測 /api/files/upload 路徑穿越、試 admin/password」。預設空＝不影響；掃別站留空即可。
+  const [agentFocus, setAgentFocus] = useState("");
   // 測試帳密：爬蟲先登入、整站以登入狀態重跑（SEO／連結／UX／資安）；加做深度代理時也供其登入測越權。
   // 只放 state、**不寫進 localStorage 草稿**（比照 access token 不落 localStorage）。
   const [testAuthEmail, setTestAuthEmail] = useState("");
@@ -519,6 +522,10 @@ function ScanJobForm({ onCreated, project = null }) {
         active_testing_authorized: activeMode && activeAuthorized,
         // AI Agent 深度資安測試：勾選才送（後端只在全站＋主動＋已授權時真的跑、才加收）
         deep_agent_requested: scope !== "single" && activeMode && activeAuthorized && deepAgent,
+        // per-scan 聚焦：只在深度 agent 真的會跑且有填時送（後端只在執行 agent 時用）
+        ...(scope !== "single" && activeMode && activeAuthorized && deepAgent && agentFocus.trim()
+          ? { agent_focus: agentFocus.trim() }
+          : {}),
         // 測試帳密只在主動模式（網域已驗證＝可登入自家網站的閘門）且兩欄都填時送出；
         // 後端加密存，爬蟲登入與深度代理登入用，不落 log/報告
         ...(activeMode && testAuthEmail.trim() && testAuthPassword
@@ -776,6 +783,25 @@ function ScanJobForm({ onCreated, project = null }) {
           — 由 AI 像滲透測試員實際操作網站，找越權存取、業務邏輯等需要推理串接的弱點
           （較花時間；Agent 實際執行才收費，沒執行會退回）。
         </label>
+      )}
+      {activeMode && activeAuthorized && scope !== "single" && deepAgent && (
+        <div className="scan-agent-focus">
+          <label className="text-xs text-slate-500" htmlFor="scan-agent-focus">
+            聚焦提示（選填）
+          </label>
+          <textarea
+            id="scan-agent-focus"
+            className="input"
+            rows={2}
+            placeholder="針對這次掃描的提示，例如：測 /api/files/upload 路徑穿越、試 admin/password 預設帳密"
+            value={agentFocus}
+            onChange={(event) => setAgentFocus(event.target.value)}
+          />
+          <p className="scan-auth-creds-hint">
+            只影響這一次掃描；留空則用通用深度策略。針對特定端點／弱點類型給提示可更快命中，
+            但不會限制其他網站的掃描。
+          </p>
+        </div>
       )}
       {activeMode && (
         <div className="scan-auth-creds">
