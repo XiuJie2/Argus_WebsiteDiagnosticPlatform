@@ -33,6 +33,9 @@ class ScanRequest(BaseModel):
     # per-scan 操作者聚焦（選填，預設空）。由 Argus 的 scan.agent_focus 帶入，
     # 針對「這一次掃描的這個目標」；不是全域設定，掃別站留空即可（不過擬合）。
     instruction: str = ""
+    # 同站歷次掃描的資安發現聯集（選填）：叫 agent 先驗證還在不在、再從這些線索深挖，
+    # 讓覆蓋跨掃描累積。每筆至少 {title, severity}，可含 endpoint/rule_id。
+    prior_findings: list[dict[str, Any]] | None = None
 
 
 class Finding(BaseModel):

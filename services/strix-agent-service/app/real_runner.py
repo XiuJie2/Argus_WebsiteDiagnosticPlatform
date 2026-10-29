@@ -67,6 +67,24 @@ def _build_instruction(req: ScanRequest) -> str:
             "content fields. Do NOT assume any specific path or parameter exists — "
             "discover them for this target."
         )
+    # 同站歷次掃描的資安發現：先驗證還在不在（回歸），再當線索往深/串接挖（跨掃描累積）。
+    if req.prior_findings:
+        lines = []
+        for f in req.prior_findings[:40]:
+            title = str(f.get("title") or "").strip()
+            if not title:
+                continue
+            sev = str(f.get("severity") or "").strip()
+            ep = str(f.get("endpoint") or "").strip()
+            lines.append(f"[{sev}] {title}" + (f" @ {ep}" if ep else ""))
+        if lines:
+            parts.append(
+                "Issues found on THIS target in earlier scans. First re-verify each is "
+                "still present and exploitable (report which are now fixed); then use them "
+                "as leads to find deeper, chained, or related vulnerabilities (e.g., the "
+                "same authorization flaw on other endpoints, or privilege escalation built "
+                "on an existing IDOR). Prior findings: " + "; ".join(lines)
+            )
     # 操作者針對「這一次掃描」的自由聚焦（per-scan，預設空；放最後、權重最高）。
     # 由 Argus 的 scan.agent_focus 經契約帶入——不是全域設定，掃別的站留空即可。
     if req.instruction:

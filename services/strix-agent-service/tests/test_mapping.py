@@ -104,3 +104,20 @@ def test_build_instruction_generic_focus_and_operator_passthrough():
     # 未授權時不加攻擊性類別聚焦
     ins2 = _build_instruction(ScanRequest(url="https://x.example", authorized=False))
     assert "give extra priority" not in ins2
+
+
+def test_build_instruction_prior_findings_verify_and_deepen():
+    """prior_findings 要產生『先驗證、再深挖』的指令，並列出項目。"""
+    from app.real_runner import _build_instruction
+    from app.contract import ScanRequest
+    ins = _build_instruction(ScanRequest(
+        url="https://x.example", authorized=True,
+        prior_findings=[{"title": "IDOR on /api/updatePassword", "severity": "high",
+                         "endpoint": "/api/updatePassword"}],
+    ))
+    assert "re-verify" in ins.lower()
+    assert "IDOR on /api/updatePassword" in ins
+    assert "/api/updatePassword" in ins
+    # 沒有 prior_findings 時不加這段
+    ins2 = _build_instruction(ScanRequest(url="https://x.example", authorized=True))
+    assert "earlier scans" not in ins2

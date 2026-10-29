@@ -139,3 +139,49 @@ class RunAgentViaServiceTests(TestCase):
             )
         self.assertEqual(len(result.security_findings), 1)
         self.assertEqual(Finding.objects.filter(category="security").count(), 1)
+
+
+class GatherPriorFindingsTests(TestCase):
+    def setUp(self):
+        from apps.scans.models import Finding
+        self.Finding = Finding
+        self.user = get_user_model().objects.create_user(
+            username="prior-user", password="safe-test-password"
+        )
+
+    def _scan(self, status, score=70):
+        return ScanJob.objects.create(
+            user=self.user, original_url="https://example.com/",
+            normalized_url="https://example.com/", origin="https://example.com",
+            status=status, overall_score=score, max_pages=50,
+        )
+
+    def _fin(self, scan, title, severity, endpoint=""):
+        return self.Finding.objects.create(
+            scan_job=scan, category="security", severity=severity, title=title,
+            evidence_json={"endpoint": endpoint} if endpoint else {},
+        )
+
+    def test_union_dedupe_and_cap(self):
+        s1 = self._scan(ScanJob.Status.COMPLETED)
+        s2 = self._scan(ScanJob.Status.COMPLETED)
+        self._fin(s1, "IDOR on password change", "high", "/api/updatePassword")
+        # 同一個洞在第二次掃描又出現（措辭略不同、同端點/類型）→ 應去重
+        self._fin(s2, "IDOR on the password-change endpoint", "high", "/api/updatePassword")
+        self._fin(s2, "Stored XSS in announcement", "medium", "/api/announcement")
+        self._fin(s2, "info noise", "info", "")  # info 不納入
+        current = self._scan(ScanJob.Status.AGENT_TESTING)
+
+        prior = agent_client.gather_prior_findings(current)
+        titles = [p["title"] for p in prior]
+        # info 被排除
+        assert all(p["severity"] != "info" for p in prior)
+        # 兩次的 IDOR 收斂成一筆
+        idor = [t for t in titles if "IDOR" in t or "password" in t.lower()]
+        assert len(idor) == 1, titles
+        # 最嚴重排前面
+        assert prior[0]["severity"] == "high"
+
+    def test_no_prior_returns_empty(self):
+        current = self._scan(ScanJob.Status.AGENT_TESTING)
+        assert agent_client.gather_prior_findings(current) == []

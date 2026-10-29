@@ -2061,6 +2061,13 @@ def stage_agent(ctx: ScanRunContext) -> None:
         # 把確定性工具這次已找到的資安問題餵給 agent，叫它別重報（ADR-0005 §5）——
         # 消掉「agent 盲跑 → 撞一堆重複 → 事後去重」的浪費
         known_findings = [f for f in ctx.all_findings if f.get("category") == "security"]
+        # 同站歷次掃描的資安發現聯集：讓 agent 先驗證、再從這些線索深挖（跨掃描累積覆蓋）。
+        from apps.scans.agent_client import gather_prior_findings
+
+        try:
+            prior_findings = gather_prior_findings(scan_job)
+        except Exception:  # noqa: BLE001 — 撈歷史失敗不影響本次掃描
+            prior_findings = []
 
         # 非同步協定下 agent 服務會回傳即時 trace；把「目前哪個 agent 在做什麼」寫進
         # progress.step_detail，恢復引擎抽離後失去的即時進度顯示（同步協定時不會被呼叫）。
@@ -2089,6 +2096,7 @@ def stage_agent(ctx: ScanRunContext) -> None:
             run_ux=plan.run_agent_ux,
             recon_intel=ctx.discovered_endpoints,
             known_findings=known_findings,
+            prior_findings=prior_findings,
             may_submit_forms=may_submit_forms,
             focus_instruction=getattr(scan_job, "agent_focus", "") or "",
             progress_cb=_agent_progress,

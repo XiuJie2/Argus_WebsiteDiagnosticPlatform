@@ -256,6 +256,59 @@ def _build_result(scan_job: ScanJob, data: dict) -> AgentServiceResult:
     )
 
 
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def gather_prior_findings(scan_job: ScanJob, *, cap: int = 40) -> list[dict]:
+    """同站(同 user+origin)歷次完成掃描的資安發現聯集，去重、按嚴重度設上限。
+
+    給 agent 當「先驗證、再從這些線索深挖」的起點，讓覆蓋跨掃描累積（越掃越完整）。
+    以 finding_identity 正規鍵去重（同一個洞不論措辭/來源收斂成一筆），保留最嚴重那筆。
+    """
+    from apps.scans.finding_identity import finding_identity
+
+    prior_ids = list(
+        ScanJob.objects.filter(
+            user_id=scan_job.user_id,
+            origin=scan_job.origin,
+            status=ScanJob.Status.COMPLETED,
+        )
+        .exclude(pk=scan_job.pk)
+        .values_list("id", flat=True)
+    )
+    if not prior_ids:
+        return []
+
+    best: dict[str, dict] = {}
+    qs = (
+        Finding.objects.filter(scan_job_id__in=prior_ids, category="security")
+        .exclude(severity="info")
+        .only("title", "description", "severity", "rule_id", "owasp_category", "cwe_id", "evidence_json")
+    )
+    for f in qs.iterator():
+        ident = {
+            "category": "security",
+            "title": f.title,
+            "description": getattr(f, "description", "") or "",
+            "owasp_category": f.owasp_category,
+            "cwe_id": f.cwe_id,
+            "evidence_json": f.evidence_json or {},
+            "url": (f.evidence_json or {}).get("endpoint") or "",
+        }
+        key = finding_identity(ident)
+        rank = _SEVERITY_ORDER.get(f.severity, 4)
+        cur = best.get(key)
+        if cur is None or rank < _SEVERITY_ORDER.get(cur["severity"], 4):
+            best[key] = {
+                "title": f.title,
+                "severity": f.severity,
+                "endpoint": (f.evidence_json or {}).get("endpoint") or "",
+                "rule_id": f.rule_id,
+            }
+    items = sorted(best.values(), key=lambda x: _SEVERITY_ORDER.get(x["severity"], 4))
+    return items[:cap]
+
+
 def run_agent_via_service(
     scan_job: ScanJob,
     *,
@@ -263,6 +316,7 @@ def run_agent_via_service(
     run_ux: bool,
     recon_intel: list[str] | None = None,
     known_findings: list[dict] | None = None,
+    prior_findings: list[dict] | None = None,
     may_submit_forms: bool = False,
     focus_instruction: str = "",
     progress_cb=None,
@@ -291,6 +345,8 @@ def run_agent_via_service(
         "test_auth_password": decrypt_test_auth(scan_job.test_auth_password_encrypted) or None,
         # per-scan 操作者聚焦（預設空）；服務端的 instruction 欄位接收。
         "instruction": (focus_instruction or "").strip(),
+        # 同站歷次掃描的資安發現聯集：叫 agent 先驗證還在不在、再從這些線索往深挖（跨掃描累積）。
+        "prior_findings": prior_findings or None,
     }
     headers = {}
     if api_key:
