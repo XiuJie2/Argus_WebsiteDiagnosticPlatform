@@ -204,12 +204,27 @@ def _mark_confirmed(state: AgentFindingState, scan_job: ScanJob) -> None:
                               "last_confirmed_scan_id", "updated_at"])
 
 
+_ORIG_MARKER = "原始說明："
+
+
+def _original_description(f) -> str:
+    """取回「原始說明」，剝掉舊版帶入時加的前言。
+
+    f 可能本身就是前次帶入（carried_over）的列，其 description 會是舊版前言。優先讀
+    evidence_json.original_description；否則從舊前言的「原始說明：」之後取；都沒有才用整段。
+    """
+    ej = f.evidence_json or {}
+    raw = ej.get("original_description")
+    if raw is not None:
+        return str(raw)
+    desc = f.description or ""
+    if _ORIG_MARKER in desc:
+        return desc.split(_ORIG_MARKER, 1)[1].strip()
+    return desc
+
+
 def _materialize_carried(scan_job, f, rec, *, verified: bool, miss_streak: int) -> dict | None:
-    note = (
-        f"【前次掃描發現、本次未重新確認】此問題最早見於掃描 #{rec['first_scan']}、"
-        f"最近見於 #{rec['last_scan']}。AI 深度測試為非確定性，本次掃描未重新觸及此項，"
-        f"但在確認修復前仍視為存在。原始說明：{f.description or ''}"
-    )
+    original = _original_description(f)
     try:
         obj = Finding.objects.create(
             scan_job=scan_job,
@@ -217,10 +232,11 @@ def _materialize_carried(scan_job, f, rec, *, verified: bool, miss_streak: int) 
             category="security",
             severity=f.severity,
             title=f.title[:255],
-            description=note[:300],
+            description=original[:300],
             evidence=f.evidence,
             evidence_type=f.evidence_type,
             evidence_json={**(f.evidence_json or {}), "carried_over": True,
+                           "original_description": original,
                            "first_seen_scan": rec["first_scan"],
                            "last_seen_scan": rec["last_scan"],
                            "reverify_attempted": verified,
