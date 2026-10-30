@@ -307,3 +307,46 @@ class CarryForwardOpenFindingsTests(TestCase):
         assert carried == [], carried
         st.refresh_from_db()
         assert st.miss_streak == 0 and st.resolved is False
+
+    def test_carried_keeps_full_description_and_remediation(self):
+        """帶入的發現要有完整原始說明（不截斷）與 remediation（怎麼修不為空）。"""
+        from apps.scans.cumulative import carry_forward_open_findings
+        prev = self._scan(ScanJob.Status.COMPLETED)
+        long_desc = "A" * 450  # > 舊的 300 截斷上限
+        self.Finding.objects.create(
+            scan_job=prev, category="security", severity="high",
+            title="IDOR on /api/updatePassword", rule_id="strix:vuln-0005",
+            description=long_desc, remediation="綁定資源擁有者後再授權存取。",
+            evidence_json={"endpoint": "/api/updatePassword"},
+        )
+        cur = self._scan(ScanJob.Status.AGENT_TESTING)
+        carried = carry_forward_open_findings(cur, current_findings=[], agent_ran_ok=False)
+        assert len(carried) == 1, carried
+        row = cur.findings.filter(evidence_source="carried_over").first()
+        assert row is not None
+        assert len(row.description) == 450, len(row.description)  # 未被截斷
+        assert row.remediation == "綁定資源擁有者後再授權存取。", row.remediation
+
+    def test_carried_prefers_original_over_prior_carried_source(self):
+        """內容來源優先取原始列：即使前次也留了一筆 carried（無 remediation）。"""
+        from apps.scans.cumulative import carry_forward_open_findings
+        # 原始列（有 remediation）在較早的掃描
+        s_orig = self._scan(ScanJob.Status.COMPLETED)
+        self.Finding.objects.create(
+            scan_job=s_orig, category="security", severity="high",
+            title="IDOR on /api/updatePassword", rule_id="strix:vuln-0005",
+            description="原始完整說明", remediation="正確的修法",
+            evidence_json={"endpoint": "/api/updatePassword"},
+        )
+        # 前次 carried 列（無 remediation）在較晚的掃描
+        s_carry = self._scan(ScanJob.Status.COMPLETED)
+        self.Finding.objects.create(
+            scan_job=s_carry, category="security", severity="high",
+            title="IDOR on /api/updatePassword", rule_id="strix:vuln-0005",
+            description="原始完整說明", remediation="", evidence_source="carried_over",
+            evidence_json={"endpoint": "/api/updatePassword", "carried_over": True},
+        )
+        cur = self._scan(ScanJob.Status.AGENT_TESTING)
+        carried = carry_forward_open_findings(cur, current_findings=[], agent_ran_ok=False)
+        row = cur.findings.filter(evidence_source="carried_over").first()
+        assert row is not None and row.remediation == "正確的修法", row.remediation

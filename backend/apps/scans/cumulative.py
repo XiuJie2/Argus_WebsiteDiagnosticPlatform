@@ -98,14 +98,20 @@ def carry_forward_open_findings(
                 continue
             ident = _identity_of_row(f)
             rank = _SEVERITY_ORDER.get(f.severity, 4)
+            is_carried = (f.evidence_source == "carried_over")
             cur = best.get(ident)
             if cur is None:
-                best[ident] = {"f": f, "rank": rank, "first_scan": f.scan_job_id,
-                               "last_scan": f.scan_job_id}
+                best[ident] = {"f": f, "rank": rank, "carried": is_carried,
+                               "first_scan": f.scan_job_id, "last_scan": f.scan_job_id}
             else:
                 cur["last_scan"] = max(cur["last_scan"], f.scan_job_id)
                 cur["first_scan"] = min(cur["first_scan"], f.scan_job_id)
-                if rank < cur["rank"]:
+                # 內容來源優先選「原始（非 carried）」列：carried 列沒有 remediation、
+                # 說明也可能被前一版截斷。同為原始/同為 carried 時再比嚴重度。
+                if is_carried != cur["carried"]:
+                    if not is_carried:
+                        cur["f"], cur["rank"], cur["carried"] = f, rank, is_carried
+                elif rank < cur["rank"]:
                     cur["f"], cur["rank"] = f, rank
 
     carried: list[dict] = []
@@ -232,7 +238,8 @@ def _materialize_carried(scan_job, f, rec, *, verified: bool, miss_streak: int) 
             category="security",
             severity=f.severity,
             title=f.title[:255],
-            description=original[:300],
+            description=original,
+            remediation=f.remediation or "",
             evidence=f.evidence,
             evidence_type=f.evidence_type,
             evidence_json={**(f.evidence_json or {}), "carried_over": True,
@@ -248,6 +255,8 @@ def _materialize_carried(scan_job, f, rec, *, verified: bool, miss_streak: int) 
             confidence=f.confidence,
             priority_score=f.priority_score,
             impact_area=f.impact_area,
+            ai_explanation=f.ai_explanation or "",
+            ai_remediation=f.ai_remediation or "",
             ai_handoff_prompt=f.ai_handoff_prompt or "",
         )
     except Exception:  # noqa: BLE001 — 單筆帶入失敗不影響掃描
