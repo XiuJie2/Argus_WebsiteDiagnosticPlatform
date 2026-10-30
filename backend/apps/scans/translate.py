@@ -104,7 +104,9 @@ def translate_finding_fields(fields: dict, *, chain=None) -> dict:
         from apps.agent.providers import build_default_chain
 
         chain = chain or build_default_chain()
-        resp = chain.chat_text(_build_prompt(out, target_label), temperature=0.1, max_tokens=1600)
+        model = getattr(settings, "ARGUS_TRANSLATE_MODEL", "MiniMax-Text-01") or None
+        resp = chain.chat_text(_build_prompt(out, target_label), model=model,
+                               temperature=0.1, max_tokens=1000, timeout=90)
         data = _parse_json(resp.content)
     except Exception as exc:  # noqa: BLE001 — 翻譯失敗保留英文
         logger.warning("翻譯發現失敗，保留英文：%s", exc)

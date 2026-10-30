@@ -403,6 +403,10 @@ ARGUS_VULN_INTEL_ENABLED = env_bool("ARGUS_VULN_INTEL_ENABLED", default=True)
 # 轉成精簡繁體中文（evidence 原始佐證維持原文）。翻譯失敗時保留英文（fail-open）。
 ARGUS_TRANSLATE_FINDINGS = env_bool("ARGUS_TRANSLATE_FINDINGS", default=True)
 ARGUS_TRANSLATE_TARGET_LANG = os.getenv("ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant").strip()
+# 翻譯用模型：MiniMax-M3 是推理模型、長輸出常逾 60s；用快速非推理模型（實測
+# MiniMax-Text-01 ~23s 且回傳合法 JSON，Flash/M2.7 會夾雜推理導致解析失敗）。
+ARGUS_TRANSLATE_MODEL = os.getenv("ARGUS_TRANSLATE_MODEL", "MiniMax-Text-01").strip()
+
 
 ARGUS_VULN_INTEL_TIMEOUT_SECONDS = float(os.getenv("ARGUS_VULN_INTEL_TIMEOUT_SECONDS", "10"))
 ARGUS_VULN_INTEL_CACHE_SECONDS = int(os.getenv("ARGUS_VULN_INTEL_CACHE_SECONDS", "86400"))
