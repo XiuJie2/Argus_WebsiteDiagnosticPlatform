@@ -2308,6 +2308,23 @@ def stage_scoring(ctx: ScanRunContext) -> None:
             "SEO/AEO 未評估，總分僅反映站台層級檢查，不應解讀為網站安全。",
             level="warn",
         )
+    # 跨掃描累積：把同站歷來「仍開著」的非確定性(AI/Agent)資安發現補進本次——這類發現每次
+    # 抽到的子集不同，少了不代表修好；在確認修復前都該出現在報告/分數裡（見 cumulative.py）。
+    # 放在跨層去重之前：carried 項若與本次確定性發現同端點同類，交給下面的去重合併。
+    try:
+        from apps.scans.cumulative import carry_forward_open_findings
+
+        carried = carry_forward_open_findings(scan_job, ctx.all_findings)
+        if carried:
+            ctx.all_findings.extend(carried)
+            append_log(
+                scan_job_id,
+                f"跨掃描累積：帶入 {len(carried)} 項前次發現但本次未重新確認的 AI 深度測試項目"
+                "（在確認修復前仍視為存在）",
+            )
+    except Exception:  # noqa: BLE001 — 累積失敗不影響本次掃描
+        logger.exception("carry_forward_open_findings 失敗 scan_job_id=%s", scan_job_id)
+
     # 跨層去重：確定性探測與 Agent 打到同一端點＋同類型時只留確定性那筆，否則計分扣兩次、
     # 報告列兩次（實測某授權掃描的 API 規格端點同時出現確定性 high 與 Agent high）
     ctx.all_findings, dropped = consolidate_cross_layer(ctx.all_findings)

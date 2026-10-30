@@ -185,3 +185,56 @@ class GatherPriorFindingsTests(TestCase):
     def test_no_prior_returns_empty(self):
         current = self._scan(ScanJob.Status.AGENT_TESTING)
         assert agent_client.gather_prior_findings(current) == []
+
+
+class CarryForwardOpenFindingsTests(TestCase):
+    def setUp(self):
+        from apps.scans.models import Finding
+        self.Finding = Finding
+        self.user = get_user_model().objects.create_user(
+            username="carry-user", password="safe-test-password"
+        )
+
+    def _scan(self, status):
+        return ScanJob.objects.create(
+            user=self.user, original_url="https://example.com/",
+            normalized_url="https://example.com/", origin="https://example.com",
+            status=status, overall_score=70, max_pages=50,
+        )
+
+    def _fin(self, scan, title, sev, rule_id, endpoint=""):
+        return self.Finding.objects.create(
+            scan_job=scan, category="security", severity=sev, title=title, rule_id=rule_id,
+            evidence_json={"endpoint": endpoint} if endpoint else {},
+        )
+
+    def test_carries_nondeterministic_not_in_current_skips_deterministic(self):
+        from apps.scans.cumulative import carry_forward_open_findings
+        prev = self._scan(ScanJob.Status.COMPLETED)
+        self._fin(prev, "IDOR on /api/updatePassword", "high", "strix:vuln-0005", "/api/updatePassword")
+        self._fin(prev, "缺少 HSTS", "medium", "SECURITY_HSTS_X")  # 確定性 → 不帶
+        cur = self._scan(ScanJob.Status.AGENT_TESTING)
+        carried = carry_forward_open_findings(cur, current_findings=[])
+        titles = [c["title"] for c in carried]
+        assert any("IDOR" in t for t in titles), titles
+        assert not any("HSTS" in t for t in titles), titles
+        # 真的落了一筆 carried_over 的 Finding 到本次掃描
+        row = cur.findings.filter(evidence_source="carried_over").first()
+        assert row is not None and row.evidence_json.get("carried_over") is True
+
+    def test_skips_if_reconfirmed_this_scan(self):
+        from apps.scans.cumulative import carry_forward_open_findings
+        from apps.scans.finding_identity import finding_identity
+        prev = self._scan(ScanJob.Status.COMPLETED)
+        self._fin(prev, "Stored XSS in announcement", "high", "strix:vuln-0004", "/api/announcement")
+        cur = self._scan(ScanJob.Status.AGENT_TESTING)
+        current = [{"category": "security", "title": "Stored XSS in announcement",
+                    "description": "", "owasp_category": "", "cwe_id": "",
+                    "url": "/api/announcement", "rule_id": "strix:vuln-0004"}]
+        carried = carry_forward_open_findings(cur, current_findings=current)
+        assert carried == []  # 本次已重新確認 → 不重複帶
+
+    def test_no_prior_empty(self):
+        from apps.scans.cumulative import carry_forward_open_findings
+        cur = self._scan(ScanJob.Status.AGENT_TESTING)
+        assert carry_forward_open_findings(cur, current_findings=[]) == []
