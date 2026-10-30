@@ -734,3 +734,51 @@ class VerifiedDomain(models.Model):
         return f"{self.domain} ({self.status})"
 
 
+
+
+class AgentFindingState(models.Model):
+    """每個（user＋origin＋finding_identity）AI/Agent 非確定性發現的跨掃描驗證狀態。
+
+    為什麼需要：AI Agent 的發現是非確定性的，carry_forward 把「仍開著」的歷史發現帶進每次
+    掃描。但使用者可能已經修好了 —— 若只進不出，報告會永遠掛著已修復的洞。本表記錄每個洞的
+    重驗狀態：**agent 這次有正常跑完、卻連續數次都沒再打到 → 判定已修復（resolved），停止帶入**；
+    任一次重新打到 → miss 歸零、resolved 取消。agent 失敗／被限流的掃描不算一次驗證（不扣 miss）。
+
+    這不是給使用者手動標記用的（刻意不做標記 UI）；是系統自動驗證＋自動消解的狀態機。
+    """
+
+    # 連續幾次「agent 正常跑完卻沒再打到」就判定已修復。保守取 2（兩次成功掃描都沒複現）。
+    RESOLVE_THRESHOLD = 2
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agent_finding_states",
+    )
+    origin = models.CharField(max_length=255, db_index=True)
+    identity = models.CharField(max_length=512)
+    # 顯示／稽核用（非鍵）：最後一次已知的標題與嚴重度。
+    title = models.CharField(max_length=255, blank=True, default="")
+    severity = models.CharField(max_length=16, blank=True, default="")
+    miss_streak = models.PositiveIntegerField(default=0)
+    resolved = models.BooleanField(default=False)
+    resolved_scan_id = models.IntegerField(null=True, blank=True)
+    first_seen_scan_id = models.IntegerField(null=True, blank=True)
+    last_confirmed_scan_id = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "origin", "identity"],
+                name="unique_agent_finding_state",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "origin", "resolved"], name="scans_afs_usr_org_res_idx"),
+        ]
+
+    def __str__(self) -> str:
+        state = "resolved" if self.resolved else f"open(miss={self.miss_streak})"
+        return f"{self.origin}|{self.identity} [{state}]"

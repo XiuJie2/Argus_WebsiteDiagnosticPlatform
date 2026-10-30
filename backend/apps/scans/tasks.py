@@ -2314,7 +2314,15 @@ def stage_scoring(ctx: ScanRunContext) -> None:
     try:
         from apps.scans.cumulative import carry_forward_open_findings
 
-        carried = carry_forward_open_findings(scan_job, ctx.all_findings)
+        # 本次 agent 是否正常跑完 → 才算一次「有效重驗」（失敗/被限流/略過不扣 miss，
+        # 否則一次 MiniMax 掛掉會把真實的洞誤判成已修復）。
+        _ar = ctx.agent_result
+        agent_ran_ok = bool(
+            _ar is not None
+            and getattr(_ar, "status", "") == "completed"
+            and not getattr(_ar, "error", "")
+        )
+        carried = carry_forward_open_findings(scan_job, ctx.all_findings, agent_ran_ok=agent_ran_ok)
         if carried:
             ctx.all_findings.extend(carried)
             append_log(
