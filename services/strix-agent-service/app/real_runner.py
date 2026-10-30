@@ -167,6 +167,18 @@ def _detect_provider_trouble(run_dir: Path | None) -> str:
     return ""
 
 
+def _detect_budget_stop(run_dir: Path | None) -> bool:
+    """strix 是否因 --max-budget 而自行停下（乾淨收尾，不是壞掉）。"""
+    if run_dir is None:
+        return False
+    log = run_dir / "strix.log"
+    try:
+        text = log.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+    return ("token budget" in text and "exceed" in text) or "scan budget limit" in text
+
+
 def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
               cancel_event=None) -> ScanResponse:
     """同步跑一次 Strix headless，解析產出並回契約回應。
@@ -231,6 +243,8 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
     # 偵測「跑了但被 LLM 供應商擋住」：strix 可能 exit 0、卻因持續限流/餘額不足/供應商錯誤
     # 而 0 發現。這種「看起來完成、其實被外部掐死」要讓上層看得懂，不要只顯示「0 發現/執行失敗」。
     provider_trouble = _detect_provider_trouble(run_dir) if not findings else ""
+    # 偵測「因 --max-budget 上限而停」：strix 自己乾淨收尾（不是壞掉、也不是跑完整）。
+    budget_stopped = _detect_budget_stop(run_dir)
 
     if cancelled:
         status = "error"
@@ -258,6 +272,15 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
             "AI 引擎未能完成：LLM 供應商持續回錯（限流或餘額/配額不足），本次 0 發現。"
             "請檢查 LLM 供應商的餘額與速率限制後重試。"
         )
+    elif budget_stopped:
+        # 因花費上限乾淨收尾：明說是「達到上限才停」，而不是誤導成「掃完整、沒找到」。
+        note = (
+            f"已達成本上限 ${settings.max_budget_usd:g}（約 {settings.max_budget_usd:g}00 萬 token），"
+            f"AI 引擎自行收尾。本次確認 {len(findings)} 項。"
+        )
+        if not findings:
+            note += " 0 項代表上限太緊、在確認漏洞前就停了——調高 STRIX_MAX_BUDGET_USD 或用 quick 模式。"
+        summary = note
     elif not summary:
         summary = f"Strix run: {len(findings)} findings, status={status}."
 

@@ -138,3 +138,13 @@ def test_detect_provider_trouble(tmp_path):
     # 正常 log → 空（不誤判）
     (rd / "strix.log").write_text("INFO scan progressing nicely, found stuff\n")
     assert _detect_provider_trouble(rd) == ""
+
+
+def test_detect_budget_stop(tmp_path):
+    from app.real_runner import _detect_budget_stop
+    rd = tmp_path / "r"; rd.mkdir()
+    assert _detect_budget_stop(rd) is False
+    (rd / "strix.log").write_text("Scan foo stopped: Token budget of $8.00 exceeded\n")
+    assert _detect_budget_stop(rd) is True
+    (rd / "strix.log").write_text("agent reached the scan budget limit; stopping the scan\n")
+    assert _detect_budget_stop(rd) is True

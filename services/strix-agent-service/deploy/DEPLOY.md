@@ -67,3 +67,24 @@ curl -s http://127.0.0.1:8099/healthz
 ## 注意
 - run 狀態存**單 process 記憶體**：服務以單一 uvicorn worker 跑（預設即是）。
   要多 worker / 多副本得改接 Redis 或 sqlite 共享存放。
+
+---
+
+## E. pip 版引擎 + 讓 --max-budget 生效（2026-10-30）
+
+獨立執行檔的 litellm 不認得 MiniMax 的價格 → 成本恆 0 → `--max-budget` 失效，
+掃描會一路燒到時間上限或把額度用爆。改用 pip 版 strix + 啟動器解決：
+
+```bash
+# 1) 建 pip 引擎 venv（與獨立執行檔同版本）
+uv venv /root/.strix-engine-venv
+VIRTUAL_ENV=/root/.strix-engine-venv uv pip install "strix-agent==1.7.0"
+# 2) 放啟動器（註冊 MiniMax 合成定價後再跑 strix）
+install -D -m755 services/strix-agent-service/deploy/strix-engine-launch.py /root/strix-engine/launch.py
+# 3) 服務 .env 設 STRIX_BIN=/root/strix-engine/launch.py、STRIX_MAX_BUDGET_USD、STRIX_PRICE_PER_MTOKEN
+sudo systemctl restart strix-agent-service
+```
+
+效果（實測）：budget=$8 時，token 爬到約 800 萬，strix 自己發
+「Token budget exceeded / scan budget limit」、各子代理在 budget reserve 停、整場乾淨收尾
+——**是 strix 自己停、不是 argus 砍**。budget 是成本/完整度旋鈕；quick 比 deep 省很多。
