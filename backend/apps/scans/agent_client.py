@@ -382,17 +382,27 @@ def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
             scan_job.pages.filter(final_url=url).first()
             or scan_job.pages.filter(url=url).first()
         )
+    # Strix 以英文回報；轉成精簡繁中（evidence 原始佐證維持原文），英文原文留存 evidence_json。
+    from apps.scans.translate import translate_finding_fields
+
+    src = {"title": item.get("title") or "", "description": item.get("description") or "",
+           "remediation": item.get("remediation") or ""}
+    zh = translate_finding_fields(src)
+    ev_json = dict(item.get("evidence_json") or {})
+    if any(zh.get(k) != src[k] for k in ("title", "description", "remediation")):
+        ev_json["source_en"] = src
+
     built = make_finding(
         category=category,
         severity=_normalize_severity(item.get("severity")),
-        title=(item.get("title") or "")[:255],
-        description=item.get("description", ""),
-        remediation=item.get("remediation", ""),
+        title=(zh.get("title") or "")[:255],
+        description=zh.get("description", ""),
+        remediation=zh.get("remediation", ""),
         evidence=item.get("evidence", ""),
         rule_id=item.get("rule_id", ""),
         impact_area=item.get("impact_area", ""),
         confidence=float(item.get("confidence", 1.0) or 1.0),
-        evidence_json=item.get("evidence_json") or None,
+        evidence_json=ev_json or None,
         evidence_source=item.get("evidence_source") or "agent_service",
     )
     priority = _priority_from_item(item)

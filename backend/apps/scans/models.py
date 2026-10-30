@@ -782,3 +782,29 @@ class AgentFindingState(models.Model):
     def __str__(self) -> str:
         state = "resolved" if self.resolved else f"open(miss={self.miss_streak})"
         return f"{self.origin}|{self.identity} [{state}]"
+
+
+class FindingTranslation(models.Model):
+    """AI/Agent（Strix）英文發現→繁中翻譯的內容快取。
+
+    鍵用來源文字的 sha256（同一筆發現跨掃描重複出現、或被 carry-forward 帶入時，
+    同樣的英文只翻一次）。payload 存翻好的 title/description/remediation。
+    翻譯是 presentation 快取，不是真相來源；可安全重建（刪掉即重譯）。
+    """
+
+    source_hash = models.CharField(max_length=64)
+    target_lang = models.CharField(max_length=16, default="zh-Hant")
+    payload = models.JSONField(default=dict)
+    model = models.CharField(max_length=128, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_hash", "target_lang"],
+                name="unique_finding_translation",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.target_lang}:{self.source_hash[:12]}"

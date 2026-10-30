@@ -53,6 +53,7 @@ class NormalizeHelperTests(TestCase):
     ARGUS_AGENT_SERVICE_URL="https://agent.example.test",
     ARGUS_AGENT_SERVICE_KEY="",
     ARGUS_AGENT_SERVICE_TIMEOUT=10,
+    ARGUS_TRANSLATE_FINDINGS=False,  # 契約測試只驗 HTTP 落地；翻譯另有專測
 )
 class RunAgentViaServiceTests(TestCase):
     def setUp(self):

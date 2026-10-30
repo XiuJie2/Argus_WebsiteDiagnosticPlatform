@@ -398,6 +398,12 @@ ARGUS_AUTHZ_PROBE_MAX_WRITE = int(os.getenv("ARGUS_AUTHZ_PROBE_MAX_WRITE", "40")
 # 已知漏洞優先序補強（apps/scans/security/vuln_intel.py）：EPSS 被利用機率＋OSV.dev 修補版本。
 # 只送出函式庫名稱、版本與 CVE 編號（不含受測網址）；查不到時原樣保留問題。
 ARGUS_VULN_INTEL_ENABLED = env_bool("ARGUS_VULN_INTEL_ENABLED", default=True)
+
+# AI/Agent（Strix）發現以英文回報；argus 面向繁中使用者，預設把標題/說明/修復步驟
+# 轉成精簡繁體中文（evidence 原始佐證維持原文）。翻譯失敗時保留英文（fail-open）。
+ARGUS_TRANSLATE_FINDINGS = env_bool("ARGUS_TRANSLATE_FINDINGS", default=True)
+ARGUS_TRANSLATE_TARGET_LANG = os.getenv("ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant").strip()
+
 ARGUS_VULN_INTEL_TIMEOUT_SECONDS = float(os.getenv("ARGUS_VULN_INTEL_TIMEOUT_SECONDS", "10"))
 ARGUS_VULN_INTEL_CACHE_SECONDS = int(os.getenv("ARGUS_VULN_INTEL_CACHE_SECONDS", "86400"))
 # 主動工具（Nuclei／Katana／敏感檔探測／未授權探測）共用的每秒請求上限。授權掃描的目標是
