@@ -124,3 +124,59 @@ def translate_finding_fields(fields: dict, *, chain=None) -> dict:
     except Exception:  # noqa: BLE001 — 快取寫入失敗不影響回傳
         logger.debug("翻譯快取寫入失敗 hash=%s", key[:12])
     return translated
+
+
+_EVIDENCE_MAX = 8000  # 太長的佐證不翻（避免截斷/逾時），保留原文
+
+
+def translate_evidence(evidence: str, *, chain=None) -> str:
+    """翻譯『檢測佐證』中的自然語言說明，HTTP/JSON/程式碼區塊原樣保留。
+
+    佐證以原始證據為主、夾少量英文說明。只翻說明、不動資料。長度/截斷/失敗都保留原文。
+    與欄位翻譯分開快取（key 以 EV 前綴），避免影響既有 title/desc/rem 快取。
+    """
+    ev = evidence or ""
+    if not getattr(settings, "ARGUS_TRANSLATE_FINDINGS", True):
+        return ev
+    if len(ev) < 12 or len(ev) > _EVIDENCE_MAX or not looks_english(ev):
+        return ev
+
+    target = getattr(settings, "ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant") or "zh-Hant"
+    target_label = "繁體中文（台灣用語）" if target.lower().startswith("zh") else target
+
+    from apps.scans.models import FindingTranslation
+
+    key = hashlib.sha256(("EV\u0002" + ev + "\u0002" + target).encode("utf-8")).hexdigest()
+    cached = FindingTranslation.objects.filter(source_hash=key, target_lang=target).first()
+    if cached and isinstance(cached.payload, dict) and cached.payload.get("evidence"):
+        return cached.payload["evidence"]
+
+    prompt = (
+        "以下是資安弱點的『檢測佐證』，夾雜自然語言說明與原始 HTTP/JSON/程式碼。"
+        f"只把自然語言說明翻成{target_label}；所有程式碼區塊、HTTP 請求/回應、JSON、URL、"
+        "權杖、標頭名、欄位名、使用者名稱與密碼值一字不改原樣保留，維持原本換行與 ``` 圍欄。"
+        "只輸出翻譯後的完整佐證內容，不要加任何額外說明或整體圍欄。\n\n" + ev
+    )
+    try:
+        from apps.agent.providers import build_default_chain
+
+        chain = chain or build_default_chain()
+        model = getattr(settings, "ARGUS_TRANSLATE_MODEL", "MiniMax-Text-01") or None
+        resp = chain.chat_text(prompt, model=model, temperature=0.1,
+                               max_tokens=min(3200, len(ev) // 2 + 800), timeout=120)
+        out = (resp.content or "").strip()
+    except Exception as exc:  # noqa: BLE001 — 失敗保留原文
+        logger.warning("翻譯佐證失敗，保留原文：%s", exc)
+        return ev
+
+    # 疑似截斷/空回應 → 保留原文（中文較精簡，但不至於少於原文的 4 成）
+    if not out or len(out) < len(ev) * 0.4:
+        return ev
+    try:
+        FindingTranslation.objects.update_or_create(
+            source_hash=key, target_lang=target,
+            defaults={"payload": {"evidence": out}, "model": getattr(resp, "model", "")[:128]},
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("佐證翻譯快取寫入失敗 hash=%s", key[:12])
+    return out

@@ -81,3 +81,44 @@ class TranslateFieldsTests(TestCase):
         chain = _StubChain(_ZH_JSON)
         out = translate_finding_fields(dict(_EN), chain=chain)
         assert out["title"] == _EN["title"] and chain.calls == 0
+
+
+_EV_EN = (
+    "Administrator listing returns a cleartext password to a role:User session:\n\n"
+    "```http\nGET /api/admin/selectPage HTTP/1.1\nHost: x.test\n```\n"
+    "```json\n{\"password\":\"JunNewPass123!\"}\n```"
+)
+_EV_ZH = (
+    "管理員列表會向 role:User 會話回傳明文密碼：\n\n"
+    "```http\nGET /api/admin/selectPage HTTP/1.1\nHost: x.test\n```\n"
+    "```json\n{\"password\":\"JunNewPass123!\"}\n```"
+)
+
+
+@override_settings(ARGUS_TRANSLATE_FINDINGS=True, ARGUS_TRANSLATE_TARGET_LANG="zh-Hant")
+class TranslateEvidenceTests(TestCase):
+    def test_translates_prose_keeps_code_and_caches(self):
+        from apps.scans.translate import translate_evidence
+        from apps.scans.models import FindingTranslation
+        chain = _StubChain(_EV_ZH)
+        out = translate_evidence(_EV_EN, chain=chain)
+        assert out.startswith("管理員列表")
+        assert "JunNewPass123!" in out and "GET /api/admin/selectPage" in out
+        assert FindingTranslation.objects.count() == 1
+        chain2 = _StubChain(_EV_ZH)
+        assert translate_evidence(_EV_EN, chain=chain2) == out and chain2.calls == 0
+
+    def test_fail_open_and_truncation_guard(self):
+        from apps.scans.translate import translate_evidence
+        # 失敗 → 原文
+        assert translate_evidence(_EV_EN, chain=_RaisingChain()) == _EV_EN
+        # 疑似截斷（回應過短）→ 原文
+        assert translate_evidence(_EV_EN, chain=_StubChain("太短")) == _EV_EN
+
+    def test_skips_long_or_empty(self):
+        from apps.scans.translate import translate_evidence
+        chain = _StubChain(_EV_ZH)
+        assert translate_evidence("", chain=chain) == ""
+        big = "A" * 9000
+        assert translate_evidence(big, chain=chain) == big
+        assert chain.calls == 0
