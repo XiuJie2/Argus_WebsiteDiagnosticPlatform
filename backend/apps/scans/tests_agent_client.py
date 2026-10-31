@@ -391,3 +391,40 @@ class CarryForwardOpenFindingsTests(TestCase):
         carried = carry_forward_open_findings(cur, current_findings=[], agent_ran_ok=False)
         row = cur.findings.filter(evidence_source="carried_over").first()
         assert row is not None and row.remediation == "正確的修法", row.remediation
+
+
+class BuildResultStatusTests(TestCase):
+    """_build_result：非同步成功終態正規化 + 翻譯預算跳過。"""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="buildresult-user", password="safe-test-password"
+        )
+        self.scan = ScanJob.objects.create(
+            user=self.user, original_url="https://example.com/",
+            normalized_url="https://example.com/", origin="https://example.com",
+            status=ScanJob.Status.AGENT_TESTING, max_pages=50,
+        )
+
+    @override_settings(ARGUS_TRANSLATE_FINDINGS=False)
+    def test_succeeded_status_normalized_to_completed(self):
+        data = {"status": "succeeded", "findings": [
+            {"title": "X", "severity": "high", "category": "security", "rule_id": "strix:vuln-0001"}]}
+        res = agent_client._build_result(self.scan, data)
+        assert res.status == "completed", res.status  # 下游 agent_ran_ok 才會認得
+        assert len(res.security_findings) == 1
+
+    @override_settings(ARGUS_TRANSLATE_FINDINGS=False)
+    def test_partial_status_preserved(self):
+        res = agent_client._build_result(self.scan, {"status": "partial", "findings": []})
+        assert res.status == "partial"  # 不可被正規化成 completed（否則會被當成完整驗證）
+
+    def test_persist_translate_false_keeps_english_without_llm(self):
+        """translate=False（預算用完的 fail-open）→ 以英文落地，不呼叫 LLM。"""
+        item = {"title": "English Title Here", "severity": "high", "category": "security",
+                "rule_id": "strix:vuln-0009", "description": "english description text",
+                "remediation": "do the fix", "evidence": "GET /x HTTP/1.1"}
+        built = agent_client._persist_finding(self.scan, item, translate=False)
+        assert built is not None and built["title"] == "English Title Here"
+        f = self.scan.findings.get(rule_id="strix:vuln-0009")
+        assert f.title == "English Title Here" and f.evidence == "GET /x HTTP/1.1"

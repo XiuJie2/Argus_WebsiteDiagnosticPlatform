@@ -406,6 +406,10 @@ ARGUS_TRANSLATE_TARGET_LANG = os.getenv("ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant"
 # 翻譯用模型：MiniMax-M3 是推理模型、長輸出常逾 60s；用快速非推理模型（實測
 # MiniMax-Text-01 ~23s 且回傳合法 JSON，Flash/M2.7 會夾雜推理導致解析失敗）。
 ARGUS_TRANSLATE_MODEL = os.getenv("ARGUS_TRANSLATE_MODEL", "MiniMax-Text-01").strip()
+# 單次掃描翻譯的總時間預算（秒）：超過就改用英文落地，避免 finding 很多時逐筆同步翻譯
+# 把 Celery 任務拖過硬上限。0 代表不設限。
+ARGUS_TRANSLATE_SCAN_BUDGET_S = int(os.getenv("ARGUS_TRANSLATE_SCAN_BUDGET_S", "600"))
+
 
 
 ARGUS_VULN_INTEL_TIMEOUT_SECONDS = float(os.getenv("ARGUS_VULN_INTEL_TIMEOUT_SECONDS", "10"))

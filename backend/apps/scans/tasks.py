@@ -2157,6 +2157,9 @@ def _mark_agent_coverage(ctx: ScanRunContext) -> None:
         status, reason = SKIPPED, "沒有可開始測試的頁面"
     elif result.status == "completed":
         status, reason = COMPLETED, ""
+    elif result.status == "partial":
+        # 非同步服務回報的 partial（如預算/步數用完）：已跑的仍有效，標記為部分完成而非失敗
+        status, reason = PARTIAL, (str(result.error or "")[:120] or "未完整跑完")
     elif str(result.error or "").startswith("max_steps_reached"):
         status, reason = PARTIAL, "步數上限內未完成"
     elif str(result.error or "").startswith("token_budget_exceeded"):

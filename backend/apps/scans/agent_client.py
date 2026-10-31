@@ -96,8 +96,12 @@ def _normalize_owasp(raw) -> str:
 
 
 def _normalize_cwe(raw) -> str:
-    """接受 `CWE-862`／`862`／`CWE 862` → `CWE-862`；否則空字串。"""
-    m = _CWE_RE.search(str(raw or ""))
+    """接受 `CWE-862`／`862`／`CWE 862` → `CWE-862`；否則空字串。
+
+    先找有 `CWE` 前綴的數字（避免把 `2021 CWE-79` 誤抓成 CWE-2021），找不到才退回第一組數字。
+    """
+    s = str(raw or "")
+    m = re.search(r"CWE[-\s_]?(\d{1,6})", s, re.IGNORECASE) or _CWE_RE.search(s)
     return f"CWE-{int(m.group(1))}" if m else ""
 
 
@@ -156,6 +160,11 @@ def _resolve_service() -> tuple[str, str, int, bool, str] | None:
 
 # agent 服務輪詢間隔（秒）。
 _ASYNC_POLL_INTERVAL = 3.0
+# 逾時/取消後給服務收尾的寬限；寬限內仍未終止就硬停，不拖到 Celery 硬上限。
+_ASYNC_CANCEL_GRACE = 60.0
+# 服務的成功終態詞彙（succeeded 等）正規化成契約的 "completed"；partial/error/failed/
+# cancelled 原樣保留（讓下游 agent_ran_ok 正確判為「非完整驗證」）。
+_ASYNC_SUCCESS = frozenset({"succeeded", "success", "completed", "done", "ok"})
 _ASYNC_TERMINAL = frozenset({"succeeded", "partial", "failed", "cancelled", "completed", "error"})
 
 
@@ -194,13 +203,16 @@ def _run_async(base, headers, payload, timeout, verify, *, scan_job_id, progress
     after = 0
     deadline = time.monotonic() + timeout
     cancel_sent = False
+    hard_stop = None  # 送出取消後的硬停時限
     status = "running"
     while True:
         try:
-            tr = requests.get(
+            resp = requests.get(
                 f"{base}/v1/scans/{scan_id}/trace", params={"after": after},
                 headers=headers, timeout=30, verify=verify,
-            ).json()
+            )
+            resp.raise_for_status()
+            tr = resp.json()
             for ev in tr.get("events", []):
                 if progress_cb:
                     try:
@@ -209,35 +221,54 @@ def _run_async(base, headers, payload, timeout, verify, *, scan_job_id, progress
                         pass
             after = int(tr.get("next", after) or after)
             status = tr.get("status", status)
-        except requests.RequestException:
-            status = status  # 暫時讀 trace 失敗：下一輪重試
+        except (requests.RequestException, ValueError):
+            pass  # 暫時讀 trace 失敗（含非 JSON）：維持上一個 status，下一輪重試
 
         if status in _ASYNC_TERMINAL:
             break
-        if not cancel_sent and (_cancelled() or time.monotonic() > deadline):
+        now = time.monotonic()
+        if not cancel_sent and (_cancelled() or now > deadline):
+            # 逾時或使用者取消：通知服務取消，並開始寬限倒數。
             cancel_sent = True
+            hard_stop = now + _ASYNC_CANCEL_GRACE
             with contextlib.suppress(requests.RequestException):
                 requests.post(f"{base}/v1/scans/{scan_id}/cancel",
                               headers=headers, timeout=15, verify=verify)
+        if hard_stop is not None and time.monotonic() > hard_stop:
+            break  # 服務在寬限內仍未終止 → 硬停，不無限等到 Celery 砍 worker
         time.sleep(_ASYNC_POLL_INTERVAL)
 
-    res = requests.get(
-        f"{base}/v1/scans/{scan_id}/result", headers=headers, timeout=60, verify=verify
-    )
-    res.raise_for_status()
-    return res.json()
+    try:
+        res = requests.get(
+            f"{base}/v1/scans/{scan_id}/result", headers=headers, timeout=60, verify=verify
+        )
+        res.raise_for_status()
+        return res.json()
+    except (requests.RequestException, ValueError):
+        # 結果拿不到（服務逾時/無回應/壞 JSON）→ 回乾淨的 partial，讓上層照常收尾、不崩。
+        return {"status": "partial", "error": "agent_result_unavailable", "findings": []}
 
 
 def _build_result(scan_job: ScanJob, data: dict) -> AgentServiceResult:
     """把服務回應（同步或非同步 result）正規化落地成 AgentServiceResult。"""
+    import time
     # 契約欄位是 findings；容忍 wrapper 以 vulnerabilities 命名（Strix 慣用語）
     findings = data.get("findings")
     if findings is None:
         findings = data.get("vulnerabilities") or []
     ux_dicts: list[dict] = []
     sec_dicts: list[dict] = []
+    # 翻譯在落地時同步呼叫 LLM；給整批一個時間預算，超過就改用英文落地（fail-open），
+    # 避免 finding 很多時逐筆翻譯把 Celery 任務拖過硬上限、中途被砍而只落地一半。
+    budget = float(getattr(settings, "ARGUS_TRANSLATE_SCAN_BUDGET_S", 600) or 0)
+    t0 = time.monotonic()
     for item in findings:
-        persisted = _persist_finding(scan_job, item)
+        try:
+            allow_tr = budget <= 0 or (time.monotonic() - t0) < budget
+            persisted = _persist_finding(scan_job, item, translate=allow_tr)
+        except Exception:  # noqa: BLE001 — 單筆落地失敗不影響其餘發現與掃描
+            logger.exception("落地 agent 發現失敗 scan=%s", scan_job.id)
+            continue
         if persisted is None:
             continue
         if persisted["category"] == "ux":
@@ -245,8 +276,11 @@ def _build_result(scan_job: ScanJob, data: dict) -> AgentServiceResult:
         elif persisted["category"] == "security":
             sec_dicts.append(persisted)
 
+    raw_status = str(data.get("status") or "completed").strip().lower()
+    status = "completed" if raw_status in _ASYNC_SUCCESS else raw_status
+
     return AgentServiceResult(
-        status=data.get("status", "completed"),
+        status=status,
         steps=int(data.get("steps", 0) or 0),
         total_tokens=int(data.get("total_tokens", 0) or 0),
         final_summary=(data.get("summary") or data.get("final_summary") or "")[:1000],
@@ -363,11 +397,13 @@ def run_agent_via_service(
     return _build_result(scan_job, data)
 
 
-def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
+def _persist_finding(scan_job: ScanJob, item: dict, *, translate: bool = True) -> dict | None:
     """把服務回傳的一筆發現落地成 Finding，並回傳對應 dict（供計分）。
 
     沿用 make_finding 產生標準欄位，再覆寫服務已算好的 rule_id／OWASP／CWE／優先序，
     並把各引擎的 severity／OWASP／CWE／CVSS 正規化，讓計分、跨層去重與報告保持一致。
+
+    translate=False 時跳過翻譯、以英文原文落地（整批翻譯預算用完的 fail-open）。
     """
     from apps.scans.scanners import make_finding
 
@@ -383,19 +419,22 @@ def _persist_finding(scan_job: ScanJob, item: dict) -> dict | None:
             or scan_job.pages.filter(url=url).first()
         )
     # Strix 以英文回報；轉成精簡繁中（evidence 原始佐證維持原文），英文原文留存 evidence_json。
-    from apps.scans.translate import translate_evidence, translate_finding_fields
-
     src = {"title": item.get("title") or "", "description": item.get("description") or "",
            "remediation": item.get("remediation") or ""}
-    zh = translate_finding_fields(src)
     ev_en = item.get("evidence", "") or ""
-    ev_zh = translate_evidence(ev_en)
     ev_json = dict(item.get("evidence_json") or {})
-    src_en = dict(src)
-    if ev_zh != ev_en:
-        src_en["evidence"] = ev_en
-    if any(zh.get(k) != src[k] for k in ("title", "description", "remediation")) or ev_zh != ev_en:
-        ev_json["source_en"] = src_en
+    if translate:
+        from apps.scans.translate import translate_evidence, translate_finding_fields
+
+        zh = translate_finding_fields(src)
+        ev_zh = translate_evidence(ev_en)
+        src_en = dict(src)
+        if ev_zh != ev_en:
+            src_en["evidence"] = ev_en
+        if any(zh.get(k) != src[k] for k in ("title", "description", "remediation")) or ev_zh != ev_en:
+            ev_json["source_en"] = src_en
+    else:
+        zh, ev_zh = src, ev_en  # 預算用完：英文原文落地
 
     built = make_finding(
         category=category,

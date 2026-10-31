@@ -287,5 +287,5 @@ def _materialize_carried(scan_job, f, rec, *, verified: bool, miss_streak: int) 
     return {
         "category": "security", "severity": obj.severity, "title": obj.title,
         "rule_id": obj.rule_id, "owasp_category": obj.owasp_category,
-        "cwe_id": obj.cwe_id, "carried_over": True,
+        "cwe_id": obj.cwe_id, "priority_score": obj.priority_score, "carried_over": True,
     }
