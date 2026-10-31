@@ -80,10 +80,18 @@ class RunStore:
         with self._lock:
             self._runs[scan_id] = run
             self._order.append(scan_id)
-            # 簡單淘汰：只留最近 max_runs 筆終端 run。
+            # 淘汰最舊的「已終端」run；進行中的 run 不動（否則會把還在跑的資料刪掉→
+            # /trace、/result 回 404，消費端誤判 agent 階段失敗）。全部都在跑就暫時超量。
             while len(self._order) > self._max_runs:
-                old = self._order.pop(0)
-                self._runs.pop(old, None)
+                victim = next(
+                    (sid for sid in self._order
+                     if (self._runs.get(sid) is not None and self._runs[sid].is_terminal)),
+                    None,
+                )
+                if victim is None:
+                    break
+                self._order.remove(victim)
+                self._runs.pop(victim, None)
         return run
 
     def get(self, scan_id: str) -> Run | None:

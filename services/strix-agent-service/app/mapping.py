@@ -25,8 +25,14 @@ _LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9+/=_-]{32,}\b")
 _MAX_EVIDENCE = 2000
 
 
-def redact(text: str, *, extra_secrets: list[str] | None = None) -> str:
-    """服務端第一道遮罩：抹掉憑證／email／長 token，並截斷長度。"""
+def redact(
+    text: str, *, extra_secrets: list[str] | None = None, max_len: int | None = _MAX_EVIDENCE
+) -> str:
+    """服務端第一道遮罩：抹掉憑證／email／長 token；max_len 非 None 時截斷。
+
+    evidence 用預設長度上限；title/description/remediation 這類正文傳 max_len=None，
+    只遮密不截斷（避免把正常的長說明切掉）。
+    """
     if not text:
         return ""
     out = str(text)
@@ -36,8 +42,8 @@ def redact(text: str, *, extra_secrets: list[str] | None = None) -> str:
     out = _AUTH_HEADER_RE.sub(lambda m: f"{m.group(1)}: [REDACTED]", out)
     out = _EMAIL_RE.sub("[REDACTED_EMAIL]", out)
     out = _LONG_TOKEN_RE.sub("[REDACTED_TOKEN]", out)
-    if len(out) > _MAX_EVIDENCE:
-        out = out[:_MAX_EVIDENCE] + "…[truncated]"
+    if max_len and len(out) > max_len:
+        out = out[:max_len] + "…[truncated]"
     return out
 
 
@@ -83,14 +89,19 @@ def strix_vuln_to_finding(
 
     rule_id = f"strix:{strix_id}" if strix_id else (f"strix:{cwe}" if cwe else "strix")
 
+    # 這些自由欄位 pentest 引擎常回放它拿到的帳密／它挖到的 secret——全部過遮罩，
+    # 不只 evidence（否則憑證會從 title/description/remediation 漏進 argus 儲存與報告）。
     return Finding(
         category="security",
         severity=str(report.get("severity") or "low").strip().lower(),
-        title=str(report.get("title") or "Untitled")[:255],
-        description=str(report.get("description") or ""),
+        title=redact(str(report.get("title") or "Untitled"), extra_secrets=secrets, max_len=None)[:255],
+        description=redact(str(report.get("description") or ""), extra_secrets=secrets, max_len=None),
         # Strix 的修補建議欄位名是 remediation_steps（非 remediation）——不對齊會讓
         # argus 的「怎麼修」整欄空白（2026-10-27 實測發現）。保留舊名當 fallback。
-        remediation=str(report.get("remediation_steps") or report.get("remediation") or ""),
+        remediation=redact(
+            str(report.get("remediation_steps") or report.get("remediation") or ""),
+            extra_secrets=secrets, max_len=None,
+        ),
         evidence=evidence,
         evidence_json=evidence_json,
         url=url,

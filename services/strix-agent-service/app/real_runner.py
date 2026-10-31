@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import logging
+import contextlib
 import os
+import signal
 import subprocess
 import time
 import uuid
@@ -21,12 +23,35 @@ from pathlib import Path
 
 from .config import settings
 from .contract import ScanRequest, ScanResponse
-from .mapping import strix_vuln_to_finding
+from .mapping import redact, strix_vuln_to_finding
 
 logger = logging.getLogger("strix-agent-service.runner")
 
 # Argus 契約 mode → Strix 掃描深度（可由 STRIX_SCAN_MODE 覆蓋基準）。
 _MODE_TO_STRIX = {"deep": settings.strix_scan_mode, "both": settings.strix_scan_mode}
+
+
+def _terminate_group(proc) -> None:
+    """收掉整個行程群組（strix + 其衍生子行程），而不是只殺直接子行程。
+
+    proc 以 start_new_session=True 啟動，自成群組；先對群組送 SIGTERM，10 秒內沒收乾淨
+    再送 SIGKILL，最後務必 wait() 回收殭屍。killpg 不適用時退回只處理直接子行程。
+    """
+    def _sig(signum):
+        try:
+            os.killpg(os.getpgid(proc.pid), signum)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.send_signal(signum)
+            except (ProcessLookupError, OSError):
+                pass
+    _sig(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        _sig(signal.SIGKILL)
+        with contextlib.suppress(Exception):
+            proc.wait(timeout=5)
 
 
 def _build_instruction(req: ScanRequest) -> str:
@@ -207,6 +232,7 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
     }
     proc = subprocess.Popen(  # noqa: S603 — 參數化、無 shell
         cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(scan_cwd), env=env,
+        start_new_session=True,  # 自成行程群組，取消/逾時時能連 strix 衍生的子行程一起收掉
     )
     while True:
         try:
@@ -214,19 +240,11 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
             break
         except subprocess.TimeoutExpired:
             if cancel_event is not None and cancel_event.is_set():
-                proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+                _terminate_group(proc)
                 cancelled = True
                 break
             if time.monotonic() > deadline:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+                _terminate_group(proc)
                 timed_out = True
                 break
 
@@ -245,13 +263,17 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
     provider_trouble = _detect_provider_trouble(run_dir) if not findings else ""
     # 偵測「因 --max-budget 上限而停」：strix 自己乾淨收尾（不是壞掉、也不是跑完整）。
     budget_stopped = _detect_budget_stop(run_dir)
+    # 用滿 --max-turns 也是「被成本上限截斷」而非「跑完整」：turns 達上限即視為部分完成。
+    turns_used = int((run_record or {}).get("turns") or 0)
+    turn_limited = settings.max_turns > 0 and turns_used >= settings.max_turns
 
     if cancelled:
         status = "error"
     elif provider_trouble and not findings:
         # 完成與否都一樣：沒有有效工作。標 error 讓 argus 顯示可讀原因。
         status = "error"
-    elif timed_out:
+    elif timed_out or budget_stopped or turn_limited:
+        # 逾時／預算／回合上限截斷 → partial：跑了但沒跑完整，上游不可當成「完整驗證/全清」。
         status = "partial"
     elif exit_code in (0, 2):
         status = "completed"
@@ -259,14 +281,21 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
         status = "error"
 
     cost = 0.0
+    tokens = 0
     usage = run_record.get("llm_usage") if isinstance(run_record, dict) else None
     if isinstance(usage, dict):
         try:
             cost = float(usage.get("cost") or 0.0)
         except (TypeError, ValueError):
             cost = 0.0
+        try:
+            tokens = int(usage.get("total_tokens") or usage.get("tokens") or 0)
+        except (TypeError, ValueError):
+            tokens = 0
 
-    summary = str((run_record or {}).get("summary") or "")[:1000]
+    # 原始 summary 可能含引擎回放的帳密/secret → 過遮罩（固定文案的分支本身無 secret）。
+    summary = redact(str((run_record or {}).get("summary") or "")[:1000],
+                     extra_secrets=secrets, max_len=None)
     if provider_trouble and not findings:
         summary = (
             "AI 引擎未能完成：LLM 供應商持續回錯（限流或餘額/配額不足），本次 0 發現。"
@@ -293,7 +322,7 @@ def run_strix(req: ScanRequest, *, scan_cwd: Path | None = None,
     return ScanResponse(
         status=status,
         steps=int((run_record or {}).get("turns") or 0),
-        total_tokens=0,
+        total_tokens=tokens,
         summary=summary,
         error=error,
         findings=findings,

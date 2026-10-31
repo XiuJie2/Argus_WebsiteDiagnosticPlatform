@@ -5,6 +5,7 @@ Argus 端設定 ``ARGUS_AGENT_SERVICE_URL=http://strix-agent-service:8099``。
 """
 from __future__ import annotations
 
+import hmac
 import logging
 
 from fastapi import FastAPI, Header, HTTPException
@@ -33,11 +34,11 @@ app = FastAPI(title="Strix Agent Service", version=CONTRACT_VERSION)
 
 
 def _check_auth(authorization: str | None) -> None:
-    """設定了 STRIX_SERVICE_API_KEY 時，要求相符的 Bearer。"""
+    """設定了 STRIX_SERVICE_API_KEY 時，要求相符的 Bearer（常數時間比較）。"""
     if not settings.api_key:
         return
     expected = f"Bearer {settings.api_key}"
-    if authorization != expected:
+    if not hmac.compare_digest(authorization or "", expected):
         raise HTTPException(status_code=401, detail="unauthorized")
 
 

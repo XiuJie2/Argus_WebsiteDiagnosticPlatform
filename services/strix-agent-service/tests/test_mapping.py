@@ -148,3 +148,31 @@ def test_detect_budget_stop(tmp_path):
     assert _detect_budget_stop(rd) is True
     (rd / "strix.log").write_text("agent reached the scan budget limit; stopping the scan\n")
     assert _detect_budget_stop(rd) is True
+
+
+def test_secrets_redacted_in_all_freetext_fields():
+    """憑證/secret 不只在 evidence，title/description/remediation 都要遮掉。"""
+    creds = "test:testtest"
+    report = {
+        "id": "vuln-9",
+        "title": f"Login works with {creds}",
+        "severity": "high",
+        "description": f"The app accepts the injected credentials {creds} and returns a token.",
+        "remediation_steps": f"Rotate {creds} and stop echoing credentials.",
+        "evidence": f"POST /api/login body: {creds}",
+    }
+    f = strix_vuln_to_finding(report, secrets=[creds])
+    assert creds not in f.title
+    assert creds not in f.description
+    assert creds not in f.remediation
+    assert creds not in f.evidence
+    assert "[REDACTED]" in f.title
+
+
+def test_long_description_not_truncated_by_redaction():
+    """正文欄位 max_len=None：長說明不應被 evidence 的 2000 字上限截斷。"""
+    # 用有空白的正常文句（非 token-like 長串，否則會被 _LONG_TOKEN_RE 當成 token 遮掉）
+    long_desc = "The endpoint leaks data to any authenticated user. " * 100
+    f = strix_vuln_to_finding({"id": "v", "title": "t", "severity": "low",
+                               "description": long_desc})
+    assert len(f.description) == len(long_desc) and len(f.description) > 2000
