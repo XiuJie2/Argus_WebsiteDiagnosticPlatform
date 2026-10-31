@@ -170,7 +170,9 @@ class PlannedScanStepsTests(TestCase):
         scan = _make_scan(self.user)
         for key, value in fields.items():
             setattr(scan, key, value)
-        with override_settings(ARGUS_AGENT_ENABLED=False):
+        # 固定 PageSpeed 關閉：pagespeed 步驟只在有 API key 的環境預設開啟，不固定會讓
+        # 精確步驟清單斷言隨環境飄（本機有 key→多一步、CI 無 key→沒有）。
+        with override_settings(ARGUS_AGENT_ENABLED=False, ARGUS_PAGESPEED_ENABLED=False):
             return planned_scan_steps(scan, build_scan_execution_plan(scan))
 
     def test_passive_single_page_lists_only_selected_categories(self):
