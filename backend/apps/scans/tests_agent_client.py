@@ -281,6 +281,24 @@ class CarryForwardOpenFindingsTests(TestCase):
         assert resolved.count() == 1, list(resolved.values_list("identity", "miss_streak"))
         assert "updatepassword" in resolved.first().identity
 
+    def test_deterministic_reconfirm_does_not_count_as_agent_verification(self):
+        """只有確定性層重新確認、agent 空跑 → 不算 thorough，agent-only 的洞不被消解。"""
+        from apps.scans.cumulative import carry_forward_open_findings
+        from apps.scans.models import AgentFindingState
+        self._seed_surface()
+        # 本次「重新確認」前 4 項，但來源是確定性層（rule_id 非 strix/agent），agent 本身空跑。
+        det = [{"category": "security", "title": t, "description": "", "owasp_category": "",
+                "cwe_id": "", "evidence_json": {"endpoint": ep}, "rule_id": "SECURITY_DET_X"}
+               for (t, _rid, ep) in self._SURFACE[:4]]
+        for _ in range(3):
+            cur = self._scan(ScanJob.Status.AGENT_TESTING)
+            carry_forward_open_findings(cur, current_findings=det, agent_ran_ok=True)
+            self._complete(cur)
+        # 確定性重新確認不應讓 thorough 成立 → updatePassword（agent-only）不被消解
+        assert AgentFindingState.objects.filter(user=self.user, resolved=True).count() == 0
+        st = AgentFindingState.objects.get(user=self.user, identity__contains="updatepassword")
+        assert st.resolved is False and st.miss_streak == 0, (st.resolved, st.miss_streak)
+
     def test_weak_agent_run_does_not_resolve(self):
         """agent 完成卻幾乎沒重新確認（空跑）→ 不算驗證，全部照帶、不消解。"""
         from apps.scans.cumulative import carry_forward_open_findings

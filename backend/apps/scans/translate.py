@@ -93,14 +93,16 @@ def translate_finding_fields(fields: dict, *, chain=None) -> dict:
     target = getattr(settings, "ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant") or "zh-Hant"
     target_label = "繁體中文（台灣用語）" if target.lower().startswith("zh") else target
 
-    from apps.scans.models import FindingTranslation
-
-    key = _source_hash(out, target)
-    cached = FindingTranslation.objects.filter(source_hash=key, target_lang=target).first()
-    if cached and isinstance(cached.payload, dict):
-        return {k: (cached.payload.get(k) or out[k]) for k in _FIELDS}
-
+    # 整段（含快取讀寫、模型呼叫）都包在 fail-open：任何例外（DB/連線/解析）都保留英文，
+    # 絕不讓翻譯把 _persist_finding 中斷、或害掃描中途掉發現。
     try:
+        from apps.scans.models import FindingTranslation
+
+        key = _source_hash(out, target)
+        cached = FindingTranslation.objects.filter(source_hash=key, target_lang=target).first()
+        if cached and isinstance(cached.payload, dict):
+            return {k: (cached.payload.get(k) or out[k]) for k in _FIELDS}
+
         from apps.agent.providers import build_default_chain
 
         chain = chain or build_default_chain()
@@ -108,22 +110,26 @@ def translate_finding_fields(fields: dict, *, chain=None) -> dict:
         resp = chain.chat_text(_build_prompt(out, target_label), model=model,
                                temperature=0.1, max_tokens=1000, timeout=90)
         data = _parse_json(resp.content)
-    except Exception as exc:  # noqa: BLE001 — 翻譯失敗保留英文
+        if not data:
+            return out
+
+        translated = {}
+        for k in _FIELDS:
+            v = data.get(k)
+            # 只接受非空白字串；空白/None/非字串 → 退回英文（避免把欄位翻成空白並快取）
+            translated[k] = str(v).strip() if isinstance(v, str) and str(v).strip() else out[k]
+
+        try:
+            FindingTranslation.objects.update_or_create(
+                source_hash=key, target_lang=target,
+                defaults={"payload": translated, "model": (getattr(resp, "model", "") or "")[:128]},
+            )
+        except Exception:  # noqa: BLE001 — 快取寫入失敗不影響已翻好的回傳
+            logger.debug("翻譯快取寫入失敗 hash=%s", key[:12])
+        return translated
+    except Exception as exc:  # noqa: BLE001 — 任何失敗（含 DB/快取讀取）都保留英文
         logger.warning("翻譯發現失敗，保留英文：%s", exc)
         return out
-
-    if not data:
-        return out
-
-    translated = {k: (str(data.get(k)).strip() if data.get(k) else out[k]) for k in _FIELDS}
-    try:
-        FindingTranslation.objects.update_or_create(
-            source_hash=key, target_lang=target,
-            defaults={"payload": translated, "model": getattr(resp, "model", "")[:128]},
-        )
-    except Exception:  # noqa: BLE001 — 快取寫入失敗不影響回傳
-        logger.debug("翻譯快取寫入失敗 hash=%s", key[:12])
-    return translated
 
 
 _EVIDENCE_MAX = 8000  # 太長的佐證不翻（避免截斷/逾時），保留原文
@@ -144,13 +150,6 @@ def translate_evidence(evidence: str, *, chain=None) -> str:
     target = getattr(settings, "ARGUS_TRANSLATE_TARGET_LANG", "zh-Hant") or "zh-Hant"
     target_label = "繁體中文（台灣用語）" if target.lower().startswith("zh") else target
 
-    from apps.scans.models import FindingTranslation
-
-    key = hashlib.sha256(("EV\u0002" + ev + "\u0002" + target).encode("utf-8")).hexdigest()
-    cached = FindingTranslation.objects.filter(source_hash=key, target_lang=target).first()
-    if cached and isinstance(cached.payload, dict) and cached.payload.get("evidence"):
-        return cached.payload["evidence"]
-
     prompt = (
         "以下是資安弱點的『檢測佐證』，夾雜自然語言說明與原始 HTTP/JSON/程式碼。"
         f"只把自然語言說明翻成{target_label}；所有程式碼區塊、HTTP 請求/回應、JSON、URL、"
@@ -158,25 +157,34 @@ def translate_evidence(evidence: str, *, chain=None) -> str:
         "只輸出翻譯後的完整佐證內容，不要加任何額外說明或整體圍欄。\n\n" + ev
     )
     try:
+        from apps.scans.models import FindingTranslation
+
+        key = hashlib.sha256(("EV\u0002" + ev + "\u0002" + target).encode("utf-8")).hexdigest()
+        cached = FindingTranslation.objects.filter(source_hash=key, target_lang=target).first()
+        if cached and isinstance(cached.payload, dict) and cached.payload.get("evidence"):
+            return cached.payload["evidence"]
+
         from apps.agent.providers import build_default_chain
 
         chain = chain or build_default_chain()
         model = getattr(settings, "ARGUS_TRANSLATE_MODEL", "MiniMax-Text-01") or None
+        # 給足夠輸出額度：佐證多半等長或略短，但程式碼區塊是逐字保留的，額度不足會被截斷。
         resp = chain.chat_text(prompt, model=model, temperature=0.1,
-                               max_tokens=min(3200, len(ev) // 2 + 800), timeout=120)
+                               max_tokens=min(6000, len(ev) + 1200), timeout=150)
         out = (resp.content or "").strip()
-    except Exception as exc:  # noqa: BLE001 — 失敗保留原文
+
+        # 截斷/殘缺防呆：長度過短，或 ``` 圍欄數對不上（表示有程式碼區塊被截掉/吞掉）→ 保留原文。
+        if not out or len(out) < len(ev) * 0.4 or out.count("```") != ev.count("```"):
+            return ev
+
+        try:
+            FindingTranslation.objects.update_or_create(
+                source_hash=key, target_lang=target,
+                defaults={"payload": {"evidence": out}, "model": (getattr(resp, "model", "") or "")[:128]},
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("佐證翻譯快取寫入失敗 hash=%s", key[:12])
+        return out
+    except Exception as exc:  # noqa: BLE001 — 任何失敗（含 DB/快取讀取）都保留原文
         logger.warning("翻譯佐證失敗，保留原文：%s", exc)
         return ev
-
-    # 疑似截斷/空回應 → 保留原文（中文較精簡，但不至於少於原文的 4 成）
-    if not out or len(out) < len(ev) * 0.4:
-        return ev
-    try:
-        FindingTranslation.objects.update_or_create(
-            source_hash=key, target_lang=target,
-            defaults={"payload": {"evidence": out}, "model": getattr(resp, "model", "")[:128]},
-        )
-    except Exception:  # noqa: BLE001
-        logger.debug("佐證翻譯快取寫入失敗 hash=%s", key[:12])
-    return out

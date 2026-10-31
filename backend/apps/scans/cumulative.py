@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import logging
 
-from django.db import transaction
 
 from apps.scans.finding_identity import finding_identity
 from apps.scans.models import AgentFindingState, Finding, ScanJob
@@ -75,7 +74,9 @@ def carry_forward_open_findings(
     fresh_nd_ids = {
         finding_identity(f)
         for f in current_findings
-        if (f.get("category") or "") == "security" and _is_nondeterministic(f.get("rule_id") or "")
+        if (f.get("category") or "") == "security"
+        and (f.get("severity") or "") != "info"
+        and _is_nondeterministic(f.get("rule_id") or "")
     }
 
     prior_scan_ids = list(
@@ -117,33 +118,40 @@ def carry_forward_open_findings(
                 elif rank < cur["rank"]:
                     cur["f"], cur["rank"] = f, rank
 
-    # 「這次 agent 有沒有真的重測這片攻擊面」的門檻：只有當本次重新確認了足夠比例的
-    # 已知非確定性發現，才把「沒再打到」當成修復的證據。否則（agent 完成卻幾乎沒找到
-    # 東西 —— 如配額受限、quick 模式抽樣不足）一律照帶、不扣 miss，避免把仍開著的洞
-    # 誤判成已修復。這是 2026-10-31 的修正：先前只看 status==completed，導致空跑也計為
-    # 一次驗證，兩次就誤消解了 18 個真實發現。
+    # 「這次 agent 有沒有真的重測這片攻擊面」的門檻。reconfirmed 只算**非確定性層（agent）
+    # 這次重新打到**的數量（fresh_nd_ids），不算確定性層：確定性層重新確認代表洞還在
+    # （下面 current_ids 會判定為「仍在、不扣 miss」），但不代表 agent 認真重測過，不能拿來
+    # 當「沒打到＝修好」的證據門檻，否則 agent 空跑＋確定性層照打仍會誤消解 agent-only 的洞。
+    # 只有當 agent 重新確認了足夠比例的已知非確定性發現，才把「沒再打到」當成修復證據；
+    # 否則（配額受限/quick 抽樣不足的弱掃描）一律照帶、不扣 miss。保守，寧可漏消解不可誤丟。
     tracked = len(best)
-    reconfirmed = sum(1 for ident in best if ident in current_ids)
+    reconfirmed = sum(1 for ident in best if ident in fresh_nd_ids)
     thorough = bool(agent_ran_ok and tracked > 0 and reconfirmed >= max(3, (tracked + 1) // 2))
 
     carried: list[dict] = []
     resolved_now = 0
 
-    with transaction.atomic():
-        # 1) 本次確認仍在的全新非確定性發現：刷新狀態（歸零 miss、取消 resolved）。
-        for ident in fresh_nd_ids:
+    # 不包整個迴圈在單一 transaction.atomic()：單筆 DB 失敗（如 IntegrityError、值過長）會把
+    # 整個交易標記 needs_rollback，就算 catch 住，之後的任何查詢都拋 TransactionManagementError，
+    # 整批 rollback —— 連已帶入的發現都會掉（違反「絕不丟開著的洞」）。改為每筆各自提交＋
+    # 各自 try/except：一筆失敗只略過該筆、其餘照常。state 是可重建的快取，不需要全有全無。
+    # 1) 本次確認仍在的全新非確定性發現：刷新狀態（歸零 miss、取消 resolved）。
+    for ident in fresh_nd_ids:
+        try:
             _confirm_state(scan_job, ident, best.get(ident))
+        except Exception:  # noqa: BLE001 — 單筆刷新失敗不影響其餘
+            logger.exception("carry_forward 刷新狀態失敗 scan=%s ident=%s", scan_job.id, ident[:80])
 
-        # 2) 歷史累積：逐一驗證 → 確認仍在 / 判定修復 / 照帶。
-        for ident, rec in best.items():
+    # 2) 歷史累積：逐一驗證 → 確認仍在 / 判定修復 / 照帶。
+    for ident, rec in best.items():
+        try:
             f = rec["f"]
             state = _get_or_seed_state(scan_job, ident, rec)
 
             if ident in current_ids:
-                # 本次重新確認（確定性或非確定性層打到）→ 已在步驟 1 處理 fresh_nd，
-                # 但確定性重新確認的也要歸零；統一在這裡再刷一次無妨。
+                # 本次重新確認（確定性或非確定性層打到）→ 洞還在，miss 歸零、不重複帶。
                 _mark_confirmed(state, scan_job)
-                continue  # 不重複帶（本次已是一筆真發現）
+                continue
 
             if state.resolved:
                 continue  # 先前已判定修復 → 不再帶入（已從累積清單消失）
@@ -156,14 +164,16 @@ def carry_forward_open_findings(
                     state.save(update_fields=["miss_streak", "resolved",
                                               "resolved_scan_id", "updated_at"])
                     resolved_now += 1
-                    continue  # 連續多次成功掃描未複現 → 視為已修復，停止帶入
+                    continue  # 連續多次 agent 認真重測未複現 → 視為已修復，停止帶入
                 state.save(update_fields=["miss_streak", "updated_at"])
             # agent 沒跑完、或這次沒認真重測（thorough=False）：不扣 miss，照帶。
 
-            row = _materialize_carried(scan_job, f, rec, verified=agent_ran_ok,
+            row = _materialize_carried(scan_job, f, rec, verified=thorough,
                                        miss_streak=state.miss_streak)
             if row is not None:
                 carried.append(row)
+        except Exception:  # noqa: BLE001 — 單筆處理失敗不影響其餘發現
+            logger.exception("carry_forward 處理發現失敗 scan=%s ident=%s", scan_job.id, ident[:80])
 
     if resolved_now:
         logger.info("carry_forward 自動消解 %s 項（連續 %s 次成功掃描未複現）scan=%s",

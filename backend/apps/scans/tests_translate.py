@@ -122,3 +122,46 @@ class TranslateEvidenceTests(TestCase):
         big = "A" * 9000
         assert translate_evidence(big, chain=chain) == big
         assert chain.calls == 0
+
+
+class _NoneModelResp:
+    def __init__(self, content):
+        self.content = content
+        self.model = None  # provider fallback can leave model None
+
+
+class _NoneModelChain:
+    def __init__(self, content):
+        self._c = content; self.calls = 0
+    def chat_text(self, prompt, temperature=0.2, max_tokens=2048, **kw):
+        self.calls += 1
+        return _NoneModelResp(self._c)
+
+
+@override_settings(ARGUS_TRANSLATE_FINDINGS=True, ARGUS_TRANSLATE_TARGET_LANG="zh-Hant")
+class TranslateFixRegressionTests(TestCase):
+    def test_none_model_still_caches(self):
+        """provider fallback 時 resp.model=None 不應讓快取寫入爆掉（Finding B）。"""
+        from apps.scans.translate import translate_finding_fields
+        from apps.scans.models import FindingTranslation
+        out = translate_finding_fields(dict(_EN), chain=_NoneModelChain(_ZH_JSON))
+        assert out["title"].startswith("帳號密碼"), out
+        assert FindingTranslation.objects.count() == 1  # 有寫進快取
+
+    def test_whitespace_value_falls_back_to_english(self):
+        """模型回傳空白字串不應把欄位翻成空白（Finding D）。"""
+        import json as _json
+        from apps.scans.translate import translate_finding_fields
+        blankish = _json.dumps({"title": "   ", "description": "\n\t ", "remediation": "正常中文"},
+                               ensure_ascii=False)
+        out = translate_finding_fields(dict(_EN), chain=_StubChain(blankish))
+        assert out["title"] == _EN["title"]           # 空白 → 退回英文
+        assert out["description"] == _EN["description"]
+        assert out["remediation"] == "正常中文"        # 正常值照用
+
+    def test_evidence_fence_mismatch_keeps_original(self):
+        """翻譯後 ``` 圍欄數對不上（程式碼區塊被吞/截斷）→ 保留原文（Finding C）。"""
+        from apps.scans.translate import translate_evidence
+        # 回傳只剩前半、少了 json 區塊的兩個圍欄
+        truncated = "管理員列表會向 role:User 會話回傳明文密碼：\n\n```http\nGET /api/admin/selectPage HTTP/1.1\n"
+        assert translate_evidence(_EV_EN, chain=_StubChain(truncated + "X"*400)) == _EV_EN
