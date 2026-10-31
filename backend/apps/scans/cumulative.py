@@ -41,10 +41,13 @@ def _is_nondeterministic(rule_id: str) -> bool:
 
 
 def _identity_of_row(f: Finding) -> str:
+    # 端點要放進 evidence_json：finding_identity.resource_of 只讀 evidence_json
+    # （endpoint/observed_endpoint/url），不看頂層 url。放錯層會讓每筆都收斂成站台層級
+    # 身分（忽略端點），導致不同端點的洞被併成一筆、且與 current_findings 的端點層身分對不上。
     return finding_identity({
         "category": "security", "title": f.title,
         "description": f.description or "", "owasp_category": f.owasp_category,
-        "cwe_id": f.cwe_id, "url": (f.evidence_json or {}).get("endpoint") or "",
+        "cwe_id": f.cwe_id, "evidence_json": f.evidence_json or {},
     })
 
 
@@ -114,6 +117,15 @@ def carry_forward_open_findings(
                 elif rank < cur["rank"]:
                     cur["f"], cur["rank"] = f, rank
 
+    # 「這次 agent 有沒有真的重測這片攻擊面」的門檻：只有當本次重新確認了足夠比例的
+    # 已知非確定性發現，才把「沒再打到」當成修復的證據。否則（agent 完成卻幾乎沒找到
+    # 東西 —— 如配額受限、quick 模式抽樣不足）一律照帶、不扣 miss，避免把仍開著的洞
+    # 誤判成已修復。這是 2026-10-31 的修正：先前只看 status==completed，導致空跑也計為
+    # 一次驗證，兩次就誤消解了 18 個真實發現。
+    tracked = len(best)
+    reconfirmed = sum(1 for ident in best if ident in current_ids)
+    thorough = bool(agent_ran_ok and tracked > 0 and reconfirmed >= max(3, (tracked + 1) // 2))
+
     carried: list[dict] = []
     resolved_now = 0
 
@@ -136,7 +148,7 @@ def carry_forward_open_findings(
             if state.resolved:
                 continue  # 先前已判定修復 → 不再帶入（已從累積清單消失）
 
-            if agent_ran_ok:
+            if thorough:
                 state.miss_streak = (state.miss_streak or 0) + 1
                 if state.miss_streak >= AgentFindingState.RESOLVE_THRESHOLD:
                     state.resolved = True
@@ -146,7 +158,7 @@ def carry_forward_open_findings(
                     resolved_now += 1
                     continue  # 連續多次成功掃描未複現 → 視為已修復，停止帶入
                 state.save(update_fields=["miss_streak", "updated_at"])
-            # agent 失敗/略過：不扣 miss，照帶（這次沒驗證成功，不能當作修好）。
+            # agent 沒跑完、或這次沒認真重測（thorough=False）：不扣 miss，照帶。
 
             row = _materialize_carried(scan_job, f, rec, verified=agent_ran_ok,
                                        miss_streak=state.miss_streak)

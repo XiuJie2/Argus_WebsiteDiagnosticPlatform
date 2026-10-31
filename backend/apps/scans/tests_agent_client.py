@@ -231,7 +231,7 @@ class CarryForwardOpenFindingsTests(TestCase):
         cur = self._scan(ScanJob.Status.AGENT_TESTING)
         current = [{"category": "security", "title": "Stored XSS in announcement",
                     "description": "", "owasp_category": "", "cwe_id": "",
-                    "url": "/api/announcement", "rule_id": "strix:vuln-0004"}]
+                    "evidence_json": {"endpoint": "/api/announcement"}, "rule_id": "strix:vuln-0004"}]
         carried = carry_forward_open_findings(cur, current_findings=current)
         assert carried == []  # 本次已重新確認 → 不重複帶
 
@@ -245,32 +245,57 @@ class CarryForwardOpenFindingsTests(TestCase):
         scan.save(update_fields=["status"])
         return scan
 
-    def test_reverify_resolves_after_threshold_successful_misses(self):
-        """agent 連續兩次正常跑完卻沒再打到 → 自動判定已修復，停止帶入。"""
+    _SURFACE = [
+        ("IDOR on /api/a", "strix:vuln-0001", "/api/a"),
+        ("XSS on /api/b", "strix:vuln-0002", "/api/b"),
+        ("CSRF on /api/c", "strix:vuln-0003", "/api/c"),
+        ("SQLi on /api/d", "strix:vuln-0004", "/api/d"),
+        ("IDOR on /api/updatePassword", "strix:vuln-0005", "/api/updatePassword"),
+    ]
+
+    def _current_for(self, items):
+        """由 (title, rule_id, endpoint) 造出本次重新確認的 current_findings dict。
+        端點放在 evidence_json（finding_identity 由此取資源，與落地列一致）。"""
+        return [{"category": "security", "title": t, "description": "", "owasp_category": "",
+                 "cwe_id": "", "evidence_json": {"endpoint": ep}, "rule_id": rid}
+                for (t, rid, ep) in items]
+
+    def _seed_surface(self):
+        prev = self._scan(ScanJob.Status.COMPLETED)
+        for (t, rid, ep) in self._SURFACE:
+            self._fin(prev, t, "high", rid, ep)
+        return prev
+
+    def test_reverify_resolves_only_after_thorough_misses(self):
+        """agent 認真重測（重新確認多數發現）卻連續兩次沒打到某一項 → 判定修復、停止帶入。"""
         from apps.scans.cumulative import carry_forward_open_findings
         from apps.scans.models import AgentFindingState
-        prev = self._scan(ScanJob.Status.COMPLETED)
-        self._fin(prev, "IDOR on /api/updatePassword", "high", "strix:vuln-0005", "/api/updatePassword")
+        self._seed_surface()
+        # 每次都重新確認前 4 項（thorough），唯獨漏掉最後一項（updatePassword）
+        confirmed = self._current_for(self._SURFACE[:4])
+        for _ in range(2):
+            cur = self._scan(ScanJob.Status.AGENT_TESTING)
+            carry_forward_open_findings(cur, current_findings=confirmed, agent_ran_ok=True)
+            self._complete(cur)
+        resolved = AgentFindingState.objects.filter(user=self.user, resolved=True)
+        assert resolved.count() == 1, list(resolved.values_list("identity", "miss_streak"))
+        assert "updatepassword" in resolved.first().identity
 
-        # 第 1 次成功掃描未複現 → miss=1，仍帶入
-        s1 = self._scan(ScanJob.Status.AGENT_TESTING)
-        carried1 = carry_forward_open_findings(s1, current_findings=[], agent_ran_ok=True)
-        assert len(carried1) == 1, carried1
-        st = AgentFindingState.objects.get(user=self.user, origin="https://example.com")
-        assert st.miss_streak == 1 and st.resolved is False
-        self._complete(s1)
-
-        # 第 2 次成功掃描仍未複現 → miss=2 ≥ 門檻 → resolved，不再帶入（已修復消失）
-        s2 = self._scan(ScanJob.Status.AGENT_TESTING)
-        carried2 = carry_forward_open_findings(s2, current_findings=[], agent_ran_ok=True)
-        assert carried2 == [], carried2
-        st.refresh_from_db()
-        assert st.resolved is True and st.resolved_scan_id == s2.id
-        self._complete(s2)
-
-        # 之後都不再帶入
-        s3 = self._scan(ScanJob.Status.AGENT_TESTING)
-        assert carry_forward_open_findings(s3, current_findings=[], agent_ran_ok=True) == []
+    def test_weak_agent_run_does_not_resolve(self):
+        """agent 完成卻幾乎沒重新確認（空跑）→ 不算驗證，全部照帶、不消解。"""
+        from apps.scans.cumulative import carry_forward_open_findings
+        from apps.scans.models import AgentFindingState
+        self._seed_surface()
+        for _ in range(3):
+            cur = self._scan(ScanJob.Status.AGENT_TESTING)
+            # 只重新確認 1 項（低於 thorough 門檻）→ 其餘不應扣 miss
+            carried = carry_forward_open_findings(
+                cur, current_findings=self._current_for(self._SURFACE[:1]), agent_ran_ok=True)
+            assert len(carried) == 4, len(carried)  # 另外 4 項照帶
+            self._complete(cur)
+        assert AgentFindingState.objects.filter(user=self.user, resolved=True).count() == 0
+        assert set(AgentFindingState.objects.filter(user=self.user)
+                   .values_list("miss_streak", flat=True)) <= {0}
 
     def test_failed_agent_run_does_not_count_as_verification(self):
         """agent 失敗/被限流（agent_ran_ok=False）→ 不扣 miss，持續帶入（不誤判已修復）。"""
@@ -287,24 +312,21 @@ class CarryForwardOpenFindingsTests(TestCase):
         assert st.miss_streak == 0 and st.resolved is False
 
     def test_reconfirm_resets_miss_streak(self):
-        """本次重新打到 → miss 歸零、resolved 取消，不會被誤消解。"""
+        """thorough 掃描漏掉 → miss=1；下次重新打到 → miss 歸零，不會被誤消解。"""
         from apps.scans.cumulative import carry_forward_open_findings
         from apps.scans.models import AgentFindingState
-        prev = self._scan(ScanJob.Status.COMPLETED)
-        self._fin(prev, "IDOR on /api/updatePassword", "high", "strix:vuln-0005", "/api/updatePassword")
-
+        self._seed_surface()
+        # 第 1 次 thorough 掃描確認前 4 項、漏掉 updatePassword → 它 miss=1
         s1 = self._scan(ScanJob.Status.AGENT_TESTING)
-        carry_forward_open_findings(s1, current_findings=[], agent_ran_ok=True)  # miss=1
-        st = AgentFindingState.objects.get(user=self.user, origin="https://example.com")
-        assert st.miss_streak == 1
+        carry_forward_open_findings(s1, current_findings=self._current_for(self._SURFACE[:4]),
+                                    agent_ran_ok=True)
         self._complete(s1)
-
-        # 這次 agent 重新打到同一個洞 → 不帶入、miss 歸零
+        st = AgentFindingState.objects.get(user=self.user, identity__contains="updatepassword")
+        assert st.miss_streak == 1, st.miss_streak
+        # 第 2 次重新打到全部 5 項 → updatePassword miss 歸零
         s2 = self._scan(ScanJob.Status.AGENT_TESTING)
-        current = [{"category": "security", "title": "IDOR on /api/updatePassword",
-                    "description": "", "owasp_category": "", "cwe_id": "",
-                    "url": "/api/updatePassword", "rule_id": "strix:vuln-0005"}]
-        carried = carry_forward_open_findings(s2, current_findings=current, agent_ran_ok=True)
+        carried = carry_forward_open_findings(s2, current_findings=self._current_for(self._SURFACE),
+                                              agent_ran_ok=True)
         assert carried == [], carried
         st.refresh_from_db()
         assert st.miss_streak == 0 and st.resolved is False
